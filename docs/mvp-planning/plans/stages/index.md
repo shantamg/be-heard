@@ -18,7 +18,7 @@ flowchart LR
 |-------|------|---------|-----------------|
 | [Stage 0](./stage-0-onboarding.md) | Onboarding | Establish trust and process | Both sign Curiosity Compact |
 | [Stage 1](./stage-1-witness.md) | The Witness | Deep reflection and being heard | Both feel fully heard |
-| [Stage 2](./stage-2-perspective-stretch.md) | Perspective Stretch | Build empathy for other view | Can state other needs accurately |
+| [Stage 2](./stage-2-perspective-stretch.md) | Perspective Stretch | Build empathy for other view | Can state other needs accurately; feels accurately reflected |
 | [Stage 3](./stage-3-need-mapping.md) | Need Mapping | Identify universal needs | Common ground identified |
 | [Stage 4](./stage-4-strategic-repair.md) | Strategic Repair | Commit to action | Agree on micro-experiment |
 

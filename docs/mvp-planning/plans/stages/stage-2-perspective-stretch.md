@@ -40,7 +40,18 @@ flowchart TD
     Refine --> Present
     Accurate -->|Partially| MoreWork[Focus on gaps]
     MoreWork --> React
-    Accurate -->|Yes and neutral| Complete[Stage 2 complete]
+    Accurate -->|Yes and neutral| WillingCheck[AI asks willingness to receive reflections]
+
+    WillingCheck --> Willing{Willing to receive reflections?}
+    Willing -->|No| Explore2[Explore hesitation]
+    Explore2 --> WillingCheck
+    Willing -->|Yes| ReceiveReflection[Receive empathetic reflection of self]
+
+    ReceiveReflection --> AccurateReflection{Feel accurately reflected?}
+    AccurateReflection -->|No| ShareMore[Share new information]
+    ShareMore --> UpdateReflection[AI updates reflection]
+    UpdateReflection --> ReceiveReflection
+    AccurateReflection -->|Yes| Complete[Stage 2 complete]
 
     Complete --> WaitOther{Other complete?}
     WaitOther -->|Yes| Advance[Advance to Stage 3]
@@ -100,6 +111,51 @@ AI: [Evaluates for accuracy and judgment-free language]
 - States it without blame or sarcasm
 - Shows some understanding of why that need matters to the other person
 
+## Empathetic Reflection Exchange
+
+After understanding the other person, each user is invited to receive an empathetic reflection of themselves from the other persons perspective.
+
+### Willingness Check
+
+```
+AI: "You have done meaningful work understanding [Partner]'s perspective.
+    Now I would like to offer you something: an empathetic reflection of
+    you, based on what [Partner] has shared. This can help you see how
+    you are being experienced. Are you open to receiving this?"
+```
+
+**If hesitant:** The AI explores the resistance gently, acknowledging that receiving reflection can feel vulnerable. The user is never forced.
+
+### Receiving the Reflection
+
+The AI presents a curated, empathetic summary of how the other person experiences the user:
+- Framed without blame or attack
+- Focused on impact and experience rather than judgment
+- Drawn from consented content only
+
+### Accuracy Loop
+
+```mermaid
+flowchart TD
+    Receive[User receives reflection] --> Check{Does this feel accurate?}
+    Check -->|Yes| Confirmed[Feeling accurately reflected]
+    Check -->|No| Clarify[User shares what is missing or wrong]
+    Clarify --> Update[AI integrates new information]
+    Update --> Receive
+```
+
+The user can share new information until they feel the reflection accurately captures their experience and intent. This loop continues until:
+- The user confirms they feel accurately reflected
+- Or the user chooses to proceed without full agreement
+
+### Why This Matters
+
+This exchange:
+- Helps users see their blind spots with compassion
+- Ensures both parties feel seen before moving to solutions
+- Creates symmetry in the perspective-taking process
+- Builds foundation for genuine repair in later stages
+
 ## Wireframe: Perspective Stretch Interface
 
 ```mermaid
@@ -133,7 +189,9 @@ flowchart TB
 
 ## Success Criteria
 
-User can accurately state the other persons needs without judgment.
+1. User can accurately state the other persons needs without judgment
+2. User has received and acknowledged empathetic reflection of themselves
+3. User feels accurately reflected (or chooses to proceed)
 
 ## Failure Paths
 
@@ -143,6 +201,8 @@ User can accurately state the other persons needs without judgment.
 | Complete dismissal | Acknowledge difficulty; return to Stage 1 if needed |
 | Emotional escalation | Barometer triggers cooling period |
 | User tries to skip | Explain gate requirement; offer support |
+| Refuses reflection | Acknowledge vulnerability; explore gently; allow proceeding if firm |
+| Disputes reflection accuracy | Invite new information; update reflection; iterate until resolved |
 
 ## Data Captured
 
@@ -150,6 +210,9 @@ User can accurately state the other persons needs without judgment.
 - Accuracy check attempts
 - Mirror interventions used
 - Progress toward empathy
+- Willingness to receive reflection
+- Reflection accuracy feedback
+- New information shared during accuracy loop
 
 ---
 

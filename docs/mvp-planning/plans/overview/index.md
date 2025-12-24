@@ -6,6 +6,7 @@ High-level documentation for the ListenWell AI-Facilitated Conflict Resolution S
 
 - **[Core Concept](./concept.md)** - Problem statement, solution approach, and architectural pillars
 - **[User Journey](./user-journey.md)** - Complete flow through the system with success/failure paths
+- **[Inner Work](./inner-work.md)** - Personal growth mode for therapeutic insights and skill building
 
 ---
 

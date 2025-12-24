@@ -26,9 +26,10 @@ UI concepts and screen layouts for key interfaces.
 | Section | Purpose |
 |---------|---------|
 | [User Journey](./overview/user-journey.md) | Complete flow through the app |
+| [Inner Work](./overview/inner-work.md) | Personal growth mode with therapeutic insights |
 | [Stage 0: Onboarding](./stages/stage-0-onboarding.md) | Initial setup and Curiosity Compact |
 | [Stage 1: The Witness](./stages/stage-1-witness.md) | Deep reflection phase |
-| [Stage 2: Perspective Stretch](./stages/stage-2-perspective-stretch.md) | Empathy training |
+| [Stage 2: Perspective Stretch](./stages/stage-2-perspective-stretch.md) | Empathy training with reflection exchange |
 | [Stage 3: Need Mapping](./stages/stage-3-need-mapping.md) | Universal needs identification |
 | [Stage 4: Strategic Repair](./stages/stage-4-strategic-repair.md) | Micro-experiments and repair |
 
