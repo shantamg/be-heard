@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>BeHeard - Quick Preview</title>
     <link rel="stylesheet" href="styles/shared.css">
+    <style>
+        .advance-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, var(--bg-secondary) 80%, transparent);
+            padding: 24px 20px 20px;
+            display: none;
+            justify-content: center;
+            z-index: 10;
+        }
+        .advance-bar.visible {
+            display: flex;
+        }
+        .advance-bar .btn {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+    </style>
 </head>
 <body>
     <div class="phone-frame">
@@ -63,15 +82,10 @@
                 </svg>
             </button>
         </div>
-    </div>
 
-    <!-- Stage Complete Modal -->
-    <div class="modal-overlay" id="stageModal">
-        <div class="modal">
-            <div class="modal-icon" id="modalIcon">&#10003;</div>
-            <div class="modal-title" id="modalTitle">Stage Complete</div>
-            <div class="modal-text" id="modalText">You have completed this stage.</div>
-            <button class="btn btn-primary" id="modalBtn" onclick="closeModalAndAdvance()">Continue</button>
+        <!-- Advance Bar (fixed bottom) -->
+        <div class="advance-bar" id="advanceBar">
+            <button class="btn btn-primary" id="advanceBtn">Continue</button>
         </div>
     </div>
 
@@ -246,6 +260,7 @@
             content.innerHTML = '';
             State.messages = [];
             State.currentStep = 0;
+            hideAdvanceBar();
 
             switch(State.currentStage) {
                 case 0: renderStage0(); break;
@@ -300,32 +315,151 @@
 
         function signCompact() {
             State.flags.compactSigned = true;
-            const content = document.getElementById('contentArea');
+            showWaitingRoom();
+        }
 
-            content.innerHTML = `
-                <div class="partner-status">
-                    <div class="partner-avatar">J</div>
-                    <div class="partner-name">${MockData.scenario.partnerName}</div>
-                    <div class="partner-stage">Reviewing the Curiosity Compact...</div>
-                    <div class="partner-progress">
-                        <div class="partner-progress-bar" id="signProgressBar" style="width: 20%"></div>
-                    </div>
+        function showWaitingRoom() {
+            const content = document.getElementById('contentArea');
+            content.innerHTML = '';
+
+            // Partner status card
+            const card = document.createElement('div');
+            card.className = 'partner-status';
+            card.innerHTML = `
+                <div class="partner-avatar">J</div>
+                <div class="partner-name">${MockData.scenario.partnerName}</div>
+                <div class="partner-stage">Reviewing the Curiosity Compact...</div>
+            `;
+            content.appendChild(card);
+
+            // AI message
+            const msg = document.createElement('div');
+            msg.className = 'message ai';
+            msg.textContent = `You have signed the Curiosity Compact. Now we wait for ${MockData.scenario.partnerName} to review and sign as well.`;
+            content.appendChild(msg);
+
+            // Waiting options
+            setTimeout(() => {
+                const optionsMsg = document.createElement('div');
+                optionsMsg.className = 'message ai';
+                optionsMsg.textContent = 'While you wait, here are some things you can do:';
+                content.appendChild(optionsMsg);
+
+                const options = document.createElement('div');
+                options.className = 'partner-options';
+                options.id = 'waitingOptions';
+                options.innerHTML = `
+                    <button class="btn btn-outline" onclick="reviewCompact()">Review the Compact</button>
+                    <button class="btn btn-outline" onclick="previewStages()">What to expect</button>
+                    <button class="btn btn-outline" onclick="takeBreakStage0()">Take a break</button>
+                `;
+                content.appendChild(options);
+                content.scrollTop = content.scrollHeight;
+
+                // Simulate partner signing after delay
+                setTimeout(() => {
+                    showPartnerSigned();
+                }, 5000);
+            }, 500);
+        }
+
+        function reviewCompact() {
+            const content = document.getElementById('contentArea');
+            document.getElementById('waitingOptions').classList.add('hidden');
+
+            const data = MockData.stages[0];
+            const panel = document.createElement('div');
+            panel.className = 'panel';
+            panel.innerHTML = `
+                <div class="panel-header">Your Commitment</div>
+                <div class="panel-content">
+                    ${data.compact.map(term => `<div style="padding: 8px 0; border-bottom: 1px solid var(--border);">${term}</div>`).join('')}
                 </div>
             `;
-
-            // Animate progress bar
-            setTimeout(() => {
-                const bar = document.getElementById('signProgressBar');
-                if (bar) bar.style.width = '60%';
-            }, 600);
-            setTimeout(() => {
-                const bar = document.getElementById('signProgressBar');
-                if (bar) bar.style.width = '100%';
-            }, 1400);
+            content.appendChild(panel);
 
             setTimeout(() => {
-                showModal("Both Ready", `Both you and ${MockData.scenario.partnerName} have signed the Curiosity Compact. Let us begin.`, "Start Stage 1");
-            }, 2000);
+                addBackToWaitingButton();
+            }, 500);
+        }
+
+        function previewStages() {
+            const content = document.getElementById('contentArea');
+            document.getElementById('waitingOptions').classList.add('hidden');
+
+            const stages = [
+                { num: 1, name: 'The Witness', desc: 'Share your experience and feel fully heard' },
+                { num: 2, name: 'Perspective Stretch', desc: 'Understand your partner\'s point of view' },
+                { num: 3, name: 'Need Mapping', desc: 'Identify the needs beneath the conflict' },
+                { num: 4, name: 'Strategic Repair', desc: 'Create agreements that work for both' }
+            ];
+
+            const panel = document.createElement('div');
+            panel.className = 'panel';
+            panel.innerHTML = `
+                <div class="panel-header">The Journey Ahead</div>
+                <div class="panel-content">
+                    ${stages.map(s => `<div style="padding: 10px 0; border-bottom: 1px solid var(--border);"><strong>Stage ${s.num}: ${s.name}</strong><br><span style="color: var(--text-secondary); font-size: 13px;">${s.desc}</span></div>`).join('')}
+                </div>
+            `;
+            content.appendChild(panel);
+
+            setTimeout(() => {
+                addBackToWaitingButton();
+            }, 500);
+        }
+
+        function takeBreakStage0() {
+            const content = document.getElementById('contentArea');
+            document.getElementById('waitingOptions').classList.add('hidden');
+
+            const msg = document.createElement('div');
+            msg.className = 'message ai';
+            msg.textContent = `Taking a break is healthy. We will notify you when ${MockData.scenario.partnerName} has signed the Compact.`;
+            content.appendChild(msg);
+
+            setTimeout(() => {
+                const panel = document.createElement('div');
+                panel.className = 'panel';
+                panel.innerHTML = `
+                    <div class="panel-header">Notification Settings</div>
+                    <div class="panel-content">You will receive a notification when ${MockData.scenario.partnerName} signs. Take the time you need.</div>
+                `;
+                content.appendChild(panel);
+                addBackToWaitingButton();
+            }, 1000);
+        }
+
+        function addBackToWaitingButton() {
+            const content = document.getElementById('contentArea');
+            const container = document.createElement('div');
+            container.className = 'suggested-messages';
+            const btn = document.createElement('button');
+            btn.className = 'suggested-btn';
+            btn.textContent = 'Back to waiting';
+            btn.onclick = showWaitingRoom;
+            container.appendChild(btn);
+            content.appendChild(container);
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function showPartnerSigned() {
+            const content = document.getElementById('contentArea');
+
+            // Update partner status
+            const statusEl = document.querySelector('.partner-stage');
+            if (statusEl) statusEl.textContent = 'Has signed the Curiosity Compact';
+
+            // Show notification
+            const notification = document.createElement('div');
+            notification.className = 'agreement-card';
+            notification.innerHTML = `<h3><span>&#10003;</span> ${MockData.scenario.partnerName} has signed</h3><p>You are both ready to begin the process.</p>`;
+            content.appendChild(notification);
+            content.scrollTop = content.scrollHeight;
+
+            setTimeout(() => {
+                showAdvanceBar('Start Stage 1', false);
+            }, 1000);
         }
 
         // ========== STAGE 1: THE WITNESS ==========
@@ -617,7 +751,7 @@
                 // This allows assessment of how well the AI listens and reframes
                 if (step >= 3) {
                     showCompletionCheck("Do you feel fully heard?", "Not yet", "Yes, I feel heard", () => {
-                        showModal("Stage 1 Complete", "You have been witnessed. When Jordan completes their session, you will both move to understanding each other's perspective.", "Continue to Stage 2");
+                        showStageCompletion("Stage 1 Complete", "You have been witnessed. When Jordan completes their session, you will both move to understanding each other's perspective.", "Continue to Stage 2");
                     });
                 }
             }
@@ -664,7 +798,7 @@
                     State.flags.reflectionReceived = true;
                     setTimeout(() => {
                         showCompletionCheck("Does this reflection feel accurate?", "Not quite", "Yes, I see myself in this", () => {
-                            showModal("Stage 2 Complete", "You have stretched your perspective and received Jordan's reflection of you. Now let us identify the core needs.", "Continue to Stage 3");
+                            showStageCompletion("Stage 2 Complete", "You have stretched your perspective and received Jordan's reflection of you. Now let us identify the core needs.", "Continue to Stage 3");
                         });
                     }, 2000);
                 }
@@ -677,7 +811,7 @@
                 setTimeout(() => {
                     addAIMessage("Notice that you both share a need for Recognition. This is your common ground - the foundation for moving forward.");
                     showCompletionCheck("Ready to move to repair?", "I need more time", "Yes, let us continue", () => {
-                        showModal("Stage 3 Complete", "You have identified your needs and found common ground. Now let us turn understanding into action.", "Continue to Stage 4");
+                        showStageCompletion("Stage 3 Complete", "You have identified your needs and found common ground. Now let us turn understanding into action.", "Continue to Stage 4");
                     });
                 }, 2000);
             }
@@ -720,7 +854,7 @@
                 setTimeout(() => {
                     addAgreement(data.agreement);
                     setTimeout(() => {
-                        showModal("Resolution Complete", "You and Jordan have completed the BeHeard process and reached an agreement. Remember: this is an experiment. You will check in together in two weeks.", "Finish Demo", true);
+                        showStageCompletion("Resolution Complete", "You and Jordan have completed the BeHeard process and reached an agreement. Remember: this is an experiment. You will check in together in two weeks.", "Finish Demo", true);
                     }, 1500);
                 }, 1500);
             }
@@ -749,17 +883,40 @@
             content.scrollTop = content.scrollHeight;
         }
 
-        // ========== MODALS ==========
-        function showModal(title, text, btnText, isFinal = false) {
-            document.getElementById('modalTitle').textContent = title;
-            document.getElementById('modalText').textContent = text;
-            document.getElementById('modalBtn').textContent = btnText;
-            document.getElementById('modalBtn').onclick = () => closeModalAndAdvance(isFinal);
-            document.getElementById('stageModal').classList.add('visible');
+        // ========== ADVANCE BAR ==========
+        function showAdvanceBar(btnText, isFinal = false) {
+            const bar = document.getElementById('advanceBar');
+            const btn = document.getElementById('advanceBtn');
+            btn.textContent = btnText;
+            btn.onclick = () => advanceStage(isFinal);
+            bar.classList.add('visible');
         }
 
-        function closeModalAndAdvance(isFinal = false) {
-            document.getElementById('stageModal').classList.remove('visible');
+        function hideAdvanceBar() {
+            const bar = document.getElementById('advanceBar');
+            if (bar) bar.classList.remove('visible');
+        }
+
+        // ========== STAGE COMPLETION ==========
+        function showStageCompletion(title, text, btnText, isFinal = false) {
+            const content = document.getElementById('contentArea');
+
+            const card = document.createElement('div');
+            card.className = 'agreement-card';
+            card.innerHTML = `
+                <h3><span>&#10003;</span> ${title}</h3>
+                <p>${text}</p>
+            `;
+            content.appendChild(card);
+            content.scrollTop = content.scrollHeight;
+
+            setTimeout(() => {
+                showAdvanceBar(btnText, isFinal);
+            }, 500);
+        }
+
+        function advanceStage(isFinal = false) {
+            hideAdvanceBar();
             if (isFinal) {
                 State.currentStage = 0;
                 State.flags = {
