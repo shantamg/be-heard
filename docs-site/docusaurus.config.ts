@@ -60,9 +60,10 @@ const config: Config = {
           label: 'Docs',
         },
         {
-          href: '/demo/features/',
+          href: '/demo/features/index.html',
           position: 'left',
           label: 'Demos',
+          target: '_self',
         },
       ],
     },
