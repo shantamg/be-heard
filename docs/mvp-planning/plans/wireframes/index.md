@@ -4,6 +4,13 @@ UI concepts and screen layouts for key BeHeard interfaces.
 
 ## Documents
 
+### Navigation & Dashboard
+- **[Home Dashboard](./home-dashboard.md)** - Primary landing screen with smart hero card
+- **[Person Detail](./person-detail.md)** - Relationship view with session history
+- **[Session Dashboard](./session-dashboard.md)** - Preparation space before stage work
+- **[New Session Flow](./new-session-flow.md)** - Invitation and session creation
+
+### Core Experience
 - **[Core Layout](./core-layout.md)** - Base app structure and navigation
 - **[Chat Interface](./chat-interface.md)** - The primary conversation interface
 - **[Stage Controls](./stage-controls.md)** - Stage progression and status UI
@@ -25,12 +32,17 @@ UI concepts and screen layouts for key BeHeard interfaces.
 flowchart TB
     subgraph Entry[Entry Screens]
         Login[Login]
-        Create[Create Session]
         Accept[Accept Invitation]
     end
 
+    subgraph Dashboard[Dashboard Layer]
+        Home[Home Dashboard]
+        PersonDetail[Person Detail]
+        SessionDash[Session Dashboard]
+        NewSession[New Session Flow]
+    end
+
     subgraph Onboarding[Onboarding]
-        Welcome[Welcome]
         Compact[Curiosity Compact]
         Wait[Waiting Room]
     end
@@ -46,7 +58,11 @@ flowchart TB
         Consent[Consent Dialog]
     end
 
-    Entry --> Onboarding
+    Entry --> Home
+    Home --> PersonDetail
+    Home --> NewSession
+    PersonDetail --> SessionDash
+    SessionDash --> Onboarding
     Onboarding --> Core
     Core --> Support
     Support --> Core

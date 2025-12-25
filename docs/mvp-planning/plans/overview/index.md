@@ -7,6 +7,7 @@ High-level documentation for the BeHeard AI-Facilitated Conflict Resolution Syst
 - **[Core Concept](./concept.md)** - Problem statement, solution approach, and architectural pillars
 - **[User Journey](./user-journey.md)** - Complete flow through the system with success/failure paths
 - **[Inner Work](./inner-work.md)** - Personal growth mode for therapeutic insights and skill building
+- **[Information Architecture](./information-architecture.md)** - Navigation hierarchy and screen relationships
 
 ---
 

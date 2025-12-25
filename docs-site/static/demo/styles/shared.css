@@ -196,9 +196,37 @@ body {
     flex: 1;
     overflow-y: auto;
     padding: var(--spacing-xl);
+    padding-bottom: var(--content-bottom-padding, var(--spacing-xl));
     display: flex;
     flex-direction: column;
     gap: var(--spacing-lg);
+}
+
+/*
+ * Bottom padding for content when floating elements are present.
+ * Use these classes on .content-area or set --content-bottom-padding on .phone-frame
+ *
+ * Heights:
+ * - Input area: ~80px
+ * - Emotion bar: ~90px
+ * - Advance bar: ~70px
+ * - Combined input + emotion: ~170px
+ */
+.content-area.has-input-area {
+    --content-bottom-padding: 100px;
+}
+
+.content-area.has-floating-bar {
+    --content-bottom-padding: 80px;
+}
+
+.content-area.has-input-and-emotion {
+    --content-bottom-padding: 180px;
+}
+
+/* For demos with advance bar that appears over content */
+.content-area.has-advance-bar {
+    --content-bottom-padding: 90px;
 }
 
 /* ========== ANIMATIONS ========== */
@@ -473,8 +501,6 @@ body {
 }
 
 .compact-terms {
-    max-height: 200px;
-    overflow-y: auto;
     margin-bottom: var(--spacing-lg);
 }
 

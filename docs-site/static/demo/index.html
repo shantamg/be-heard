@@ -6,6 +6,160 @@
     <title>BeHeard - Quick Preview</title>
     <link rel="stylesheet" href="styles/shared.css">
     <style>
+        /* Dashboard styles for intro */
+        .dashboard-view {
+            padding: 0;
+        }
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--spacing-lg) var(--spacing-xl);
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+        .header-actions {
+            display: flex;
+            gap: var(--spacing-md);
+        }
+        .header-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: var(--radius-full);
+            background: var(--bg-tertiary);
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .hero-card {
+            margin: var(--spacing-xl);
+            padding: var(--spacing-xl);
+            background: linear-gradient(135deg, var(--accent) 0%, #0d8a6a 100%);
+            border-radius: var(--radius-lg);
+            cursor: pointer;
+        }
+        .hero-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(16, 163, 127, 0.3);
+        }
+        .hero-icon {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius-full);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: var(--spacing-md);
+        }
+        .hero-title {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: white;
+            margin-bottom: var(--spacing-xs);
+        }
+        .hero-subtitle {
+            font-size: var(--font-size-sm);
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: var(--spacing-lg);
+        }
+        .hero-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-md) var(--spacing-lg);
+            background: white;
+            color: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .section-title {
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-sm);
+        }
+        .person-list {
+            padding: 0 var(--spacing-xl);
+        }
+        .person-card {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            padding: var(--spacing-lg);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--spacing-sm);
+            cursor: pointer;
+        }
+        .person-card:hover {
+            background: var(--bg-tertiary);
+        }
+        .person-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-full);
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .person-info {
+            flex: 1;
+        }
+        .person-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+        .person-status {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+        }
+
+        /* Session dashboard styles */
+        .context-card {
+            margin: 0 var(--spacing-xl) var(--spacing-md);
+            padding: var(--spacing-lg);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+        }
+        .context-label {
+            font-size: var(--font-size-xs);
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: var(--spacing-sm);
+        }
+        .context-text {
+            font-size: var(--font-size-base);
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+        .ready-btn {
+            margin: var(--spacing-xl);
+            padding: var(--spacing-lg);
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            width: calc(100% - 40px);
+            cursor: pointer;
+        }
+        .ready-btn:hover {
+            background: var(--accent-hover);
+        }
+
         .advance-bar {
             position: absolute;
             bottom: 0;
@@ -36,24 +190,24 @@
                 All Demos
             </a>
             <div class="header-top">
-                <div class="header-logo">BeHeard</div>
+                <div class="header-logo" id="headerLogo">BeHeard</div>
                 <div class="header-stage" id="headerStage">Quick Preview</div>
             </div>
             <div class="stage-progress" id="stageProgress">
-                <div class="stage-dot current" data-stage="0">0</div>
+                <div class="stage-dot current" data-stage="0"></div>
                 <div class="stage-line"></div>
-                <div class="stage-dot" data-stage="1">1</div>
+                <div class="stage-dot" data-stage="1"></div>
                 <div class="stage-line"></div>
-                <div class="stage-dot" data-stage="2">2</div>
+                <div class="stage-dot" data-stage="2"></div>
                 <div class="stage-line"></div>
-                <div class="stage-dot" data-stage="3">3</div>
+                <div class="stage-dot" data-stage="3"></div>
                 <div class="stage-line"></div>
-                <div class="stage-dot" data-stage="4">4</div>
+                <div class="stage-dot" data-stage="4"></div>
             </div>
         </header>
 
         <!-- Content Area -->
-        <div class="content-area" id="contentArea">
+        <div class="content-area has-input-and-emotion" id="contentArea">
             <!-- Dynamic content -->
         </div>
 
@@ -102,7 +256,7 @@
     <script>
         // ========== STATE ==========
         const State = {
-            currentStage: 0,
+            currentStage: -1, // -1 = dashboard, 0-4 = stages
             currentStep: 0,
             emotionLevel: 5,
             messages: [],
@@ -230,6 +384,7 @@
 
         // ========== STAGE TITLES ==========
         const StageTitles = {
+            '-1': "Home",
             0: "Onboarding",
             1: "Stage 1: The Witness",
             2: "Stage 2: Perspective Stretch",
@@ -239,19 +394,29 @@
 
         // ========== RENDER FUNCTIONS ==========
         function updateHeader() {
-            document.getElementById('headerStage').textContent = StageTitles[State.currentStage];
+            // Update logo and stage text based on current state
+            if (State.currentStage === -1) {
+                document.getElementById('headerLogo').textContent = 'BeHeard';
+                document.getElementById('headerStage').textContent = 'Home';
+            } else {
+                document.getElementById('headerLogo').textContent = 'Session with Jordan';
+                document.getElementById('headerStage').textContent = StageTitles[State.currentStage];
+            }
 
+            // Update stage progress dots (only for stages 0-4)
             document.querySelectorAll('.stage-dot').forEach((dot, i) => {
                 dot.classList.remove('completed', 'current');
-                if (i < State.currentStage) {
-                    dot.classList.add('completed');
-                } else if (i === State.currentStage) {
-                    dot.classList.add('current');
+                if (State.currentStage >= 0) {
+                    if (i < State.currentStage) {
+                        dot.classList.add('completed');
+                    } else if (i === State.currentStage) {
+                        dot.classList.add('current');
+                    }
                 }
             });
 
             document.querySelectorAll('.stage-line').forEach((line, i) => {
-                line.classList.toggle('completed', i < State.currentStage);
+                line.classList.toggle('completed', State.currentStage >= 0 && i < State.currentStage);
             });
         }
 
@@ -263,6 +428,7 @@
             hideAdvanceBar();
 
             switch(State.currentStage) {
+                case -1: renderDashboard(); break;
                 case 0: renderStage0(); break;
                 case 1: renderStage1(); break;
                 case 2: renderStage2(); break;
@@ -273,25 +439,102 @@
             updateHeader();
         }
 
-        // ========== STAGE 0: ONBOARDING ==========
-        function renderStage0() {
+        // ========== DASHBOARD (PRE-STAGE) ==========
+        function renderDashboard() {
+            const header = document.querySelector('.header');
             const content = document.getElementById('contentArea');
             document.getElementById('emotionBar').classList.add('hidden');
             document.getElementById('inputArea').classList.add('hidden');
 
+            // Hide stage progress for dashboard
+            document.getElementById('stageProgress').classList.add('hidden');
+
             content.innerHTML = `
-                <div class="welcome-screen">
-                    <div class="welcome-logo">BeHeard</div>
-                    <div class="welcome-tagline">A guided process for understanding and resolution</div>
-                    <button class="btn btn-primary" onclick="showCompact()">Begin</button>
+                <div class="dashboard-view">
+                    <div class="hero-card" onclick="goToSessionDashboard()">
+                        <div class="hero-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                            </svg>
+                        </div>
+                        <div class="hero-title">Start a new session with Jordan</div>
+                        <div class="hero-subtitle">Work through something together</div>
+                        <button class="hero-btn">
+                            Begin
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M5 12h14M12 5l7 7-7 7"/>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="section-title">My People</div>
+                    <div class="person-list">
+                        <div class="person-card" onclick="goToSessionDashboard()">
+                            <div class="person-avatar">J</div>
+                            <div class="person-info">
+                                <div class="person-name">Jordan</div>
+                                <div class="person-status">Ready to start</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section-title">Inner Work</div>
+                    <div class="person-list">
+                        <div class="person-card" style="opacity: 0.6;">
+                            <div class="person-avatar" style="background: var(--accent);">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M12 16v-4M12 8h.01"/>
+                                </svg>
+                            </div>
+                            <div class="person-info">
+                                <div class="person-name">Process something alone</div>
+                                <div class="person-status">Inner Work mode</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             `;
         }
 
-        function showCompact() {
+        function goToSessionDashboard() {
+            const content = document.getElementById('contentArea');
+            document.getElementById('stageProgress').classList.remove('hidden');
+
+            // Update header to show session context
+            document.getElementById('headerLogo').textContent = 'Session with Jordan';
+            document.getElementById('headerStage').textContent = 'Preparation';
+
+            content.innerHTML = `
+                <div class="context-card">
+                    <div class="context-label">About this process</div>
+                    <div class="context-text">BeHeard guides you through 5 stages to help you and Jordan understand each other and find resolution together.</div>
+                </div>
+
+                <div class="context-card">
+                    <div class="context-label">What to expect</div>
+                    <div class="context-text">You will each share your perspective privately, then work together to find common ground and create agreements.</div>
+                </div>
+
+                <button class="ready-btn" onclick="startOnboarding()">Ready to Begin</button>
+            `;
+        }
+
+        function startOnboarding() {
+            State.currentStage = 0;
+            document.getElementById('stageProgress').classList.remove('hidden');
+            renderContent();
+        }
+
+        // ========== STAGE 0: ONBOARDING ==========
+        function renderStage0() {
             const content = document.getElementById('contentArea');
             const data = MockData.stages[0];
+            document.getElementById('emotionBar').classList.add('hidden');
+            document.getElementById('inputArea').classList.add('hidden');
 
+            // Go directly to Curiosity Compact (no splash screen)
             content.innerHTML = `
                 <div class="message ai">Congratulations ${MockData.scenario.userName}, you have taken the first step towards strengthening your connections. Are you open to me guiding you and ${MockData.scenario.partnerName} through a process where you both can be heard? I think there is a way we can find a win-win here.</div>
                 <div class="compact-container">
@@ -918,7 +1161,7 @@
         function advanceStage(isFinal = false) {
             hideAdvanceBar();
             if (isFinal) {
-                State.currentStage = 0;
+                State.currentStage = -1; // Return to dashboard
                 State.flags = {
                     compactSigned: false,
                     feltHeard: false,

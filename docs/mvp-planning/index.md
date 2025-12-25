@@ -24,6 +24,7 @@ Experience the key features in action:
 ### Overview
 - [Core Concept](plans/overview/concept.md) - Problem, solution, and architectural pillars
 - [User Journey](plans/overview/user-journey.md) - Complete flow with success/failure paths
+- [Information Architecture](plans/overview/information-architecture.md) - Navigation hierarchy and screen relationships
 
 ### Stages
 - [Stage 0: Onboarding](plans/stages/stage-0-onboarding.md) - Curiosity Compact and setup
@@ -40,6 +41,12 @@ Experience the key features in action:
 
 ### Privacy
 - [Vessel Model](plans/privacy/vessel-model.md) - Three-vessel privacy architecture
+
+### Navigation & Dashboard
+- [Home Dashboard](plans/wireframes/home-dashboard.md) - Primary landing screen
+- [Person Detail](plans/wireframes/person-detail.md) - Relationship view
+- [Session Dashboard](plans/wireframes/session-dashboard.md) - Preparation space
+- [New Session Flow](plans/wireframes/new-session-flow.md) - Invitation and creation
 
 ### Wireframes
 - [Core Layout](plans/wireframes/core-layout.md) - App structure

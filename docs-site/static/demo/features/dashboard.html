@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dashboard & Navigation - BeHeard Demo</title>
+    <link rel="stylesheet" href="../styles/shared.css">
+    <style>
+        /* Dashboard-specific styles */
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--spacing-lg) var(--spacing-xl);
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .dashboard-header .header-logo {
+            font-size: var(--font-size-xl);
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: var(--spacing-md);
+            align-items: center;
+        }
+
+        .header-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: var(--radius-full);
+            background: var(--bg-tertiary);
+            border: none;
+            color: var(--text-primary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition-fast);
+        }
+
+        .header-btn:hover {
+            background: var(--accent);
+        }
+
+        .hero-card {
+            margin: var(--spacing-xl);
+            padding: var(--spacing-xl);
+            background: linear-gradient(135deg, var(--accent) 0%, #0d8a6a 100%);
+            border-radius: var(--radius-lg);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .hero-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(16, 163, 127, 0.3);
+        }
+
+        .hero-icon {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius-full);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .hero-title {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: white;
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .hero-subtitle {
+            font-size: var(--font-size-sm);
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .hero-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-md) var(--spacing-lg);
+            background: white;
+            color: var(--accent);
+            border: none;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .section-title {
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-sm);
+        }
+
+        .person-list {
+            padding: 0 var(--spacing-xl);
+        }
+
+        .person-card {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            padding: var(--spacing-lg);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--spacing-sm);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .person-card:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .person-avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-full);
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .person-info {
+            flex: 1;
+        }
+
+        .person-name {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .person-status {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+        }
+
+        .person-indicator {
+            width: 8px;
+            height: 8px;
+            background: var(--warning);
+            border-radius: var(--radius-full);
+        }
+
+        .inner-work-card {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            padding: var(--spacing-lg);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--spacing-sm);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .inner-work-card:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .inner-work-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: var(--radius-md);
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent);
+        }
+
+        /* Person Detail styles */
+        .profile-section {
+            text-align: center;
+            padding: var(--spacing-2xl) var(--spacing-xl);
+        }
+
+        .profile-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: var(--radius-full);
+            background: var(--bg-tertiary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: var(--font-size-2xl);
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0 auto var(--spacing-md);
+        }
+
+        .profile-name {
+            font-size: var(--font-size-xl);
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .profile-connected {
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+        }
+
+        .session-card {
+            margin: 0 var(--spacing-xl) var(--spacing-lg);
+            padding: var(--spacing-lg);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--accent);
+        }
+
+        .session-stage {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: var(--spacing-xs);
+        }
+
+        .session-status {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .session-btn {
+            width: 100%;
+            padding: var(--spacing-md);
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .session-btn:hover {
+            background: var(--accent-hover);
+        }
+
+        .past-session {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--spacing-md);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--spacing-sm);
+            cursor: pointer;
+        }
+
+        .past-session:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .past-date {
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+        }
+
+        .past-topic {
+            font-size: var(--font-size-base);
+            color: var(--text-primary);
+        }
+
+        .resolved-badge {
+            font-size: var(--font-size-xs);
+            color: var(--success);
+            background: rgba(16, 163, 127, 0.1);
+            padding: var(--spacing-xs) var(--spacing-sm);
+            border-radius: var(--radius-sm);
+        }
+
+        /* Session Dashboard styles */
+        .session-header {
+            padding: var(--spacing-lg) var(--spacing-xl);
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .session-title {
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: center;
+        }
+
+        .progress-section {
+            padding: var(--spacing-xl);
+            text-align: center;
+        }
+
+        .current-stage {
+            font-size: var(--font-size-base);
+            color: var(--accent);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .context-card {
+            margin: 0 var(--spacing-xl) var(--spacing-md);
+            padding: var(--spacing-lg);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+        }
+
+        .context-label {
+            font-size: var(--font-size-xs);
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .context-text {
+            font-size: var(--font-size-base);
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+
+        .ai-prompts {
+            margin: var(--spacing-lg) var(--spacing-xl);
+        }
+
+        .ai-prompt-label {
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .ai-prompt {
+            display: block;
+            width: 100%;
+            padding: var(--spacing-md);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            color: var(--text-primary);
+            text-align: left;
+            cursor: pointer;
+            margin-bottom: var(--spacing-sm);
+            transition: all var(--transition-fast);
+        }
+
+        .ai-prompt:hover {
+            border-color: var(--accent);
+            background: var(--bg-tertiary);
+        }
+
+        .emotion-section {
+            margin: var(--spacing-lg) var(--spacing-xl);
+            padding: var(--spacing-lg);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-md);
+        }
+
+        .emotion-label {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .emotion-slider {
+            width: 100%;
+            -webkit-appearance: none;
+            height: 8px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-tertiary);
+            outline: none;
+        }
+
+        .emotion-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: var(--radius-full);
+            background: var(--accent);
+            cursor: pointer;
+        }
+
+        .emotion-value {
+            text-align: center;
+            font-size: var(--font-size-sm);
+            color: var(--text-muted);
+            margin-top: var(--spacing-sm);
+        }
+
+        .ready-btn {
+            margin: var(--spacing-xl);
+            padding: var(--spacing-lg);
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: var(--font-size-lg);
+            font-weight: 600;
+            width: calc(100% - 40px);
+            cursor: pointer;
+            transition: all var(--transition-fast);
+        }
+
+        .ready-btn:hover {
+            background: var(--accent-hover);
+        }
+
+        .demo-nav {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-sm);
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .demo-nav-btn {
+            padding: var(--spacing-sm) var(--spacing-md);
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: var(--font-size-sm);
+            cursor: pointer;
+            border-radius: var(--radius-sm);
+            transition: all var(--transition-fast);
+        }
+
+        .demo-nav-btn:hover,
+        .demo-nav-btn.active {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .screen-hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone-frame">
+        <!-- Home Dashboard Screen -->
+        <div id="homeScreen">
+            <div class="dashboard-header">
+                <div class="header-logo">BeHeard</div>
+                <div class="header-actions">
+                    <button class="header-btn" onclick="showScreen('newSession')" title="New Session">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 5v14M5 12h14"/>
+                        </svg>
+                    </button>
+                    <button class="header-btn" title="Menu">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="1"/>
+                            <circle cx="12" cy="5" r="1"/>
+                            <circle cx="12" cy="19" r="1"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="content-area has-floating-bar">
+                <div class="hero-card" onclick="showScreen('personDetail')">
+                    <div class="hero-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                        </svg>
+                    </div>
+                    <div class="hero-title">Alex is waiting for you</div>
+                    <div class="hero-subtitle">Stage 2: Perspective Stretch</div>
+                    <button class="hero-btn">
+                        Continue
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="section-title">My People</div>
+                <div class="person-list">
+                    <div class="person-card" onclick="showScreen('personDetail')">
+                        <div class="person-avatar">A</div>
+                        <div class="person-info">
+                            <div class="person-name">Alex</div>
+                            <div class="person-status">Stage 2 - 2h ago</div>
+                        </div>
+                        <div class="person-indicator"></div>
+                    </div>
+                    <div class="person-card">
+                        <div class="person-avatar">J</div>
+                        <div class="person-info">
+                            <div class="person-name">Jordan</div>
+                            <div class="person-status">Resolved - 1 week ago</div>
+                        </div>
+                    </div>
+                    <div class="person-card">
+                        <div class="person-avatar">S</div>
+                        <div class="person-info">
+                            <div class="person-name">Sam</div>
+                            <div class="person-status">Waiting for you - 3 days</div>
+                        </div>
+                        <div class="person-indicator"></div>
+                    </div>
+                </div>
+
+                <div class="section-title">Inner Work</div>
+                <div class="person-list">
+                    <div class="inner-work-card">
+                        <div class="inner-work-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 16v-4M12 8h.01"/>
+                            </svg>
+                        </div>
+                        <div class="person-info">
+                            <div class="person-name">Work stress</div>
+                            <div class="person-status">In progress</div>
+                        </div>
+                    </div>
+                    <div class="inner-work-card">
+                        <div class="inner-work-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                                <polyline points="22 4 12 14.01 9 11.01"/>
+                            </svg>
+                        </div>
+                        <div class="person-info">
+                            <div class="person-name">Family stuff</div>
+                            <div class="person-status">Completed</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Person Detail Screen -->
+        <div id="personDetailScreen" class="screen-hidden">
+            <header class="header">
+                <a href="#" class="header-back" onclick="showScreen('home'); return false;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                    Back
+                </a>
+                <div class="header-top">
+                    <div class="header-logo">Alex</div>
+                    <button class="header-btn" title="Options">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="1"/>
+                            <circle cx="12" cy="5" r="1"/>
+                            <circle cx="12" cy="19" r="1"/>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+
+            <div class="content-area has-floating-bar">
+                <div class="profile-section">
+                    <div class="profile-avatar">A</div>
+                    <div class="profile-name">Alex</div>
+                    <div class="profile-connected">Connected since Oct 2024</div>
+                </div>
+
+                <div class="section-title">Current Session</div>
+                <div class="session-card">
+                    <div class="session-stage">Stage 2: Perspective Stretch</div>
+                    <div class="session-status">Waiting on you - 2h ago</div>
+                    <button class="session-btn" onclick="showScreen('sessionDashboard')">Continue Session</button>
+                </div>
+
+                <div class="section-title">Past Sessions</div>
+                <div class="person-list">
+                    <div class="past-session">
+                        <div>
+                            <div class="past-date">Dec 15</div>
+                            <div class="past-topic">Household responsibilities</div>
+                        </div>
+                        <div class="resolved-badge">Resolved</div>
+                    </div>
+                    <div class="past-session">
+                        <div>
+                            <div class="past-date">Nov 28</div>
+                            <div class="past-topic">Holiday planning</div>
+                        </div>
+                        <div class="resolved-badge">Resolved</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Session Dashboard Screen -->
+        <div id="sessionDashboardScreen" class="screen-hidden">
+            <header class="header">
+                <a href="#" class="header-back" onclick="showScreen('personDetail'); return false;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                    Back
+                </a>
+                <div class="session-title">Session with Alex</div>
+            </header>
+
+            <div class="content-area has-floating-bar">
+                <div class="progress-section">
+                    <div class="current-stage">Stage 2: Perspective Stretch</div>
+                    <div class="stage-progress">
+                        <div class="stage-dot completed">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                        </div>
+                        <div class="stage-line completed"></div>
+                        <div class="stage-dot completed">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                        </div>
+                        <div class="stage-line completed"></div>
+                        <div class="stage-dot current">2</div>
+                        <div class="stage-line"></div>
+                        <div class="stage-dot">3</div>
+                        <div class="stage-line"></div>
+                        <div class="stage-dot">4</div>
+                    </div>
+                </div>
+
+                <div class="context-card">
+                    <div class="context-label">Where you left off</div>
+                    <div class="context-text">You completed Stage 1 and shared your perspective on feeling overwhelmed with household tasks.</div>
+                </div>
+
+                <div class="context-card">
+                    <div class="context-label">Whats next</div>
+                    <div class="context-text">In this stage you will explore Alexs point of view and build understanding of their experience.</div>
+                </div>
+
+                <div class="ai-prompts">
+                    <div class="ai-prompt-label">Ask the AI</div>
+                    <button class="ai-prompt">What should I focus on?</button>
+                    <button class="ai-prompt">Remind me what Alex shared</button>
+                    <button class="ai-prompt">Im feeling anxious about this</button>
+                </div>
+
+                <div class="emotion-section">
+                    <div class="emotion-label">How are you feeling right now?</div>
+                    <input type="range" class="emotion-slider" min="1" max="10" value="5" id="emotionSlider" oninput="updateEmotion()">
+                    <div class="emotion-value" id="emotionValue">5 / 10 - Moderate</div>
+                </div>
+
+                <button class="ready-btn" onclick="alert('This would enter the Stage 2 conversation')">Ready to Continue</button>
+            </div>
+        </div>
+
+        <!-- New Session Screen (simplified) -->
+        <div id="newSessionScreen" class="screen-hidden">
+            <header class="header">
+                <a href="#" class="header-back" onclick="showScreen('home'); return false;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 12H5M12 19l-7-7 7-7"/>
+                    </svg>
+                    Cancel
+                </a>
+                <div class="session-title">New Session</div>
+            </header>
+
+            <div class="content-area has-floating-bar">
+                <div style="padding: var(--spacing-xl);">
+                    <div class="context-label" style="margin-bottom: var(--spacing-lg);">Who would you like to work through something with?</div>
+
+                    <div style="margin-bottom: var(--spacing-2xl);">
+                        <input type="text" placeholder="Enter email or phone" style="
+                            width: 100%;
+                            padding: var(--spacing-lg);
+                            background: var(--bg-secondary);
+                            border: 1px solid var(--border);
+                            border-radius: var(--radius-md);
+                            color: var(--text-primary);
+                            font-size: var(--font-size-base);
+                        ">
+                    </div>
+
+                    <div class="context-label" style="margin-bottom: var(--spacing-md);">Or choose someone you know</div>
+
+                    <div class="person-card">
+                        <div class="person-avatar">J</div>
+                        <div class="person-info">
+                            <div class="person-name">Jordan</div>
+                            <div class="person-status">No active session</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: var(--spacing-3xl); padding-top: var(--spacing-xl); border-top: 1px solid var(--border);">
+                        <div class="context-label" style="margin-bottom: var(--spacing-md);">Just need to process alone?</div>
+                        <button style="
+                            width: 100%;
+                            padding: var(--spacing-md);
+                            background: transparent;
+                            border: 1px solid var(--border);
+                            border-radius: var(--radius-md);
+                            color: var(--text-secondary);
+                            font-size: var(--font-size-base);
+                            cursor: pointer;
+                        ">Start Inner Work instead</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="demo-nav">
+        <button class="demo-nav-btn active" onclick="showScreen('home')">Home</button>
+        <button class="demo-nav-btn" onclick="showScreen('personDetail')">Person</button>
+        <button class="demo-nav-btn" onclick="showScreen('sessionDashboard')">Session</button>
+        <button class="demo-nav-btn" onclick="showScreen('newSession')">New</button>
+        <a href="index.html" class="demo-nav-btn">All Demos</a>
+    </div>
+
+    <script>
+        function showScreen(screen) {
+            // Hide all screens
+            document.getElementById('homeScreen').classList.add('screen-hidden');
+            document.getElementById('personDetailScreen').classList.add('screen-hidden');
+            document.getElementById('sessionDashboardScreen').classList.add('screen-hidden');
+            document.getElementById('newSessionScreen').classList.add('screen-hidden');
+
+            // Update nav buttons
+            document.querySelectorAll('.demo-nav-btn').forEach(btn => btn.classList.remove('active'));
+
+            // Show selected screen
+            switch(screen) {
+                case 'home':
+                    document.getElementById('homeScreen').classList.remove('screen-hidden');
+                    document.querySelector('.demo-nav-btn:nth-child(1)').classList.add('active');
+                    break;
+                case 'personDetail':
+                    document.getElementById('personDetailScreen').classList.remove('screen-hidden');
+                    document.querySelector('.demo-nav-btn:nth-child(2)').classList.add('active');
+                    break;
+                case 'sessionDashboard':
+                    document.getElementById('sessionDashboardScreen').classList.remove('screen-hidden');
+                    document.querySelector('.demo-nav-btn:nth-child(3)').classList.add('active');
+                    break;
+                case 'newSession':
+                    document.getElementById('newSessionScreen').classList.remove('screen-hidden');
+                    document.querySelector('.demo-nav-btn:nth-child(4)').classList.add('active');
+                    break;
+            }
+        }
+
+        function updateEmotion() {
+            const value = document.getElementById('emotionSlider').value;
+            let label = '';
+            if (value <= 3) label = 'Calm';
+            else if (value <= 6) label = 'Moderate';
+            else if (value <= 8) label = 'Elevated';
+            else label = 'Intense';
+            document.getElementById('emotionValue').textContent = value + ' / 10 - ' + label;
+        }
+    </script>
+</body>
+</html>
