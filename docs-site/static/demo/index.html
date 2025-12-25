@@ -1,0 +1,1433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BeHeard - Interactive Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #212121;
+            --bg-secondary: #2f2f2f;
+            --bg-tertiary: #3a3a3a;
+            --text-primary: #ececec;
+            --text-secondary: #b4b4b4;
+            --text-muted: #8e8e8e;
+            --accent: #10a37f;
+            --accent-hover: #1a7f64;
+            --user-bg: #2f2f2f;
+            --border: #444;
+            --success: #10a37f;
+            --warning: #f59e0b;
+            --calm: #10a37f;
+            --elevated: #f59e0b;
+            --intense: #ef4444;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0d0d0d;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .phone-frame {
+            width: 100%;
+            max-width: 420px;
+            height: 860px;
+            max-height: calc(100vh - 40px);
+            background: var(--bg-primary);
+            border-radius: 24px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+        }
+
+        @media (max-width: 460px) {
+            body {
+                padding: 0;
+                background: var(--bg-primary);
+            }
+            .phone-frame {
+                max-width: 100%;
+                height: 100vh;
+                max-height: 100vh;
+                border-radius: 0;
+                box-shadow: none;
+            }
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-secondary);
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .header-logo {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .header-stage {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Stage Progress */
+        .stage-progress {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .stage-dot {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            transition: all 0.3s ease;
+        }
+
+        .stage-dot.completed {
+            background: var(--success);
+            color: white;
+        }
+
+        .stage-dot.current {
+            background: var(--accent);
+            color: white;
+            box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.3);
+        }
+
+        .stage-line {
+            flex: 1;
+            height: 2px;
+            background: var(--bg-tertiary);
+        }
+
+        .stage-line.completed {
+            background: var(--success);
+        }
+
+        /* Content Area */
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Messages */
+        .message {
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.ai {
+            color: var(--text-primary);
+            font-size: 15px;
+            line-height: 1.6;
+            padding: 0;
+        }
+
+        .message.user {
+            background: var(--user-bg);
+            color: var(--text-primary);
+            padding: 12px 16px;
+            border-radius: 16px;
+            align-self: flex-end;
+            max-width: 85%;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+
+        .message.system {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .message.intervention {
+            background: rgba(245, 158, 11, 0.15);
+            border-left: 3px solid var(--warning);
+            padding: 12px 16px;
+            border-radius: 0 12px 12px 0;
+            color: var(--text-primary);
+            font-size: 15px;
+            line-height: 1.6;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 8px 0;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out;
+        }
+
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Panels */
+        .panel {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 16px;
+            border: 1px solid var(--border);
+        }
+
+        .panel-header {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .panel-content {
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Needs Grid */
+        .needs-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .needs-column h4 {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .need-card {
+            background: var(--bg-tertiary);
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+
+        .need-card.common {
+            background: rgba(16, 163, 127, 0.2);
+            border: 1px solid var(--accent);
+        }
+
+        .common-ground {
+            grid-column: 1 / -1;
+            background: rgba(16, 163, 127, 0.15);
+            border: 1px solid var(--accent);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .common-ground h4 {
+            color: var(--accent);
+            margin-bottom: 8px;
+        }
+
+        /* Proposal Cards */
+        .proposal-card {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 16px;
+            border: 1px solid var(--border);
+        }
+
+        .proposal-card.incoming {
+            border-left: 3px solid var(--accent);
+        }
+
+        .proposal-card h4 {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+
+        .proposal-text {
+            color: var(--text-primary);
+            font-size: 15px;
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+
+        .proposal-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .agreement-card {
+            background: rgba(16, 163, 127, 0.15);
+            border: 1px solid var(--accent);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .agreement-card h3 {
+            color: var(--accent);
+            font-size: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .agreement-card p {
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        /* Curiosity Compact */
+        .compact-container {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .compact-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .compact-terms {
+            max-height: 200px;
+            overflow-y: auto;
+            margin-bottom: 16px;
+        }
+
+        .compact-term {
+            display: flex;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .compact-term:last-child {
+            border-bottom: none;
+        }
+
+        .compact-term::before {
+            content: ">";
+            color: var(--accent);
+            font-weight: bold;
+        }
+
+        .compact-agree {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            margin-bottom: 16px;
+            cursor: pointer;
+        }
+
+        .compact-agree input {
+            width: 20px;
+            height: 20px;
+            accent-color: var(--accent);
+        }
+
+        .compact-agree label {
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        /* Suggested Messages */
+        .suggested-messages {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 12px 0;
+        }
+
+        .suggested-btn {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 10px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .suggested-btn:hover {
+            background: var(--bg-tertiary);
+            border-color: var(--accent);
+        }
+
+        /* Emotion Bar */
+        .emotion-bar {
+            background: var(--bg-secondary);
+            padding: 12px 20px;
+            border-top: 1px solid var(--border);
+        }
+
+        .emotion-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .emotion-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .emotion-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .emotion-slider {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            background: linear-gradient(to right, var(--calm), var(--elevated), var(--intense));
+            border-radius: 3px;
+            outline: none;
+        }
+
+        .emotion-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        .emotion-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+
+        /* Input Area */
+        .input-area {
+            background: var(--bg-secondary);
+            padding: 12px 16px 24px;
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+            border-top: 1px solid var(--border);
+        }
+
+        .input-wrapper {
+            flex: 1;
+            background: var(--bg-tertiary);
+            border-radius: 20px;
+            padding: 10px 16px;
+            border: 1px solid var(--border);
+        }
+
+        .input-wrapper:focus-within {
+            border-color: var(--accent);
+        }
+
+        .input-field {
+            width: 100%;
+            border: none;
+            background: transparent;
+            color: var(--text-primary);
+            font-size: 15px;
+            outline: none;
+            resize: none;
+            min-height: 24px;
+            max-height: 120px;
+            font-family: inherit;
+        }
+
+        .input-field::placeholder {
+            color: var(--text-muted);
+        }
+
+        .send-btn {
+            width: 40px;
+            height: 40px;
+            background: var(--accent);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .send-btn:hover {
+            background: var(--accent-hover);
+        }
+
+        .send-btn:disabled {
+            background: var(--bg-tertiary);
+            cursor: not-allowed;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .btn-primary:disabled {
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 13px;
+        }
+
+        /* Modals */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 100;
+        }
+
+        .modal-overlay.visible {
+            display: flex;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            border-radius: 20px;
+            padding: 32px 24px;
+            text-align: center;
+            max-width: 340px;
+            border: 1px solid var(--border);
+            animation: scaleIn 0.3s ease;
+        }
+
+        @keyframes scaleIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .modal-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .modal-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        /* Welcome Screen */
+        .welcome-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 40px 20px;
+            height: 100%;
+        }
+
+        .welcome-logo {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 12px;
+        }
+
+        .welcome-tagline {
+            font-size: 16px;
+            color: var(--text-secondary);
+            margin-bottom: 40px;
+        }
+
+        /* Waiting State */
+        .waiting-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .waiting-spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid var(--bg-tertiary);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .waiting-text {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* Completion Check */
+        .completion-check {
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        .completion-question {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 16px;
+        }
+
+        .completion-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        /* Hidden */
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone-frame">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-top">
+                <div class="header-logo">BeHeard</div>
+                <div class="header-stage" id="headerStage">Welcome</div>
+            </div>
+            <div class="stage-progress" id="stageProgress">
+                <div class="stage-dot current" data-stage="0">0</div>
+                <div class="stage-line"></div>
+                <div class="stage-dot" data-stage="1">1</div>
+                <div class="stage-line"></div>
+                <div class="stage-dot" data-stage="2">2</div>
+                <div class="stage-line"></div>
+                <div class="stage-dot" data-stage="3">3</div>
+                <div class="stage-line"></div>
+                <div class="stage-dot" data-stage="4">4</div>
+            </div>
+        </header>
+
+        <!-- Content Area -->
+        <div class="content-area" id="contentArea">
+            <!-- Dynamic content -->
+        </div>
+
+        <!-- Emotion Bar -->
+        <div class="emotion-bar" id="emotionBar">
+            <div class="emotion-header">
+                <span class="emotion-label">How are you feeling?</span>
+                <span class="emotion-value" id="emotionValue">5</span>
+            </div>
+            <input type="range" class="emotion-slider" id="emotionSlider" min="1" max="10" value="5">
+            <div class="emotion-labels">
+                <span>Calm</span>
+                <span>Elevated</span>
+                <span>Intense</span>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area" id="inputArea">
+            <div class="input-wrapper">
+                <textarea class="input-field" id="inputField" placeholder="Share your thoughts..." rows="1"></textarea>
+            </div>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Stage Complete Modal -->
+    <div class="modal-overlay" id="stageModal">
+        <div class="modal">
+            <div class="modal-icon" id="modalIcon">&#10003;</div>
+            <div class="modal-title" id="modalTitle">Stage Complete</div>
+            <div class="modal-text" id="modalText">You have completed this stage.</div>
+            <button class="btn btn-primary" id="modalBtn" onclick="closeModalAndAdvance()">Continue</button>
+        </div>
+    </div>
+
+    <!-- Cooling Modal -->
+    <div class="modal-overlay" id="coolingModal">
+        <div class="modal">
+            <div class="modal-icon">&#128524;</div>
+            <div class="modal-title">Taking a Moment</div>
+            <div class="modal-text">Your emotions are running high, and that is completely understandable. Let us pause and take a breath together.</div>
+            <button class="btn btn-primary" onclick="closeCoolingModal()">I am ready to continue</button>
+        </div>
+    </div>
+
+    <script>
+        // ========== STATE ==========
+        const State = {
+            currentStage: 0,
+            currentStep: 0,
+            emotionLevel: 5,
+            messages: [],
+            flags: {
+                compactSigned: false,
+                feltHeard: false,
+                mirrorTriggered: false,
+                accuracyPassed: false,
+                reflectionReceived: false,
+                needsConfirmed: false,
+                agreementMade: false
+            }
+        };
+
+        // ========== MOCK DATA ==========
+        const MockData = {
+            scenario: {
+                userName: "Alex",
+                partnerName: "Jordan",
+                topic: "household responsibilities"
+            },
+
+            stages: {
+                0: {
+                    name: "Onboarding",
+                    compact: [
+                        "Approach this process with curiosity rather than certainty",
+                        "Allow the AI to guide the pace of our work together",
+                        "Share honestly within my private space",
+                        "Consider the other perspective when presented",
+                        "Focus on understanding needs rather than winning",
+                        "Take breaks when emotions run high"
+                    ]
+                },
+                1: {
+                    name: "The Witness",
+                    opening: [
+                        "This is a safe space for you to share what is on your mind. Take your time - there is no rush here.",
+                        "What happened that brought you here today?"
+                    ],
+                    reflections: [
+                        "I hear you. That sounds really difficult. When you describe always being the one to take care of things, it sounds like there is a lot of frustration there - and maybe some hurt underneath?",
+                        "So what I am hearing is that you feel invisible sometimes, like your efforts go unnoticed. That must be exhausting.",
+                        "That makes complete sense. It sounds like beneath the frustration, there is a real need for partnership - for feeling like you are in this together.",
+                        "Thank you for sharing that with me. I can see how much this matters to you. You want to feel valued and seen for everything you do."
+                    ],
+                    suggestions: [
+                        "I feel like I do everything around the house",
+                        "It is not just about chores - I feel invisible",
+                        "I want to feel like we are a team",
+                        "Yes, that captures it well"
+                    ]
+                },
+                2: {
+                    name: "Perspective Stretch",
+                    partnerPerspective: {
+                        summary: "Jordan shared that they often feel criticized about how they help around the house. They mentioned that their contributions - like managing finances, handling repairs, and yard work - seem to go unacknowledged. They feel like no matter what they do, it is never quite right.",
+                        needs: ["Recognition for their contributions", "Clarity on expectations", "Feeling competent rather than criticized"]
+                    },
+                    opening: [
+                        "Now I would like to share some of what Jordan expressed, with their permission. This is not about who is right - it is about understanding.",
+                        "Here is what Jordan shared:"
+                    ],
+                    mirrorIntervention: "I notice some strong feelings coming up. That reaction makes sense given your own pain. But before we go further - if you set aside the hurt for a moment, what might Jordan be experiencing that leads them to see things this way?",
+                    reflections: [
+                        "That is a thoughtful response. You are starting to see that Jordan might be feeling undervalued too, just in different ways.",
+                        "Exactly. Even when you disagree, being able to understand their experience is what creates space for real change."
+                    ],
+                    empathyExchange: {
+                        intro: "You have done meaningful work here. Now I would like to offer you something: a reflection of how Jordan experiences you. Would you be open to hearing it?",
+                        reflection: "Jordan experiences you as someone who cares deeply about your home and family. They also shared that sometimes they feel like nothing they do measures up - that there is always another task or another way they have fallen short. They want to be a good partner but feel uncertain about how."
+                    },
+                    suggestions: [
+                        "I can see they feel unappreciated too",
+                        "That is hard to hear but I understand",
+                        "They never help with what I need",
+                        "Yes, I am open to hearing it"
+                    ]
+                },
+                3: {
+                    name: "Need Mapping",
+                    yourNeeds: [
+                        { name: "Partnership", desc: "Feeling like you work together as a team" },
+                        { name: "Recognition", desc: "Having your efforts seen and appreciated" },
+                        { name: "Fairness", desc: "An equitable sharing of responsibilities" }
+                    ],
+                    partnerNeeds: [
+                        { name: "Recognition", desc: "Having their contributions acknowledged" },
+                        { name: "Clarity", desc: "Knowing what is expected" },
+                        { name: "Competence", desc: "Feeling capable, not constantly falling short" }
+                    ],
+                    commonGround: {
+                        need: "Recognition",
+                        insight: "You both want to feel that your contributions matter and are truly seen by the other."
+                    },
+                    opening: [
+                        "Looking at everything you have both shared, I can see some core needs emerging.",
+                        "Let me show you what I have identified:"
+                    ]
+                },
+                4: {
+                    name: "Strategic Repair",
+                    partnerProposal: {
+                        text: "Weekly household meeting - 15 minutes every Sunday to review the week ahead and plan together. No phones, no distractions.",
+                        from: "Jordan"
+                    },
+                    opening: [
+                        "Now comes the most important part: turning understanding into action.",
+                        "Jordan has already put forward a proposal:"
+                    ],
+                    suggestions: [
+                        "I like this idea - let us try it",
+                        "Can we make it shorter at first?",
+                        "I want to add daily appreciations"
+                    ],
+                    agreement: {
+                        text: "For the next two weeks: 15-minute Sunday planning session + share one specific appreciation each day",
+                        checkIn: "Two weeks from today"
+                    }
+                }
+            }
+        };
+
+        // ========== STAGE TITLES ==========
+        const StageTitles = {
+            0: "Onboarding",
+            1: "Stage 1: The Witness",
+            2: "Stage 2: Perspective Stretch",
+            3: "Stage 3: Need Mapping",
+            4: "Stage 4: Strategic Repair"
+        };
+
+        // ========== RENDER FUNCTIONS ==========
+        function updateHeader() {
+            document.getElementById('headerStage').textContent = StageTitles[State.currentStage];
+
+            document.querySelectorAll('.stage-dot').forEach((dot, i) => {
+                dot.classList.remove('completed', 'current');
+                if (i < State.currentStage) {
+                    dot.classList.add('completed');
+                } else if (i === State.currentStage) {
+                    dot.classList.add('current');
+                }
+            });
+
+            document.querySelectorAll('.stage-line').forEach((line, i) => {
+                line.classList.toggle('completed', i < State.currentStage);
+            });
+        }
+
+        function renderContent() {
+            const content = document.getElementById('contentArea');
+            content.innerHTML = '';
+            State.messages = [];
+            State.currentStep = 0;
+
+            switch(State.currentStage) {
+                case 0: renderStage0(); break;
+                case 1: renderStage1(); break;
+                case 2: renderStage2(); break;
+                case 3: renderStage3(); break;
+                case 4: renderStage4(); break;
+            }
+
+            updateHeader();
+        }
+
+        // ========== STAGE 0: ONBOARDING ==========
+        function renderStage0() {
+            const content = document.getElementById('contentArea');
+            document.getElementById('emotionBar').classList.add('hidden');
+            document.getElementById('inputArea').classList.add('hidden');
+
+            content.innerHTML = `
+                <div class="welcome-screen">
+                    <div class="welcome-logo">BeHeard</div>
+                    <div class="welcome-tagline">A guided process for understanding and resolution</div>
+                    <button class="btn btn-primary" onclick="showCompact()">Begin</button>
+                </div>
+            `;
+        }
+
+        function showCompact() {
+            const content = document.getElementById('contentArea');
+            const data = MockData.stages[0];
+
+            content.innerHTML = `
+                <div class="message ai">Welcome, ${MockData.scenario.userName}. Before we begin working through your conflict with ${MockData.scenario.partnerName} about ${MockData.scenario.topic}, I need you to commit to approaching this process with an open mind.</div>
+                <div class="compact-container">
+                    <div class="compact-title">The Curiosity Compact</div>
+                    <div class="compact-terms">
+                        ${data.compact.map(term => `<div class="compact-term">${term}</div>`).join('')}
+                    </div>
+                    <div class="compact-agree">
+                        <input type="checkbox" id="compactCheck" onchange="updateSignButton()">
+                        <label for="compactCheck">I commit to approaching this with curiosity</label>
+                    </div>
+                    <button class="btn btn-primary" id="signBtn" disabled onclick="signCompact()">Sign and Begin</button>
+                </div>
+            `;
+        }
+
+        function updateSignButton() {
+            const check = document.getElementById('compactCheck');
+            document.getElementById('signBtn').disabled = !check.checked;
+        }
+
+        function signCompact() {
+            State.flags.compactSigned = true;
+            const content = document.getElementById('contentArea');
+
+            content.innerHTML = `
+                <div class="waiting-state">
+                    <div class="waiting-spinner"></div>
+                    <div class="waiting-text">Waiting for ${MockData.scenario.partnerName} to sign...</div>
+                </div>
+            `;
+
+            setTimeout(() => {
+                showModal("Both Ready", `Both you and ${MockData.scenario.partnerName} have signed the Curiosity Compact. Let us begin.`, "Start Stage 1");
+            }, 2000);
+        }
+
+        // ========== STAGE 1: THE WITNESS ==========
+        function renderStage1() {
+            document.getElementById('emotionBar').classList.remove('hidden');
+            document.getElementById('inputArea').classList.remove('hidden');
+
+            const data = MockData.stages[1];
+            addAIMessage(data.opening[0]);
+            setTimeout(() => {
+                addAIMessage(data.opening[1]);
+                showSuggestions(data.suggestions.slice(0, 2));
+            }, 1500);
+        }
+
+        // ========== STAGE 2: PERSPECTIVE STRETCH ==========
+        function renderStage2() {
+            document.getElementById('emotionBar').classList.remove('hidden');
+            document.getElementById('inputArea').classList.remove('hidden');
+
+            const data = MockData.stages[2];
+
+            addAIMessage(data.opening[0]);
+            setTimeout(() => {
+                addAIMessage(data.opening[1]);
+                setTimeout(() => {
+                    addPanel("What Jordan Shared", data.partnerPerspective.summary);
+                    addNeedsList("Their Core Needs", data.partnerPerspective.needs);
+                    setTimeout(() => {
+                        addAIMessage("How does hearing this land for you?");
+                        showSuggestions(data.suggestions.slice(0, 3));
+                    }, 1000);
+                }, 1000);
+            }, 1500);
+        }
+
+        // ========== STAGE 3: NEED MAPPING ==========
+        function renderStage3() {
+            document.getElementById('emotionBar').classList.remove('hidden');
+            document.getElementById('inputArea').classList.remove('hidden');
+
+            const data = MockData.stages[3];
+
+            addAIMessage(data.opening[0]);
+            setTimeout(() => {
+                addAIMessage(data.opening[1]);
+                setTimeout(() => {
+                    addNeedsGrid(data);
+                    setTimeout(() => {
+                        addAIMessage("Do you see yourself in these needs? Does this feel accurate?");
+                        showSuggestions(["Yes, this captures it", "I would adjust something"]);
+                    }, 1000);
+                }, 1000);
+            }, 1500);
+        }
+
+        // ========== STAGE 4: STRATEGIC REPAIR ==========
+        function renderStage4() {
+            document.getElementById('emotionBar').classList.remove('hidden');
+            document.getElementById('inputArea').classList.remove('hidden');
+
+            const data = MockData.stages[4];
+
+            addAIMessage(data.opening[0]);
+            setTimeout(() => {
+                addAIMessage(data.opening[1]);
+                setTimeout(() => {
+                    addProposal(data.partnerProposal);
+                    showSuggestions(data.suggestions);
+                }, 1000);
+            }, 1500);
+        }
+
+        // ========== MESSAGE HELPERS ==========
+        function addAIMessage(text) {
+            const content = document.getElementById('contentArea');
+            const msg = document.createElement('div');
+            msg.className = 'message ai';
+            msg.textContent = text;
+            content.appendChild(msg);
+            State.messages.push({ type: 'ai', text });
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function addUserMessage(text) {
+            const content = document.getElementById('contentArea');
+            const msg = document.createElement('div');
+            msg.className = 'message user';
+            msg.textContent = text;
+            content.appendChild(msg);
+            State.messages.push({ type: 'user', text });
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function addInterventionMessage(text) {
+            const content = document.getElementById('contentArea');
+            const msg = document.createElement('div');
+            msg.className = 'message intervention';
+            msg.textContent = text;
+            content.appendChild(msg);
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function showTyping() {
+            const content = document.getElementById('contentArea');
+            const typing = document.createElement('div');
+            typing.className = 'typing-indicator';
+            typing.id = 'typingIndicator';
+            typing.innerHTML = '<span></span><span></span><span></span>';
+            content.appendChild(typing);
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function hideTyping() {
+            const typing = document.getElementById('typingIndicator');
+            if (typing) typing.remove();
+        }
+
+        function addPanel(title, text) {
+            const content = document.getElementById('contentArea');
+            const panel = document.createElement('div');
+            panel.className = 'panel';
+            panel.innerHTML = `
+                <div class="panel-header">${title}</div>
+                <div class="panel-content">${text}</div>
+            `;
+            content.appendChild(panel);
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function addNeedsList(title, needs) {
+            const content = document.getElementById('contentArea');
+            const panel = document.createElement('div');
+            panel.className = 'panel';
+            panel.innerHTML = `
+                <div class="panel-header">${title}</div>
+                <div class="panel-content">
+                    ${needs.map(n => `<div class="need-card">${n}</div>`).join('')}
+                </div>
+            `;
+            content.appendChild(panel);
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function addNeedsGrid(data) {
+            const content = document.getElementById('contentArea');
+            const grid = document.createElement('div');
+            grid.className = 'needs-grid';
+            grid.innerHTML = `
+                <div class="needs-column">
+                    <h4>Your Needs</h4>
+                    ${data.yourNeeds.map(n => `<div class="need-card ${n.name === data.commonGround.need ? 'common' : ''}">${n.name}</div>`).join('')}
+                </div>
+                <div class="needs-column">
+                    <h4>Their Needs</h4>
+                    ${data.partnerNeeds.map(n => `<div class="need-card ${n.name === data.commonGround.need ? 'common' : ''}">${n.name}</div>`).join('')}
+                </div>
+                <div class="common-ground">
+                    <h4>Common Ground</h4>
+                    <strong>${data.commonGround.need}</strong><br>
+                    <span style="font-size: 13px; color: var(--text-secondary);">${data.commonGround.insight}</span>
+                </div>
+            `;
+            content.appendChild(grid);
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function addProposal(proposal) {
+            const content = document.getElementById('contentArea');
+            const card = document.createElement('div');
+            card.className = 'proposal-card incoming';
+            card.innerHTML = `
+                <h4>${proposal.from}'s Proposal</h4>
+                <div class="proposal-text">${proposal.text}</div>
+            `;
+            content.appendChild(card);
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function addAgreement(agreement) {
+            const content = document.getElementById('contentArea');
+            const card = document.createElement('div');
+            card.className = 'agreement-card';
+            card.innerHTML = `
+                <h3><span>&#10003;</span> Agreement Reached</h3>
+                <p>${agreement.text}</p>
+                <p style="margin-top: 12px; font-size: 13px; color: var(--text-secondary);">Check-in scheduled: ${agreement.checkIn}</p>
+            `;
+            content.appendChild(card);
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function showSuggestions(suggestions) {
+            const content = document.getElementById('contentArea');
+
+            // Remove existing suggestions
+            const existing = content.querySelector('.suggested-messages');
+            if (existing) existing.remove();
+
+            const container = document.createElement('div');
+            container.className = 'suggested-messages';
+            suggestions.forEach(s => {
+                const btn = document.createElement('button');
+                btn.className = 'suggested-btn';
+                btn.textContent = s;
+                btn.onclick = () => sendSuggested(s);
+                container.appendChild(btn);
+            });
+            content.appendChild(container);
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function hideSuggestions() {
+            const content = document.getElementById('contentArea');
+            const existing = content.querySelector('.suggested-messages');
+            if (existing) existing.remove();
+        }
+
+        // ========== MESSAGE HANDLING ==========
+        function sendMessage() {
+            const input = document.getElementById('inputField');
+            const text = input.value.trim();
+            if (!text) return;
+
+            processMessage(text);
+            input.value = '';
+            input.style.height = 'auto';
+        }
+
+        function sendSuggested(text) {
+            processMessage(text);
+        }
+
+        function processMessage(text) {
+            hideSuggestions();
+            addUserMessage(text);
+
+            // Check for judgment patterns in Stage 2
+            if (State.currentStage === 2 && !State.flags.mirrorTriggered) {
+                const judgmentPattern = /never|always|selfish|lazy|does not care|doesn't care/i;
+                if (judgmentPattern.test(text)) {
+                    State.flags.mirrorTriggered = true;
+                    showTyping();
+                    setTimeout(() => {
+                        hideTyping();
+                        addInterventionMessage(MockData.stages[2].mirrorIntervention);
+                        showSuggestions(["You are right, let me think about that", "I can see they might feel frustrated too"]);
+                    }, 2000);
+                    return;
+                }
+            }
+
+            showTyping();
+            setTimeout(() => {
+                hideTyping();
+                respondToMessage(text);
+            }, 1500 + Math.random() * 1000);
+        }
+
+        function respondToMessage(text) {
+            State.currentStep++;
+            const stage = State.currentStage;
+            const step = State.currentStep;
+            const data = MockData.stages[stage];
+
+            switch(stage) {
+                case 1: handleStage1Response(text, step, data); break;
+                case 2: handleStage2Response(text, step, data); break;
+                case 3: handleStage3Response(text, step, data); break;
+                case 4: handleStage4Response(text, step, data); break;
+            }
+        }
+
+        function handleStage1Response(text, step, data) {
+            if (step <= data.reflections.length) {
+                addAIMessage(data.reflections[step - 1]);
+                if (step < 3) {
+                    showSuggestions([data.suggestions[step], data.suggestions[step + 1] || "Tell me more"]);
+                } else {
+                    showCompletionCheck("Do you feel fully heard?", "Not yet", "Yes, I feel heard", () => {
+                        showModal("Stage 1 Complete", "You have been witnessed. When Jordan completes their session, you will both move to understanding each other's perspective.", "Continue to Stage 2");
+                    });
+                }
+            }
+        }
+
+        function handleStage2Response(text, step, data) {
+            if (!State.flags.reflectionReceived) {
+                if (step === 1 || State.flags.mirrorTriggered) {
+                    addAIMessage(data.reflections[0]);
+                    showSuggestions(["I can see we both feel unappreciated", "This helps me understand"]);
+                    State.flags.mirrorTriggered = false;
+                } else if (step === 2) {
+                    addAIMessage(data.reflections[1]);
+                    setTimeout(() => {
+                        addAIMessage(data.empathyExchange.intro);
+                        showSuggestions(["Yes, I am open to hearing it", "I need a moment first"]);
+                    }, 1500);
+                } else if (step === 3) {
+                    addAIMessage(data.empathyExchange.reflection);
+                    State.flags.reflectionReceived = true;
+                    setTimeout(() => {
+                        showCompletionCheck("Does this reflection feel accurate?", "Not quite", "Yes, I see myself in this", () => {
+                            showModal("Stage 2 Complete", "You have stretched your perspective and received Jordan's reflection of you. Now let us identify the core needs.", "Continue to Stage 3");
+                        });
+                    }, 2000);
+                }
+            }
+        }
+
+        function handleStage3Response(text, step, data) {
+            if (step === 1) {
+                addAIMessage("Good. These needs - partnership, recognition, fairness for you, and recognition, clarity, competence for Jordan - will guide our repair work.");
+                setTimeout(() => {
+                    addAIMessage("Notice that you both share a need for Recognition. This is your common ground - the foundation for moving forward.");
+                    showCompletionCheck("Ready to move to repair?", "I need more time", "Yes, let us continue", () => {
+                        showModal("Stage 3 Complete", "You have identified your needs and found common ground. Now let us turn understanding into action.", "Continue to Stage 4");
+                    });
+                }, 2000);
+            }
+        }
+
+        function handleStage4Response(text, step, data) {
+            if (step === 1) {
+                if (text.toLowerCase().includes("add") || text.toLowerCase().includes("appreciation")) {
+                    addAIMessage("That is a wonderful addition. Combining Jordan's weekly planning with daily appreciations creates both structure and warmth. Let me check with Jordan...");
+                } else {
+                    addAIMessage("Great. Let me confirm this with Jordan...");
+                }
+                setTimeout(() => {
+                    addAIMessage("Jordan has agreed! You have reached your first agreement.");
+                    setTimeout(() => {
+                        addAgreement(data.agreement);
+                        setTimeout(() => {
+                            showModal("Resolution Complete", "You and Jordan have completed the BeHeard process and reached an agreement. Remember: this is an experiment. You will check in together in two weeks.", "Finish Demo", true);
+                        }, 1500);
+                    }, 1000);
+                }, 2500);
+            }
+        }
+
+        function showCompletionCheck(question, noText, yesText, onYes) {
+            const content = document.getElementById('contentArea');
+            const check = document.createElement('div');
+            check.className = 'completion-check';
+            check.innerHTML = `
+                <div class="completion-question">${question}</div>
+                <div class="completion-buttons">
+                    <button class="btn btn-secondary" onclick="this.parentElement.parentElement.remove(); addAIMessage('Take your time. What else would help you feel complete here?');">
+                        ${noText}
+                    </button>
+                    <button class="btn btn-primary" onclick="this.parentElement.parentElement.remove();">
+                        ${yesText}
+                    </button>
+                </div>
+            `;
+            check.querySelector('.btn-primary').onclick = () => {
+                check.remove();
+                onYes();
+            };
+            content.appendChild(check);
+            content.scrollTop = content.scrollHeight;
+        }
+
+        // ========== MODALS ==========
+        function showModal(title, text, btnText, isFinal = false) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalText').textContent = text;
+            document.getElementById('modalBtn').textContent = btnText;
+            document.getElementById('modalBtn').onclick = () => closeModalAndAdvance(isFinal);
+            document.getElementById('stageModal').classList.add('visible');
+        }
+
+        function closeModalAndAdvance(isFinal = false) {
+            document.getElementById('stageModal').classList.remove('visible');
+            if (isFinal) {
+                State.currentStage = 0;
+                State.flags = {
+                    compactSigned: false,
+                    feltHeard: false,
+                    mirrorTriggered: false,
+                    accuracyPassed: false,
+                    reflectionReceived: false,
+                    needsConfirmed: false,
+                    agreementMade: false
+                };
+            } else {
+                State.currentStage++;
+            }
+            renderContent();
+        }
+
+        function closeCoolingModal() {
+            document.getElementById('coolingModal').classList.remove('visible');
+        }
+
+        // ========== EMOTION SLIDER ==========
+        document.getElementById('emotionSlider').addEventListener('input', function() {
+            State.emotionLevel = parseInt(this.value);
+            document.getElementById('emotionValue').textContent = this.value;
+
+            if (State.emotionLevel >= 9) {
+                setTimeout(() => {
+                    document.getElementById('coolingModal').classList.add('visible');
+                }, 500);
+            }
+        });
+
+        // ========== INPUT ==========
+        document.getElementById('inputField').addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+
+        document.getElementById('inputField').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // ========== INIT ==========
+        renderContent();
+    </script>
+</body>
+</html>
