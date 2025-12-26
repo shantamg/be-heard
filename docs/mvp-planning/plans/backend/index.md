@@ -51,17 +51,20 @@ Prisma schema, vessel implementations, memory objects
 ### [State Machine](./state-machine/index.md)
 Session states, stage gates, retrieval contracts
 
-### AI Integration (coming soon)
-Model stratification, memory intent layer, prompts
+### [AI Prompts](./prompts/index.md)
+Model stratification, prompt templates for each stage, transformation prompts
 
 ### Mechanisms (coming soon)
 Backend implementations of Emotional Barometer, Mirror Intervention, Consensual Bridge
 
-### API (coming soon)
-REST endpoints, WebSocket, error handling
+### [API](./api/index.md)
+REST endpoints for session management, stage progression, and consent flows
 
-### Security (coming soon)
-Encryption, access control, consent audit
+### [Security](./security/index.md)
+Row-level security policies, access control, consent enforcement
+
+### [Testing](./testing/index.md)
+Unit, integration, and E2E testing strategy
 
 ### [Glossary](./glossary.md)
 Canonical definitions for all BeHeard backend terminology

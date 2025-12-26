@@ -122,7 +122,7 @@ if user\_emotion \> 8:
 
 | Component | Description / Implementation Notes |
 | ----- | ----- |
-| LLM | GPT-4o (or similar) with long context window |
+| LLM | Claude 3.5 Sonnet (via AWS Bedrock) with long context window |
 | Memory | Vector DB storing per-user and cross-user objects; strict attribution |
 | UI | Minimalist chat; no typing indicators; stage-controlled interface |
 | Document Upload | Optional attachment support; AI references in reflections |

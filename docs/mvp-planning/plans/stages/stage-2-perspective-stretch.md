@@ -267,6 +267,14 @@ flowchart TB
 - [Mirror Intervention](../mechanisms/mirror-intervention.md)
 - [Consensual Bridge](../mechanisms/consensual-bridge.md)
 
+### Backend Implementation
+
+- [Stage 2 API](../backend/api/stage-2.md) - Empathy exchange endpoints
+- [Stage 2 Prompt](../backend/prompts/stage-2-perspective.md) - Perspective prompt template
+- [Mirror Intervention Prompt](../backend/prompts/mirror-intervention.md)
+- [Consent API](../backend/api/consent.md)
+- [Retrieval Contracts](../backend/state-machine/retrieval-contracts.md#stage-2-perspective-stretch)
+
 ---
 
 [Back to Stages](./index.md) | [Back to Plans](../index.md)

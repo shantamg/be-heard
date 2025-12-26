@@ -289,6 +289,13 @@ flowchart TD
 - [User Journey](../overview/user-journey.md)
 - [System Guardrails](../mechanisms/guardrails.md)
 
+### Backend Implementation
+
+- [Stage 4 API](../backend/api/stage-4.md) - Strategy and agreement endpoints
+- [Stage 4 Prompt](../backend/prompts/stage-4-repair.md) - Strategic repair prompt template
+- [Retrieval Contracts](../backend/state-machine/retrieval-contracts.md#stage-4-strategic-repair)
+- [Global Library Schema](../backend/data-model/prisma-schema.md#global-library-stage-4-suggestions)
+
 ---
 
 [Back to Stages](./index.md) | [Back to Plans](../index.md)

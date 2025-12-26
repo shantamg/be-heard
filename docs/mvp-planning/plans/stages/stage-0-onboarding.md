@@ -129,6 +129,12 @@ Both users must sign the Curiosity Compact.
 - [User Journey](../overview/user-journey.md)
 - [Next: Stage 1 - The Witness](./stage-1-witness.md)
 
+### Backend Implementation
+
+- [Stage 0 API](../backend/api/stage-0.md) - Compact signing endpoints
+- [Stage 0 Prompt](../backend/prompts/stage-0-opening.md) - Opening message template
+- [Retrieval Contracts](../backend/state-machine/retrieval-contracts.md#stage-0-onboarding)
+
 ---
 
 [Back to Stages](./index.md) | [Back to Plans](../index.md)

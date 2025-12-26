@@ -164,6 +164,13 @@ Everything shared in Stage 1 remains in the users private Vessel. The AI synthes
 - [Next: Stage 2 - Perspective Stretch](./stage-2-perspective-stretch.md)
 - [Emotional Barometer](../mechanisms/emotional-barometer.md)
 
+### Backend Implementation
+
+- [Stage 1 API](../backend/api/stage-1.md) - Message and feel-heard endpoints
+- [Stage 1 Prompt](../backend/prompts/stage-1-witnessing.md) - Witnessing prompt template
+- [Emotional Barometer API](../backend/api/emotional-barometer.md)
+- [Retrieval Contracts](../backend/state-machine/retrieval-contracts.md#stage-1-the-witness)
+
 ---
 
 [Back to Stages](./index.md) | [Back to Plans](../index.md)

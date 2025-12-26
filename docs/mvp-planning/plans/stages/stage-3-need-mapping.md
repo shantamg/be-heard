@@ -196,6 +196,13 @@ flowchart TD
 - [Next: Stage 4 - Strategic Repair](./stage-4-strategic-repair.md)
 - [System Guardrails](../mechanisms/guardrails.md)
 
+### Backend Implementation
+
+- [Stage 3 API](../backend/api/stage-3.md) - Need synthesis and common ground endpoints
+- [Stage 3 Prompt](../backend/prompts/stage-3-needs.md) - Need mapping prompt template
+- [Need Extraction Prompt](../backend/prompts/need-extraction.md) - AI need synthesis
+- [Retrieval Contracts](../backend/state-machine/retrieval-contracts.md#stage-3-need-mapping)
+
 ---
 
 [Back to Stages](./index.md) | [Back to Plans](../index.md)

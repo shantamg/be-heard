@@ -44,8 +44,8 @@ Canonical definitions for BeHeard backend terminology. Use these terms consisten
 
 | Term | Definition | Model Size |
 |------|------------|------------|
-| **Small Model** | Handles mechanics: classification, detection, retrieval planning. | 4o-mini equivalent |
-| **Large Model** | Handles empathetic response generation. Receives pre-assembled context. | GPT-4o equivalent |
+| **Small Model** | Handles mechanics: classification, detection, retrieval planning. | Claude 3.5 Haiku |
+| **Large Model** | Handles empathetic response generation. Receives pre-assembled context. | Claude 3.5 Sonnet |
 | **Process Guardian** | The AI's role in BeHeard - enforces process, does not participate in conflict. | Conceptual |
 
 ## Technical Terms
