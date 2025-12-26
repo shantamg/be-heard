@@ -79,7 +79,7 @@ All prompts receive pre-assembled, stage-scoped bundles. Every field must be tag
 |-------|--------------------------------|
 | Stage 0 | `session_metadata`, `relationship_metadata`, `session_outcomes` (structured, no vectors) |
 | Stage 1 | `messages` (current session, user-only), `emotional_readings` (user-only), `prior_themes` (optional: user-only, same relationship, ≤3 bullets, summarizer = deterministic), `conversation_context` (recent turn buffer, user-only) |
-| Stage 2 | Stage 1 bundle **plus** `shared_partner_content[]` (each item: `{type: TRANSFORMED_NEED|CONSENTED_STATEMENT, content, consentActive: true, transformed: true, sourceUserId}`, no raw partner venting), `empathy_draft` (user-authored), `phase` |
+| Stage 2 | Stage 1 bundle **plus** `shared_partner_content[]` (each item: type TRANSFORMED_NEED or CONSENTED_STATEMENT, content, consentActive true, transformed true, sourceUserId - no raw partner venting), `empathy_draft` (user-authored), `phase` |
 | Stage 3 | Confirmed `user_needs[]`, `synthesized_needs[]` (derived only from user content; marked `model_generated: true`), `clarification_needed[]`, optional `partner_needs[]` (from shared vessel, consentActive true), `common_ground[]` (derived) |
 | Stage 4 | `common_ground[]`, `strategies[]` (unattributed pool), `user_rankings` (private until both submit), `partner_rankings` (unlock after both submit), `agreements[]`, `micro_experiments[]` (structured only), `global_suggestions[]` (vector-derived, must be labeled `source: global_library`) |
 | Emotional Support (any stage) | `intensity`, `trend`, `recent_message` (user-only). **No recall contexts injected** when `MemoryIntent=avoid_recall`. |
