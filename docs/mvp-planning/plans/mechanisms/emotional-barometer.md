@@ -1,14 +1,14 @@
 # Emotional Barometer
 
 :::tip See it in action
-<a href="/demo/features/cooling-period.html" onClick="window.location.href='/demo/features/cooling-period.html'; return false;">Try the Cooling Period demo</a> - Experience breathing exercises, grounding prompts, and journaling.
+<a href="/demo/features/cooling-period.html" onClick="window.location.href='/demo/features/cooling-period.html'; return false;">Try the Support Options demo</a> - See how the AI offers choices when emotions run high.
 
 <a href="/demo/features/waiting-states.html" onClick="window.location.href='/demo/features/waiting-states.html'; return false;">Try the Waiting States demo</a> - See what users experience while waiting for their partner.
 :::
 
 ## Purpose
 
-Monitor emotional intensity throughout the process and enforce pacing controls when intensity is too high for productive work.
+Monitor emotional intensity throughout the process and offer support options when intensity is high. The approach is choice-based—users decide what helps them regulate, whether that's continuing to share (which can be cathartic) or trying a grounding exercise.
 
 ## How It Works
 
@@ -25,17 +25,21 @@ flowchart TD
 
     Calm --> Continue[Continue normally]
     Elevated --> Monitor[Monitor more frequently]
-    High --> Pause[Trigger cooling period]
+    High --> Offer[Offer support options]
 
     Monitor --> Trend{Trending up?}
     Trend -->|No| Continue
-    Trend -->|Yes| Pause
+    Trend -->|Yes| Offer
 
-    Pause --> Disable[Disable advancement]
-    Disable --> Message[Supportive message]
-    Message --> Options[Offer grounding options]
-    Options --> Later[User returns when ready]
-    Later --> Rate
+    Offer --> Choice{User chooses}
+    Choice -->|Keep sharing| Continue
+    Choice -->|Try exercise| Exercise[Grounding exercise overlay]
+    Choice -->|Take break| Break[End session for now]
+
+    Exercise --> Recheck[Check in after exercise]
+    Recheck --> BreakOrContinue{Break or keep going?}
+    BreakOrContinue -->|Keep going| Continue
+    BreakOrContinue -->|Take break| Break
 ```
 
 ## Intensity Zones
@@ -44,61 +48,67 @@ flowchart TD
 |--------|------|-------------|
 | 1-4 | Calm | Normal pace; occasional check-ins |
 | 5-7 | Elevated | More frequent check-ins; watch for trends |
-| 8-10 | High | Cooling period required before advancing |
+| 8-10 | High | Offer support options; user chooses path |
 
-## Triggering a Cooling Period
+## Offering Support
 
-When intensity exceeds threshold:
+When intensity is high, the AI offers options conversationally:
 
 ```
-if user_emotion > 8:
-    disable_advance_button()
-    send_message("High emotional intensity detected.
-                  Cooling period recommended.
-                  Return when ready.")
+AI: "I can feel how intense this is. A few paths from here—
+     you can keep sharing if getting it out is helping,
+     try a breathing exercise to settle your body,
+     or take a break and come back later.
+     What feels right?"
 ```
 
-## Cooling Period Flow
+The user chooses. No advancement is disabled; no mandatory cooling period. Trust the user to know what they need.
+
+## Support Options Flow
+
+When the user chooses to try an exercise, it appears as an overlay:
 
 ```mermaid
 flowchart TD
-    Trigger[High intensity detected] --> Acknowledge[Acknowledge the feeling]
-    Acknowledge --> Validate[Validate the experience]
-    Validate --> Options[Offer options]
+    Offer[AI offers support options] --> Choice{User chooses}
 
-    Options --> Ground[Grounding exercises]
-    Options --> Break[Take a break]
-    Options --> Journal[Private journaling]
+    Choice -->|Keep sharing| Continue[Continue conversation]
+    Choice -->|Breathing exercise| Overlay[Exercise overlay appears]
+    Choice -->|Take a break| Break[Session ends for now]
 
-    Ground --> Return[Return when ready]
-    Break --> Return
-    Journal --> Return
+    Overlay --> Grey[Chat greys out behind]
+    Grey --> Exercise[User completes exercise]
+    Exercise --> Checkin[How are you feeling now?]
+    Checkin --> Ask[Break or keep going?]
 
-    Return --> Recheck[Re-check intensity]
-    Recheck --> Level{Level now?}
-    Level -->|Still high| Options
-    Level -->|Lowered| Resume[Resume session]
+    Ask -->|Keep going| Dismiss[Overlay disappears]
+    Ask -->|Take a break| Break
+
+    Dismiss --> Continue
 ```
+
+Key points:
+- Exercises navigate to a dedicated screen with easy "Back to chat" option
+- Chat is preserved and restored when returning
+- After exercise, user chooses next step—no gatekeeping
+- "Keep sharing" is always a valid choice (writing can be cathartic)
 
 ## Wireframe: Emotional Barometer UI
 
 ```mermaid
 flowchart TB
-    subgraph Compact[Compact View - In Chat]
+    subgraph Compact[Compact View - In Chat Input]
         Label[How are you feeling?]
         Slider[1 --- 5 --- 10]
         Description[Calm ... Intense]
     end
 
-    subgraph Expanded[Expanded View - Cooling Period]
+    subgraph Overlay[Exercise Overlay - Over Greyed Chat]
         Title[Taking a Moment]
         Message[It makes sense to feel strongly about this]
-        Current[Your intensity: 9/10]
-        Suggestions[What might help right now?]
-        Option1[Breathing exercise]
-        Option2[Take a break]
-        Option3[Write in private journal]
-        Ready[I am ready to continue]
+        ExerciseContent[Breathing or grounding exercise]
+        Checkin[How are you feeling now? 1-10]
+        Choice[Take a break / Keep going]
     end
 ```
 
@@ -132,17 +142,18 @@ AI: "I noticed you have been feeling quite intense during our
     that this process brings up strong feelings for you?"
 ```
 
-## Grounding Options
+## Support Options
 
-When cooling period is triggered, the AI may offer:
+When intensity is high, the AI offers:
 
 | Option | Description |
 |--------|-------------|
+| Keep sharing | Continue the conversation—writing can be cathartic |
 | Breathing exercise | Guided 4-7-8 breathing or similar |
 | Body scan | Brief check-in with physical sensations |
-| Take a break | Log off and return later |
-| Private journaling | Write without sharing |
-| Pause timer | Set a timer before returning |
+| Take a break | End session and return later |
+
+Note: "Private journaling" is no longer a separate option—the user is already in a text conversation, so "keep sharing" serves this purpose.
 
 ## Display Options
 
@@ -158,7 +169,11 @@ Either approach is valid. The always-visible option provides continuous awarenes
 - Check-ins should feel natural, not intrusive
 - Frequency adapts to user pattern (more often if volatile)
 - Never shame or judge high intensity ratings
-- Cooling periods are framed as wisdom, not failure
+- Support options are framed as choices, not requirements
+- Trust users to know what helps them regulate
+- Some people regulate by continuing to express—honor that
+- Exercises navigate to a dedicated screen with easy back navigation
+- Chat content is preserved and restored after exercises
 
 ---
 

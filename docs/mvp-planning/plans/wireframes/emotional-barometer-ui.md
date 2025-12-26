@@ -73,71 +73,41 @@ flowchart TB
     end
 ```
 
-## Cooling Period Interface
+## Support Options (Conversational)
 
-When intensity exceeds threshold:
-
-### Initial Trigger
+When intensity is high, the AI offers options within the chat—no modal or separate screen:
 
 ```mermaid
 flowchart TB
-    subgraph CoolingTrigger[Cooling Period Triggered]
-        Icon[Calming illustration]
-        Title[Taking a moment]
-        Message[I notice your emotions are running
-        high right now. That makes complete
-        sense given what you are working through.]
-        Validation[There is no rush. Your wellbeing
-        matters more than progress.]
-    end
-```
+    subgraph ChatFlow[In Chat Conversation]
+        AIMessage[AI: I can feel how intense this is.
+        A few paths from here...]
 
-### Options Screen
-
-```mermaid
-flowchart TB
-    subgraph CoolingOptions[Cooling Period Options]
-        OptionsTitle[What might help right now?]
-
-        subgraph OptionCards[Option Cards]
-            subgraph Card1[Breathing]
-                B1Icon[Breath icon]
-                B1Title[Breathing exercise]
-                B1Desc[2 minute guided breathing]
-            end
-
-            subgraph Card2[Break]
-                B2Icon[Clock icon]
-                B2Title[Take a break]
-                B2Desc[Come back when ready]
-            end
-
-            subgraph Card3[Journal]
-                B3Icon[Pen icon]
-                B3Title[Private journaling]
-                B3Desc[Write without sharing]
-            end
-
-            subgraph Card4[Ground]
-                B4Icon[Feet icon]
-                B4Title[Grounding exercise]
-                B4Desc[1 minute body scan]
-            end
+        subgraph Options[Inline Options]
+            Opt1[Keep sharing]
+            Opt2[Try breathing exercise]
+            Opt3[Take a break]
         end
 
-        Ready[I am ready to continue]
+        UserChoice[User taps choice]
     end
 ```
 
-### Breathing Exercise Screen
+If user chooses an exercise, it navigates to a dedicated exercise screen with a "Back to chat" option.
+
+### Exercise Screen
+
+When user chooses an exercise, the chat is saved and the exercise appears:
 
 ```mermaid
 flowchart TB
-    subgraph BreathingExercise[Guided Breathing]
-        Circle[Animated breathing circle]
-        Instruction[Breathe in... 4 seconds]
-        Progress[Round 2 of 4]
-        Skip[End early]
+    subgraph ExerciseScreen[Exercise Screen]
+        BackBtn[Back to chat]
+        subgraph ExerciseContent[Exercise Content]
+            Circle[Animated breathing circle]
+            Instruction[Breathe in... 4 seconds]
+            Progress[Round 2 of 4]
+        end
     end
 ```
 
@@ -147,20 +117,25 @@ Animation sequence:
 3. Circle contracts: "Breathe out" (8 seconds)
 4. Repeat 4 times
 
-### Return Check
+### Post-Exercise Check-in
+
+After the exercise, check in and offer choice (still in overlay):
 
 ```mermaid
 flowchart TB
-    subgraph ReturnCheck[Ready to Return]
-        ReturnTitle[Ready to continue?]
-        ReturnQuestion[How are you feeling now?]
-        ReturnSlider[1 -------- 5 -------- 10]
+    subgraph PostExercise[After Exercise]
+        Question[How are you feeling now?]
+        Slider[1 -------- 5 -------- 10]
+        ChoicePrompt[What would you like to do?]
 
-        ReturnResult{Intensity}
-        ReturnResult -->|Still high| MoreSupport[More time or support]
-        ReturnResult -->|Lowered| Continue[Return to session]
+        subgraph Choices[User Chooses]
+            KeepGoing[Keep going]
+            TakeBreak[Take a break]
+        end
     end
 ```
+
+No gatekeeping—user chooses their next step regardless of intensity rating. Overlay disappears when they choose, returning them to the chat.
 
 ## Trend Visualization (Optional)
 
@@ -184,22 +159,15 @@ flowchart TB
     end
 ```
 
-## Private Journaling Interface
+## Continuing to Share (No Separate Journal)
 
-```mermaid
-flowchart TB
-    subgraph JournalInterface[Private Journal]
-        JournalHeader[Private Space]
-        JournalNote[This will not be shared]
+The "keep sharing" option means the user continues in the existing chat conversation. This serves the same cathartic purpose as private journaling—they're already writing in a private space with the AI.
 
-        JournalArea[Large text area for writing
-        No character limit
-        No AI interaction
-        Pure private space]
-
-        JournalActions[Save privately - Return to session]
-    end
-```
+If they choose to keep sharing:
+- Overlay never appears
+- AI continues witnessing and reflecting
+- No interruption to their flow
+- AI may gently check in on intensity later
 
 ## Mobile Adaptations
 
@@ -214,18 +182,17 @@ flowchart LR
     end
 ```
 
-### Mobile Full Screen Cooling
+### Mobile Exercise Screen
 
-On mobile, cooling period takes full screen:
+On mobile, the exercise screen includes a back button for easy return:
 
 ```mermaid
 flowchart TB
-    subgraph MobileCooling[Mobile Cooling Screen]
-        MCIcon[Full illustration]
+    subgraph MobileExercise[Mobile Exercise Screen]
+        MBackBtn[Back to chat]
+        MCIcon[Calming illustration]
         MCTitle[Taking a moment]
-        MCMessage[Supportive message]
-        MCOptions[Stacked option buttons]
-        MCReady[Ready button at bottom]
+        MCExercise[Exercise content]
     end
 ```
 
