@@ -390,17 +390,7 @@
         }
 
         function showSuggestion() {
-            const content = document.getElementById('contentArea');
-            const container = document.createElement('div');
-            container.className = 'suggested-messages';
-            container.id = 'suggestions';
-
-            const btn = document.createElement('button');
-            btn.className = 'suggested-btn';
-            btn.textContent = 'This is the kind of thing that happens';
-            btn.onclick = () => sendWithContext('This is the kind of thing that happens. One small thing and it becomes a big fight.');
-            container.appendChild(btn);
-            content.appendChild(container);
+            // No longer showing suggestion buttons - user types their own context
         }
 
         function sendWithContext(text) {
@@ -468,38 +458,21 @@
             content.scrollTop = content.scrollHeight;
 
             setTimeout(() => {
-                addMessage('Does this pattern - small thing becomes big accusation - happen often?');
+                addMessage('Does this pattern - small thing becomes big accusation - happen often? Tell me more.');
                 setTimeout(() => {
-                    const container = document.createElement('div');
-                    container.className = 'suggested-messages';
-
-                    ['Yes, all the time', 'Sometimes', 'This was unusual'].forEach(text => {
-                        const btn = document.createElement('button');
-                        btn.className = 'suggested-btn';
-                        btn.textContent = text;
-                        btn.onclick = () => {
-                            container.remove();
-                            addMessage(text, 'user');
-                            showTyping();
-                            setTimeout(() => {
-                                hideTyping();
-                                addMessage('Thank you for sharing this screenshot. It helps me understand what you are dealing with. The visual context tells me more than words alone could.');
-                                setTimeout(showRestart, 1500);
-                            }, 1000);
-                        };
-                        container.appendChild(btn);
-                    });
-                    content.appendChild(container);
-                }, 500);
+                    addMessage('Thank you for sharing this screenshot. It helps me understand what you are dealing with. The visual context tells me more than words alone could.');
+                    setTimeout(showRestart, 1500);
+                }, 2000);
             }, 2000);
         }
 
         function showRestart() {
             const content = document.getElementById('contentArea');
             const container = document.createElement('div');
-            container.className = 'suggested-messages';
+            container.style.padding = 'var(--spacing-md)';
+            container.style.textAlign = 'center';
             const btn = document.createElement('button');
-            btn.className = 'suggested-btn';
+            btn.className = 'btn btn-outline';
             btn.textContent = 'Try demo again';
             btn.onclick = () => {
                 hasAttachment = false;

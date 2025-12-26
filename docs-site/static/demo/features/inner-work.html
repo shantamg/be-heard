@@ -47,43 +47,37 @@
                     "Welcome to Inner Work mode. This is a space for you alone - a chance to explore your patterns, understand your triggers, and grow as a person.",
                     "There is no partner involved here. Just you and me, working together on your personal growth.",
                     "What brings you here today? Are you processing a specific conflict, or looking to understand yourself better?"
-                ],
-                suggestions: ["I keep having the same arguments", "I want to understand my triggers", "I am working on myself"]
+                ]
             },
             {
                 messages: [
                     "I hear you. Recurring patterns in conflict often point to something deeper - unmet needs or old wounds that get activated.",
                     "Let me ask you something: Think about the last few times you felt really frustrated or hurt in a relationship. What was the common thread?"
-                ],
-                suggestions: ["I felt unheard", "I felt criticized", "I felt dismissed"]
+                ]
             },
             {
                 messages: [
                     "Feeling unheard is painful. It touches on something fundamental - our need to matter, to be seen.",
                     "I notice you have mentioned this pattern. When did you first learn that your voice might not be heard? Sometimes these patterns start earlier than we realize."
-                ],
-                suggestions: ["Growing up, I was often ignored", "In past relationships", "I am not sure"]
+                ]
             },
             {
                 messages: [
                     "That early experience of being ignored can create a template - a story we carry that says our words do not matter. And then we bring that sensitivity into current relationships.",
                     "Here is something interesting: often, the same need that makes us sensitive to being unheard also makes us excellent listeners. Have people told you that you are a good listener?"
-                ],
-                suggestions: ["Yes, they have", "I try to be", "I had not thought about that"]
+                ]
             },
             {
                 messages: [
                     "So your wound is also your gift. That is often how it works.",
                     "Let me offer you a reframe to practice: When you feel unheard, instead of thinking \"They do not care about me,\" try \"I have a strong need to be understood, and that is okay. I can ask for what I need.\""
-                ],
-                suggestions: ["That feels different", "Can you say more?", "I want to try that"]
+                ]
             },
             {
                 messages: [
                     "This is the core of Inner Work - transforming old patterns into new awareness. You are not broken. You are carrying wisdom that just needs to be understood.",
                     "Would you like to explore this pattern more, or is there another area you would like to work on?"
-                ],
-                suggestions: ["I want to keep exploring", "This is enough for now", "What else can I work on?"]
+                ]
             },
             {
                 messages: [
@@ -118,28 +112,22 @@
             if (typing) typing.remove();
         }
 
-        function showSuggestions(suggestions) {
+        function showRestartButton() {
             const content = document.getElementById('contentArea');
-            const existing = content.querySelector('.suggested-messages');
-            if (existing) existing.remove();
-
             const container = document.createElement('div');
-            container.className = 'suggested-messages';
-            suggestions.forEach(s => {
-                const btn = document.createElement('button');
-                btn.className = 'suggested-btn';
-                btn.textContent = s;
-                btn.onclick = () => sendSuggested(s);
-                container.appendChild(btn);
-            });
+            container.style.padding = 'var(--spacing-md)';
+            container.style.textAlign = 'center';
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-outline';
+            btn.textContent = 'Start over';
+            btn.onclick = () => {
+                step = 0;
+                content.innerHTML = '';
+                processResponse();
+            };
+            container.appendChild(btn);
             content.appendChild(container);
             content.scrollTop = content.scrollHeight;
-        }
-
-        function hideSuggestions() {
-            const content = document.getElementById('contentArea');
-            const existing = content.querySelector('.suggested-messages');
-            if (existing) existing.remove();
         }
 
         function showInsightCard(title, content) {
@@ -174,15 +162,10 @@
                             }, 500);
                         }
 
-                        // Show suggestions after last message
-                        if (i === response.messages.length - 1 && response.suggestions) {
-                            setTimeout(() => showSuggestions(response.suggestions), 500);
-                        }
-
                         // Show restart for final step
                         if (response.final && i === response.messages.length - 1) {
                             setTimeout(() => {
-                                showSuggestions(['Start over']);
+                                showRestartButton();
                             }, 1000);
                         }
                     }, 1000);
@@ -198,24 +181,10 @@
             const text = input.value.trim();
             if (!text) return;
 
-            hideSuggestions();
             addMessage(text, 'user');
             input.value = '';
             input.style.height = 'auto';
 
-            setTimeout(processResponse, 500);
-        }
-
-        function sendSuggested(text) {
-            if (text === 'Start over') {
-                step = 0;
-                document.getElementById('contentArea').innerHTML = '';
-                processResponse();
-                return;
-            }
-
-            hideSuggestions();
-            addMessage(text, 'user');
             setTimeout(processResponse, 500);
         }
 

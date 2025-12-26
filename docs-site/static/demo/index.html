@@ -298,12 +298,6 @@
                         "So what I am hearing is that you feel invisible sometimes, like your efforts go unnoticed. That must be exhausting.",
                         "That makes complete sense. It sounds like beneath the frustration, there is a real need for partnership - for feeling like you are in this together.",
                         "Thank you for sharing that with me. I can see how much this matters to you. You want to feel valued and seen for everything you do."
-                    ],
-                    suggestions: [
-                        "I feel like I do everything around the house",
-                        "It is not just about chores - I feel invisible",
-                        "I want to feel like we are a team",
-                        "Yes, that captures it well"
                     ]
                 },
                 2: {
@@ -326,12 +320,7 @@
                     empathyExchange: {
                         intro: "You have done meaningful work here. Now I would like to offer you something: a reflection of how Jordan experiences you. Would you be open to hearing it?",
                         reflection: "Jordan experiences you as someone who cares deeply about your home and family. They also shared that sometimes they feel like nothing they do measures up - that there is always another task or another way they have fallen short. They want to be a good partner but feel uncertain about how."
-                    },
-                    suggestions: [
-                        "I imagine they feel criticized",
-                        "I think they feel like they can not win",
-                        "Honestly I am still frustrated with them"
-                    ]
+                    }
                 },
                 3: {
                     name: "Need Mapping",
@@ -672,9 +661,10 @@
         function addBackToWaitingButton() {
             const content = document.getElementById('contentArea');
             const container = document.createElement('div');
-            container.className = 'suggested-messages';
+            container.style.padding = 'var(--spacing-md)';
+            container.style.textAlign = 'center';
             const btn = document.createElement('button');
-            btn.className = 'suggested-btn';
+            btn.className = 'btn btn-outline';
             btn.textContent = 'Back to waiting';
             btn.onclick = showWaitingRoom;
             container.appendChild(btn);
@@ -725,8 +715,7 @@
             addAIMessage(data.opening[0]);
             setTimeout(() => {
                 addAIMessage(data.opening[1]);
-                // Show suggestions that invite self-generated empathy or allow venting
-                showSuggestions(data.suggestions);
+                // Open-ended - user types their response
             }, 1500);
         }
 
@@ -744,7 +733,7 @@
                     addNeedsGrid(data);
                     setTimeout(() => {
                         addAIMessage("Do you see yourself in these needs? Does this feel accurate?");
-                        showSuggestions(["Yes, this captures it", "I would adjust something"]);
+                        // Open-ended - user types their response
                     }, 1000);
                 }, 1000);
             }, 1500);
@@ -902,31 +891,6 @@
             content.scrollTop = content.scrollHeight;
         }
 
-        function showSuggestions(suggestions) {
-            const content = document.getElementById('contentArea');
-
-            // Remove existing suggestions
-            const existing = content.querySelector('.suggested-messages');
-            if (existing) existing.remove();
-
-            const container = document.createElement('div');
-            container.className = 'suggested-messages';
-            suggestions.forEach(s => {
-                const btn = document.createElement('button');
-                btn.className = 'suggested-btn';
-                btn.textContent = s;
-                btn.onclick = () => sendSuggested(s);
-                container.appendChild(btn);
-            });
-            content.appendChild(container);
-            content.scrollTop = content.scrollHeight;
-        }
-
-        function hideSuggestions() {
-            const content = document.getElementById('contentArea');
-            const existing = content.querySelector('.suggested-messages');
-            if (existing) existing.remove();
-        }
 
         // ========== MESSAGE HANDLING ==========
         function sendMessage() {
@@ -939,12 +903,7 @@
             input.style.height = 'auto';
         }
 
-        function sendSuggested(text) {
-            processMessage(text);
-        }
-
         function processMessage(text) {
-            hideSuggestions();
             addUserMessage(text);
 
             // Check for judgment patterns in Stage 2
@@ -956,7 +915,7 @@
                     setTimeout(() => {
                         hideTyping();
                         addInterventionMessage(MockData.stages[2].mirrorIntervention);
-                        showSuggestions(["You are right, let me think about that", "I can see they might feel frustrated too"]);
+                        // Open-ended - user types their response
                     }, 2000);
                     return;
                 }
@@ -1006,16 +965,16 @@
                     if (isVenting) {
                         // Allow space for venting first
                         addAIMessage(data.ventingResponse);
-                        showSuggestions(["I think I have said what I needed to", "Yes, there is more"]);
+                        // Open-ended - user types their response
                     } else {
                         // They attempted empathy - acknowledge it
                         addAIMessage(data.reflections[0]);
-                        showSuggestions(["What did Jordan actually say?", "I want to understand more"]);
+                        // Open-ended - user types their response
                     }
                 } else if (step === 2) {
                     if (State.flags.mirrorTriggered) {
                         addAIMessage(data.mirrorIntervention);
-                        showSuggestions(["You are right, let me think about that", "I can try to see their side"]);
+                        // Open-ended - user types their response
                         State.flags.mirrorTriggered = false;
                     } else {
                         // Now reveal what partner actually shared
@@ -1025,13 +984,13 @@
                             addNeedsList("Their Core Needs", data.partnerPerspective.needs);
                             setTimeout(() => {
                                 addAIMessage("How does this compare to what you imagined?");
-                                showSuggestions(["I was close", "This surprises me", "I can see it now"]);
+                                // Open-ended - user types their response
                             }, 1000);
                         }, 1500);
                     }
                 } else if (step === 3) {
                     addAIMessage(data.empathyExchange.intro);
-                    showSuggestions(["Yes, I am open to hearing it", "I need a moment first"]);
+                    // Open-ended - user types their response
                 } else if (step === 4) {
                     addAIMessage(data.empathyExchange.reflection);
                     State.flags.reflectionReceived = true;
@@ -1066,9 +1025,7 @@
                 addAIMessage("Great. I have also collected some ideas from Jordan. Let me combine everything you have both come up with.");
                 setTimeout(() => {
                     addStrategiesGrid(data.allStrategies, data.collectiveMessage);
-                    setTimeout(() => {
-                        showSuggestions(["These look good - let us pick a couple", "Can you generate a few more ideas?"]);
-                    }, 1000);
+                    // Open-ended - user types their response
                 }, 1500);
             } else if (step === 3) {
                 if (text.toLowerCase().includes("more")) {
@@ -1081,12 +1038,12 @@
                             "Alternate who handles bedtime routine each night"
                         ];
                         addStrategiesGrid(moreStrategies, "Here are some additional options:");
-                        showSuggestions(["These are great options", "I want to finalize our agreement"]);
+                        // Open-ended - user types their response
                     }, 1500);
                 } else {
                     // Ready to finalize
                     addAIMessage("Wonderful. Which ones would you like to try? Select the strategies that feel most doable.");
-                    showSuggestions(["Weekly planning + daily appreciation", "I will let Jordan choose"]);
+                    // Open-ended - user types their response
                 }
             } else if (step === 4) {
                 addAIMessage("I have shared your selections with Jordan. You have both agreed on a starting point.");

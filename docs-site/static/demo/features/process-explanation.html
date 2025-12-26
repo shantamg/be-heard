@@ -98,9 +98,10 @@
         function showContinueButton(text, onClick) {
             const content = document.getElementById('contentArea');
             const container = document.createElement('div');
-            container.className = 'suggested-messages';
+            container.style.padding = 'var(--spacing-md)';
+            container.style.textAlign = 'center';
             const btn = document.createElement('button');
-            btn.className = 'suggested-btn';
+            btn.className = 'btn btn-outline';
             btn.textContent = text;
             btn.onclick = () => {
                 container.remove();
@@ -112,45 +113,15 @@
         }
 
         function showFinalOptions() {
-            const content = document.getElementById('contentArea');
-            const container = document.createElement('div');
-            container.className = 'suggested-messages';
+            // Enable input for user to type their response
+            document.getElementById('inputArea').classList.remove('hidden');
 
-            const yesBtn = document.createElement('button');
-            yesBtn.className = 'suggested-btn';
-            yesBtn.textContent = 'Yes, I am ready to begin';
-            yesBtn.onclick = () => {
-                container.remove();
-                addMessage('Yes, I am ready to begin', 'user');
-                showTyping();
+            setTimeout(() => {
+                addMessage('Wonderful. Let us start by hearing your story. Take your time - there is no rush here.');
                 setTimeout(() => {
-                    hideTyping();
-                    addMessage('Wonderful. Let us start by hearing your story. Take your time - there is no rush here.');
-                    setTimeout(() => {
-                        addMessage('What happened that brought you here today?');
-                        document.getElementById('inputArea').classList.remove('hidden');
-                    }, 1500);
-                }, 1000);
-            };
-
-            const questionsBtn = document.createElement('button');
-            questionsBtn.className = 'suggested-btn';
-            questionsBtn.textContent = 'I have some questions first';
-            questionsBtn.onclick = () => {
-                container.remove();
-                addMessage('I have some questions first', 'user');
-                showTyping();
-                setTimeout(() => {
-                    hideTyping();
-                    addMessage('Of course. What would you like to know? I am here to help you feel comfortable with the process.');
-                    document.getElementById('inputArea').classList.remove('hidden');
-                }, 1000);
-            };
-
-            container.appendChild(yesBtn);
-            container.appendChild(questionsBtn);
-            content.appendChild(container);
-            content.scrollTop = content.scrollHeight;
+                    addMessage('What happened that brought you here today?');
+                }, 1500);
+            }, 1000);
         }
 
         function nextStage() {

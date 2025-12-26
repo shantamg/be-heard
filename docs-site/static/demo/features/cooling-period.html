@@ -433,47 +433,25 @@
 
             addMessage('Well done. Taking that moment for yourself shows real self-awareness.');
             setTimeout(() => {
-                addMessage('When you are ready, we can continue. How are you feeling now?');
+                addMessage('Remember, you can always take a moment whenever you need to.');
                 setTimeout(() => {
-                    showContinueOptions();
+                    showTryAgain();
                 }, 1000);
             }, 1500);
         }
 
         function showContinueOptions() {
-            const content = document.getElementById('contentArea');
-            const container = document.createElement('div');
-            container.className = 'suggested-messages';
-
-            ['I feel calmer now', 'I need another moment', 'Let us continue'].forEach(text => {
-                const btn = document.createElement('button');
-                btn.className = 'suggested-btn';
-                btn.textContent = text;
-                btn.onclick = () => {
-                    container.remove();
-                    addMessage(text, 'user');
-                    setTimeout(() => {
-                        if (text === 'I need another moment') {
-                            showCoolingModal();
-                        } else {
-                            addMessage('Good. Remember, you can always take a moment whenever you need to. Now, where were we...');
-                            setTimeout(() => {
-                                showTryAgain();
-                            }, 1500);
-                        }
-                    }, 500);
-                };
-                container.appendChild(btn);
-            });
-            content.appendChild(container);
+            // After cooling exercise, ask user to type how they feel
+            addMessage('How are you feeling now? Type your response when ready.');
         }
 
         function showTryAgain() {
             const content = document.getElementById('contentArea');
             const container = document.createElement('div');
-            container.className = 'suggested-messages';
+            container.style.padding = 'var(--spacing-md)';
+            container.style.textAlign = 'center';
             const btn = document.createElement('button');
-            btn.className = 'suggested-btn';
+            btn.className = 'btn btn-outline';
             btn.textContent = 'Try demo again';
             btn.onclick = () => {
                 content.innerHTML = '';

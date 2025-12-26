@@ -307,9 +307,11 @@
             // Add confirm button
             const content = document.getElementById('contentArea');
             const container = document.createElement('div');
-            container.className = 'suggested-messages confirm-container';
+            container.className = 'confirm-container';
+            container.style.padding = 'var(--spacing-md)';
+            container.style.textAlign = 'center';
             const btn = document.createElement('button');
-            btn.className = 'suggested-btn';
+            btn.className = 'btn btn-primary';
             btn.textContent = 'Confirm choice';
             btn.onclick = confirmChoice;
             container.appendChild(btn);
@@ -393,9 +395,9 @@
                     <div class="preview-label">${isFull ? 'Alex shared:' : 'Summary from Alex:'}</div>
                     <div class="preview-text">${text}</div>
                 </div>
-                <div class="suggested-messages">
-                    <button class="suggested-btn" onclick="sendToPartner()">Send to Jordan</button>
-                    <button class="suggested-btn" onclick="editChoice()">Go back</button>
+                <div style="display: flex; gap: var(--spacing-sm); padding-top: var(--spacing-md);">
+                    <button class="btn btn-primary" onclick="sendToPartner()" style="flex: 1;">Send to Jordan</button>
+                    <button class="btn btn-outline" onclick="editChoice()">Go back</button>
                 </div>
             `;
             content.appendChild(preview);
@@ -406,9 +408,9 @@
             const content = document.getElementById('contentArea');
             const preview = content.querySelector('.preview-container');
             if (preview) {
-                // Remove the buttons
-                const btns = preview.querySelector('.suggested-messages');
-                if (btns) btns.remove();
+                // Remove the action buttons from preview
+                const btns = preview.querySelectorAll('.btn');
+                btns.forEach(btn => btn.parentElement?.remove());
             }
 
             showTyping();
@@ -452,9 +454,10 @@
         function showRestart() {
             const content = document.getElementById('contentArea');
             const container = document.createElement('div');
-            container.className = 'suggested-messages';
+            container.style.padding = 'var(--spacing-md)';
+            container.style.textAlign = 'center';
             const btn = document.createElement('button');
-            btn.className = 'suggested-btn';
+            btn.className = 'btn btn-outline';
             btn.textContent = 'Try demo again';
             btn.onclick = () => {
                 selectedOption = null;

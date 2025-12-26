@@ -547,30 +547,6 @@ body {
     cursor: pointer;
 }
 
-/* ========== SUGGESTED MESSAGES ========== */
-.suggested-messages {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-md) 0;
-}
-
-.suggested-btn {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-    padding: 10px 14px;
-    border-radius: var(--radius-xl);
-    font-size: var(--font-size-sm);
-    cursor: pointer;
-    transition: all var(--transition-fast);
-}
-
-.suggested-btn:hover {
-    background: var(--bg-tertiary);
-    border-color: var(--accent);
-}
-
 /* ========== EMOTION BAR ========== */
 .emotion-bar {
     background: var(--bg-secondary);

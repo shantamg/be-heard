@@ -363,9 +363,10 @@
         function showBackButton() {
             const content = document.getElementById('contentArea');
             const container = document.createElement('div');
-            container.className = 'suggested-messages';
+            container.style.padding = 'var(--spacing-md)';
+            container.style.textAlign = 'center';
             const btn = document.createElement('button');
-            btn.className = 'suggested-btn';
+            btn.className = 'btn btn-outline';
             btn.textContent = 'Back to waiting';
             btn.onclick = () => {
                 content.innerHTML = '';
@@ -428,9 +429,10 @@
                 addMessage('Great news! Jordan has completed Stage 1 and is now working on understanding your perspective.');
                 setTimeout(() => {
                     const container = document.createElement('div');
-                    container.className = 'suggested-messages';
+                    container.style.padding = 'var(--spacing-md)';
+                    container.style.textAlign = 'center';
                     const btn = document.createElement('button');
-                    btn.className = 'suggested-btn';
+                    btn.className = 'btn btn-outline';
                     btn.textContent = 'Try demo again';
                     btn.onclick = () => {
                         partnerStage = 1;

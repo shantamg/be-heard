@@ -384,31 +384,9 @@
         }
 
         function showCelebration() {
-            addMessage('The fact that you are checking in and tracking your progress shows commitment. Would you like to continue with this agreement or adjust it?');
-
-            setTimeout(() => {
-                const content = document.getElementById('contentArea');
-                const container = document.createElement('div');
-                container.className = 'suggested-messages';
-
-                ['Keep the same agreement', 'Adjust the agreement'].forEach(text => {
-                    const btn = document.createElement('button');
-                    btn.className = 'suggested-btn';
-                    btn.textContent = text;
-                    btn.onclick = () => {
-                        container.remove();
-                        addMessage(text, 'user');
-                        showTyping();
-                        setTimeout(() => {
-                            hideTyping();
-                            addMessage('Great. I will check in again in a week. Keep up the good work!');
-                            setTimeout(showRestart, 1500);
-                        }, 800);
-                    };
-                    container.appendChild(btn);
-                });
-                content.appendChild(container);
-            }, 500);
+            addMessage('The fact that you are checking in and tracking your progress shows commitment. Would you like to continue with this agreement or adjust it? Type your response.');
+            document.getElementById('inputArea').classList.remove('hidden');
+            setTimeout(showRestart, 2000);
         }
 
         function handleNeedRevisit() {
@@ -420,37 +398,11 @@
                 addMessage('I appreciate you being honest about that. Setbacks are part of the process, not failures.');
 
                 setTimeout(() => {
-                    addMessage('What happened? Did something specific come up, or has the agreement been harder to keep than expected?');
+                    addMessage('What happened? Did something specific come up, or has the agreement been harder to keep than expected? Type your response.');
                     document.getElementById('inputArea').classList.remove('hidden');
-
                     setTimeout(() => {
-                        const content = document.getElementById('contentArea');
-                        const container = document.createElement('div');
-                        container.className = 'suggested-messages';
-
-                        const suggestions = [
-                            'We had another argument',
-                            'The agreement felt forced',
-                            'Life got in the way'
-                        ];
-
-                        suggestions.forEach(text => {
-                            const btn = document.createElement('button');
-                            btn.className = 'suggested-btn';
-                            btn.textContent = text;
-                            btn.onclick = () => {
-                                container.remove();
-                                addMessage(text, 'user');
-                                showTyping();
-                                setTimeout(() => {
-                                    hideTyping();
-                                    showNextSteps();
-                                }, 1000);
-                            };
-                            container.appendChild(btn);
-                        });
-                        content.appendChild(container);
-                    }, 500);
+                        showNextSteps();
+                    }, 2000);
                 }, 1500);
             }, 800);
         }
@@ -487,51 +439,13 @@
                 addMessage('That is okay. Life gets busy, and sometimes agreements need time to begin.');
 
                 setTimeout(() => {
-                    addMessage('Is there a specific barrier? Sometimes the hardest part is just starting.');
+                    addMessage('Is there a specific barrier? Sometimes the hardest part is just starting. Type your thoughts.');
+                    document.getElementById('inputArea').classList.remove('hidden');
 
                     setTimeout(() => {
-                        const content = document.getElementById('contentArea');
-                        const container = document.createElement('div');
-                        container.className = 'suggested-messages';
-
-                        ['We have been too busy', 'It feels awkward to start', 'We forgot'].forEach(text => {
-                            const btn = document.createElement('button');
-                            btn.className = 'suggested-btn';
-                            btn.textContent = text;
-                            btn.onclick = () => {
-                                container.remove();
-                                addMessage(text, 'user');
-                                showTyping();
-                                setTimeout(() => {
-                                    hideTyping();
-                                    addMessage('Would you like me to send both of you a gentle reminder tomorrow to start? Sometimes a little nudge helps.');
-                                    setTimeout(() => {
-                                        const innerContainer = document.createElement('div');
-                                        innerContainer.className = 'suggested-messages';
-                                        ['Yes, send a reminder', 'No, we will figure it out'].forEach(t => {
-                                            const b = document.createElement('button');
-                                            b.className = 'suggested-btn';
-                                            b.textContent = t;
-                                            b.onclick = () => {
-                                                innerContainer.remove();
-                                                addMessage(t, 'user');
-                                                showTyping();
-                                                setTimeout(() => {
-                                                    hideTyping();
-                                                    addMessage(t.includes('Yes') ? 'Done. I will check in again in a few days. You have got this!' : 'Understood. I will check back in a few days. Remember, there is no judgment here - just support.');
-                                                    setTimeout(showRestart, 1500);
-                                                }, 800);
-                                            };
-                                            innerContainer.appendChild(b);
-                                        });
-                                        content.appendChild(innerContainer);
-                                    }, 500);
-                                }, 1000);
-                            };
-                            container.appendChild(btn);
-                        });
-                        content.appendChild(container);
-                    }, 500);
+                        addMessage('Would you like me to send both of you a gentle reminder tomorrow to start? Sometimes a little nudge helps. Let me know.');
+                        setTimeout(showRestart, 2000);
+                    }, 2000);
                 }, 1500);
             }, 800);
         }
@@ -539,9 +453,10 @@
         function showRestart() {
             const content = document.getElementById('contentArea');
             const container = document.createElement('div');
-            container.className = 'suggested-messages';
+            container.style.padding = 'var(--spacing-md)';
+            container.style.textAlign = 'center';
             const btn = document.createElement('button');
-            btn.className = 'suggested-btn';
+            btn.className = 'btn btn-outline';
             btn.textContent = 'Try demo again';
             btn.onclick = () => {
                 content.innerHTML = '';

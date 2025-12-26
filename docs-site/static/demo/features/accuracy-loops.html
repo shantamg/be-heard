@@ -255,16 +255,18 @@
         function showFinalAccuracyCheck() {
             const content = document.getElementById('contentArea');
             const container = document.createElement('div');
-            container.className = 'suggested-messages';
+            container.style.display = 'flex';
+            container.style.gap = 'var(--spacing-sm)';
+            container.style.padding = 'var(--spacing-md) 0';
 
             const correctBtn = document.createElement('button');
-            correctBtn.className = 'suggested-btn';
-            correctBtn.textContent = 'Yes, that captures it';
+            correctBtn.className = 'accuracy-btn correct';
+            correctBtn.innerHTML = '<span>&#10003;</span> Yes, that captures it';
             correctBtn.onclick = confirmAccurate;
 
             const incorrectBtn = document.createElement('button');
-            incorrectBtn.className = 'suggested-btn';
-            incorrectBtn.textContent = 'Still not quite right';
+            incorrectBtn.className = 'accuracy-btn incorrect';
+            incorrectBtn.innerHTML = '<span>&#8634;</span> Not quite right';
             incorrectBtn.onclick = requestCorrection;
 
             container.appendChild(correctBtn);
@@ -278,8 +280,8 @@
             const buttons = bubble?.querySelector('.accuracy-buttons');
             if (buttons) buttons.remove();
 
-            const suggestions = document.querySelector('.suggested-messages');
-            if (suggestions) suggestions.remove();
+            const accuracyBtns = document.querySelectorAll('.accuracy-btn');
+            accuracyBtns.forEach(btn => btn.parentElement?.remove());
 
             addMessage('Yes, that captures it', 'user');
 
@@ -296,30 +298,16 @@
             const buttons = bubble?.querySelector('.accuracy-buttons');
             if (buttons) buttons.remove();
 
-            const suggestions = document.querySelector('.suggested-messages');
-            if (suggestions) suggestions.remove();
+            const accuracyBtns = document.querySelectorAll('.accuracy-btn');
+            accuracyBtns.forEach(btn => btn.parentElement?.remove());
 
             addMessage('Not quite', 'user');
 
             showTyping();
             setTimeout(() => {
                 hideTyping();
-                addMessage('Help me understand better - what did I miss?');
-
-                // Show input or suggestion
-                if (iteration < reflections.length - 1 && reflections[iteration].correction) {
-                    setTimeout(() => {
-                        const content = document.getElementById('contentArea');
-                        const container = document.createElement('div');
-                        container.className = 'suggested-messages';
-                        const btn = document.createElement('button');
-                        btn.className = 'suggested-btn';
-                        btn.textContent = reflections[iteration].correction;
-                        btn.onclick = () => sendCorrection(reflections[iteration].correction);
-                        container.appendChild(btn);
-                        content.appendChild(container);
-                    }, 500);
-                }
+                addMessage('Help me understand better - what did I miss? Type your thoughts.');
+                // User types their own correction in the input field
             }, 800);
         }
 
@@ -334,10 +322,6 @@
         }
 
         function sendCorrection(text) {
-            // Remove suggestions
-            const suggestions = document.querySelector('.suggested-messages');
-            if (suggestions) suggestions.remove();
-
             addMessage(text, 'user');
 
             iteration++;
@@ -380,9 +364,10 @@
         function showRestart() {
             const content = document.getElementById('contentArea');
             const container = document.createElement('div');
-            container.className = 'suggested-messages';
+            container.style.padding = 'var(--spacing-md)';
+            container.style.textAlign = 'center';
             const btn = document.createElement('button');
-            btn.className = 'suggested-btn';
+            btn.className = 'btn btn-outline';
             btn.textContent = 'Try demo again';
             btn.onclick = () => {
                 iteration = 0;
