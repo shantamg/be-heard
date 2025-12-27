@@ -1,5 +1,5 @@
 {
-  "name": "@listen-well/mobile",
+  "name": "@be-heard/mobile",
   "version": "0.0.1",
   "private": true,
   "main": "expo-router/entry",
@@ -9,6 +9,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "build": "expo prebuild",
+    "set-local-ip": "node scripts/set-local-ip.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "check": "tsc --noEmit",

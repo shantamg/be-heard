@@ -38,6 +38,14 @@ jest.mock('../../services/ai', () => ({
   getWitnessResponse: jest.fn(),
 }));
 
+// Mock realtime service
+jest.mock('../../services/realtime', () => ({
+  publishSessionEvent: jest.fn().mockResolvedValue(undefined),
+  publishStageProgress: jest.fn().mockResolvedValue(undefined),
+  notifyPartner: jest.fn().mockResolvedValue(undefined),
+  notifyPartnerWithFallback: jest.fn().mockResolvedValue(undefined),
+}));
+
 // Helper to create mock request
 function createMockRequest(options: {
   user?: { id: string; email: string; name?: string | null };

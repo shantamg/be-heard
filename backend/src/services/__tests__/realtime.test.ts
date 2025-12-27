@@ -20,7 +20,7 @@ import {
   SessionEvent,
 } from '../realtime';
 import * as pushService from '../push';
-import { PresenceStatus } from '@listen-well/shared';
+import { PresenceStatus } from '@be-heard/shared';
 
 // Mock the push service
 jest.mock('../push', () => ({
@@ -59,9 +59,9 @@ describe('Realtime Service', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // Always set ABLY_API_KEY for tests (required now)
+    process.env.ABLY_API_KEY = 'test-api-key';
     resetAblyClient();
-    // Reset ABLY_API_KEY for each test
-    delete process.env.ABLY_API_KEY;
     // Clear typing states
     clearSessionTypingStates(testSessionId);
   });
@@ -85,27 +85,16 @@ describe('Realtime Service', () => {
   });
 
   describe('publishSessionEvent', () => {
-    it('logs event when Ably is not configured (mock mode)', async () => {
-      const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+    it('throws when Ably is not configured', async () => {
+      delete process.env.ABLY_API_KEY;
+      resetAblyClient();
 
-      await publishSessionEvent(testSessionId, 'partner.signed_compact', {
-        userId: testUserId,
-      });
-
-      expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[Realtime Mock]'),
-        expect.objectContaining({
-          event: 'partner.signed_compact',
-        })
-      );
-
-      consoleSpy.mockRestore();
+      await expect(
+        publishSessionEvent(testSessionId, 'partner.signed_compact', { userId: testUserId })
+      ).rejects.toThrow('ABLY_API_KEY not configured');
     });
 
     it('publishes to Ably channel when configured', async () => {
-      process.env.ABLY_API_KEY = 'test-api-key';
-      resetAblyClient();
-
       await publishSessionEvent(testSessionId, 'partner.stage_completed', {
         stage: 2,
       });
@@ -121,9 +110,6 @@ describe('Realtime Service', () => {
     });
 
     it('includes excludeUserId in event data when provided', async () => {
-      process.env.ABLY_API_KEY = 'test-api-key';
-      resetAblyClient();
-
       await publishSessionEvent(
         testSessionId,
         'agreement.proposed',
@@ -156,28 +142,15 @@ describe('Realtime Service', () => {
       ];
 
       for (const event of events) {
-        await expect(
-          publishSessionEvent(testSessionId, event, {})
-        ).resolves.not.toThrow();
+        await expect(publishSessionEvent(testSessionId, event, {})).resolves.not.toThrow();
       }
     });
   });
 
   describe('isUserPresent', () => {
-    it('returns false when Ably is not configured (mock mode)', async () => {
-      const result = await isUserPresent(testSessionId, testUserId);
-      expect(result).toBe(false);
-    });
-
     it('returns true when user is in presence list', async () => {
-      process.env.ABLY_API_KEY = 'test-api-key';
-      resetAblyClient();
-
       mockPresenceGet.mockResolvedValueOnce({
-        items: [
-          { clientId: testUserId },
-          { clientId: 'other-user' },
-        ],
+        items: [{ clientId: testUserId }, { clientId: 'other-user' }],
       });
 
       const result = await isUserPresent(testSessionId, testUserId);
@@ -185,9 +158,6 @@ describe('Realtime Service', () => {
     });
 
     it('returns false when user is not in presence list', async () => {
-      process.env.ABLY_API_KEY = 'test-api-key';
-      resetAblyClient();
-
       mockPresenceGet.mockResolvedValueOnce({ items: [{ clientId: 'other-user' }] });
 
       const result = await isUserPresent(testSessionId, testUserId);
@@ -195,9 +165,6 @@ describe('Realtime Service', () => {
     });
 
     it('returns false when presence check fails', async () => {
-      process.env.ABLY_API_KEY = 'test-api-key';
-      resetAblyClient();
-
       mockPresenceGet.mockRejectedValueOnce(new Error('Connection failed'));
 
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
@@ -211,47 +178,25 @@ describe('Realtime Service', () => {
   });
 
   describe('getSessionPresence', () => {
-    it('returns empty array when Ably is not configured', async () => {
-      const result = await getSessionPresence(testSessionId);
-      expect(result).toEqual([]);
-    });
-
     it('returns array of user IDs when users are present', async () => {
-      process.env.ABLY_API_KEY = 'test-api-key';
-      resetAblyClient();
-
       mockPresenceGet.mockResolvedValueOnce({
-        items: [
-          { clientId: testUserId },
-          { clientId: testPartnerId },
-        ],
+        items: [{ clientId: testUserId }, { clientId: testPartnerId }],
       });
 
       const result = await getSessionPresence(testSessionId);
       expect(result).toEqual([testUserId, testPartnerId]);
     });
+
+    it('returns empty array when no users are present', async () => {
+      mockPresenceGet.mockResolvedValueOnce({ items: [] });
+
+      const result = await getSessionPresence(testSessionId);
+      expect(result).toEqual([]);
+    });
   });
 
   describe('notifyPartner', () => {
-    it('sends push notification when partner is offline (mock mode)', async () => {
-      const mockSendPush = pushService.sendPushNotification as jest.Mock;
-
-      await notifyPartner(testSessionId, testPartnerId, 'partner.empathy_shared', {
-        empathyId: 'emp-1',
-      });
-
-      expect(mockSendPush).toHaveBeenCalledWith(
-        testPartnerId,
-        'partner.empathy_shared',
-        { empathyId: 'emp-1' },
-        testSessionId
-      );
-    });
-
     it('publishes to Ably when partner is online', async () => {
-      process.env.ABLY_API_KEY = 'test-api-key';
-      resetAblyClient();
-
       // Partner is present in channel
       mockPresenceGet.mockResolvedValueOnce({ items: [{ clientId: testPartnerId }] });
 
@@ -266,10 +211,7 @@ describe('Realtime Service', () => {
       expect(mockSendPush).not.toHaveBeenCalled();
     });
 
-    it('sends push notification when partner is offline with Ably configured', async () => {
-      process.env.ABLY_API_KEY = 'test-api-key';
-      resetAblyClient();
-
+    it('sends push notification when partner is offline', async () => {
       // Partner is NOT present
       mockPresenceGet.mockResolvedValueOnce({ items: [{ clientId: 'other-user' }] });
 
@@ -288,9 +230,6 @@ describe('Realtime Service', () => {
 
   describe('notifyPartnerWithFallback', () => {
     it('publishes to Ably and sends push when partner is offline', async () => {
-      process.env.ABLY_API_KEY = 'test-api-key';
-      resetAblyClient();
-
       mockPresenceGet.mockResolvedValueOnce({ items: [] });
 
       const mockSendPush = pushService.sendPushNotification as jest.Mock;
@@ -307,9 +246,6 @@ describe('Realtime Service', () => {
     });
 
     it('publishes to Ably but does not send push when partner is online', async () => {
-      process.env.ABLY_API_KEY = 'test-api-key';
-      resetAblyClient();
-
       mockPresenceGet.mockResolvedValueOnce({ items: [{ clientId: testPartnerId }] });
 
       const mockSendPush = pushService.sendPushNotification as jest.Mock;
@@ -328,58 +264,44 @@ describe('Realtime Service', () => {
   describe('Typing Indicators', () => {
     describe('publishTypingIndicator', () => {
       it('publishes typing.start event when user starts typing', async () => {
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
         await publishTypingIndicator(testSessionId, testUserId, true);
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[Realtime Mock]'),
+        expect(mockPublish).toHaveBeenCalledWith(
+          'typing.start',
           expect.objectContaining({
-            event: 'typing.start',
+            userId: testUserId,
+            isTyping: true,
           })
         );
-
-        consoleSpy.mockRestore();
       });
 
       it('publishes typing.stop event when user stops typing', async () => {
         // First start typing
         await publishTypingIndicator(testSessionId, testUserId, true);
-
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+        mockPublish.mockClear();
 
         await publishTypingIndicator(testSessionId, testUserId, false);
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[Realtime Mock]'),
+        expect(mockPublish).toHaveBeenCalledWith(
+          'typing.stop',
           expect.objectContaining({
-            event: 'typing.stop',
+            userId: testUserId,
+            isTyping: false,
           })
         );
-
-        consoleSpy.mockRestore();
       });
 
       it('debounces repeated typing events with same state', async () => {
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
         // First call should publish
         await publishTypingIndicator(testSessionId, testUserId, true);
-        const firstCallCount = consoleSpy.mock.calls.length;
+        expect(mockPublish).toHaveBeenCalledTimes(1);
 
         // Second call with same state should not publish
         await publishTypingIndicator(testSessionId, testUserId, true);
-        const secondCallCount = consoleSpy.mock.calls.length;
-
-        expect(secondCallCount).toBe(firstCallCount);
-
-        consoleSpy.mockRestore();
+        expect(mockPublish).toHaveBeenCalledTimes(1);
       });
 
       it('excludes the typing user from receiving the event', async () => {
-        process.env.ABLY_API_KEY = 'test-api-key';
-        resetAblyClient();
-
         await publishTypingIndicator(testSessionId, testUserId, true);
 
         expect(mockPublish).toHaveBeenCalledWith(
@@ -405,19 +327,6 @@ describe('Realtime Service', () => {
           isTyping: true,
           lastUpdate: expect.any(Number),
         });
-      });
-
-      it('returns false when typing has timed out', async () => {
-        await publishTypingIndicator(testSessionId, testUserId, true);
-
-        // Manually set lastUpdate to be old
-        const key = `${testSessionId}:${testUserId}`;
-        // We need to access the internal map - for now we test that the behavior works
-        // by checking that after timeout the state shows not typing
-
-        // This is a unit test limitation - in practice the timeout works
-        const result = getTypingState(testSessionId, testUserId);
-        expect(result?.isTyping).toBe(true);
       });
     });
 
@@ -465,29 +374,19 @@ describe('Realtime Service', () => {
   describe('Stage Progress', () => {
     describe('publishStageProgress', () => {
       it('publishes stage.progress event', async () => {
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
         await publishStageProgress(testSessionId, testUserId, 2, 'in_progress');
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[Realtime Mock]'),
+        expect(mockPublish).toHaveBeenCalledWith(
+          'stage.progress',
           expect.objectContaining({
-            event: 'stage.progress',
-            data: expect.objectContaining({
-              userId: testUserId,
-              stage: 2,
-              status: 'in_progress',
-            }),
+            userId: testUserId,
+            stage: 2,
+            status: 'in_progress',
           })
         );
-
-        consoleSpy.mockRestore();
       });
 
       it('excludes the user from receiving their own stage progress', async () => {
-        process.env.ABLY_API_KEY = 'test-api-key';
-        resetAblyClient();
-
         await publishStageProgress(testSessionId, testUserId, 2, 'completed');
 
         expect(mockPublish).toHaveBeenCalledWith(
@@ -501,23 +400,16 @@ describe('Realtime Service', () => {
 
     describe('publishStageWaiting', () => {
       it('publishes stage.waiting event', async () => {
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
         await publishStageWaiting(testSessionId, testUserId, 3);
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[Realtime Mock]'),
+        expect(mockPublish).toHaveBeenCalledWith(
+          'stage.waiting',
           expect.objectContaining({
-            event: 'stage.waiting',
-            data: expect.objectContaining({
-              userId: testUserId,
-              stage: 3,
-              status: 'gate_pending',
-            }),
+            userId: testUserId,
+            stage: 3,
+            status: 'gate_pending',
           })
         );
-
-        consoleSpy.mockRestore();
       });
     });
   });
@@ -529,53 +421,40 @@ describe('Realtime Service', () => {
   describe('Presence Updates', () => {
     describe('publishPresenceUpdate', () => {
       it('publishes presence.online event', async () => {
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
         await publishPresenceUpdate(testSessionId, testUserId, PresenceStatus.ONLINE, 'Test User');
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[Realtime Mock]'),
+        expect(mockPublish).toHaveBeenCalledWith(
+          'presence.online',
           expect.objectContaining({
-            event: 'presence.online',
-            data: expect.objectContaining({
-              userId: testUserId,
-              name: 'Test User',
-              status: PresenceStatus.ONLINE,
-            }),
+            userId: testUserId,
+            name: 'Test User',
+            status: PresenceStatus.ONLINE,
           })
         );
-
-        consoleSpy.mockRestore();
       });
 
       it('publishes presence.offline event', async () => {
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
         await publishPresenceUpdate(testSessionId, testUserId, PresenceStatus.OFFLINE);
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[Realtime Mock]'),
+        expect(mockPublish).toHaveBeenCalledWith(
+          'presence.offline',
           expect.objectContaining({
-            event: 'presence.offline',
+            userId: testUserId,
+            status: PresenceStatus.OFFLINE,
           })
         );
-
-        consoleSpy.mockRestore();
       });
 
       it('publishes presence.away event', async () => {
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
         await publishPresenceUpdate(testSessionId, testUserId, PresenceStatus.AWAY);
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[Realtime Mock]'),
+        expect(mockPublish).toHaveBeenCalledWith(
+          'presence.away',
           expect.objectContaining({
-            event: 'presence.away',
+            userId: testUserId,
+            status: PresenceStatus.AWAY,
           })
         );
-
-        consoleSpy.mockRestore();
       });
     });
   });
@@ -587,22 +466,15 @@ describe('Realtime Service', () => {
   describe('Session State', () => {
     describe('publishSessionPaused', () => {
       it('publishes session.paused event with reason', async () => {
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
         await publishSessionPaused(testSessionId, testUserId, 'Need a break');
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[Realtime Mock]'),
+        expect(mockPublish).toHaveBeenCalledWith(
+          'session.paused',
           expect.objectContaining({
-            event: 'session.paused',
-            data: expect.objectContaining({
-              pausedBy: testUserId,
-              reason: 'Need a break',
-            }),
+            pausedBy: testUserId,
+            reason: 'Need a break',
           })
         );
-
-        consoleSpy.mockRestore();
       });
 
       it('clears typing states when session is paused', async () => {
@@ -618,41 +490,27 @@ describe('Realtime Service', () => {
 
     describe('publishSessionResumed', () => {
       it('publishes session.resumed event', async () => {
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
         await publishSessionResumed(testSessionId, testUserId);
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[Realtime Mock]'),
+        expect(mockPublish).toHaveBeenCalledWith(
+          'session.resumed',
           expect.objectContaining({
-            event: 'session.resumed',
-            data: expect.objectContaining({
-              resumedBy: testUserId,
-            }),
+            resumedBy: testUserId,
           })
         );
-
-        consoleSpy.mockRestore();
       });
     });
 
     describe('publishSessionResolved', () => {
       it('publishes session.resolved event', async () => {
-        const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
-
         await publishSessionResolved(testSessionId, testUserId);
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-          expect.stringContaining('[Realtime Mock]'),
+        expect(mockPublish).toHaveBeenCalledWith(
+          'session.resolved',
           expect.objectContaining({
-            event: 'session.resolved',
-            data: expect.objectContaining({
-              resolvedBy: testUserId,
-            }),
+            resolvedBy: testUserId,
           })
         );
-
-        consoleSpy.mockRestore();
       });
 
       it('clears typing states when session is resolved', async () => {

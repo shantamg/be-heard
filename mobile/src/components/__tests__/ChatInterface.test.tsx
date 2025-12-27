@@ -8,7 +8,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 import { ChatInterface } from '../ChatInterface';
-import { MessageDTO, MessageRole, Stage } from '@listen-well/shared';
+import { MessageDTO, MessageRole, Stage } from '@be-heard/shared';
 
 // ============================================================================
 // Mocks

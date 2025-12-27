@@ -1,11 +1,11 @@
 /**
  * Auth Middleware Tests
  *
- * Tests for authentication middleware including mock auth and Clerk auth.
+ * Tests for Clerk-based authentication middleware.
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { requireAuth, optionalAuth, createMockAuthHeader, getUser } from '../auth';
+import { requireAuth, optionalAuth, getUser } from '../auth';
 import { prisma } from '../../lib/prisma';
 
 // Mock Prisma
@@ -25,15 +25,24 @@ jest.mock('../../lib/prisma', () => ({
   },
 }));
 
-// Mock Clerk verifyToken - will fail in test environment
+// Mock Clerk verifyToken
+const mockVerifyToken = jest.fn();
 jest.mock('@clerk/express', () => ({
-  verifyToken: jest.fn().mockRejectedValue(new Error('Clerk not configured')),
+  verifyToken: (...args: unknown[]) => mockVerifyToken(...args),
 }));
 
 // Helper to create mock request
 function createMockRequest(options: {
   headers?: Record<string, string>;
-  user?: { id: string; email: string; name?: string | null; pushToken?: string | null; createdAt?: Date; updatedAt?: Date; clerkId?: string | null };
+  user?: {
+    id: string;
+    email: string;
+    name?: string | null;
+    pushToken?: string | null;
+    createdAt?: Date;
+    updatedAt?: Date;
+    clerkId?: string | null;
+  };
   params?: Record<string, string>;
 }): Partial<Request> {
   return {
@@ -65,7 +74,7 @@ function createMockResponse(): {
 describe('Auth Middleware', () => {
   const mockUser = {
     id: 'user-123',
-    clerkId: null,
+    clerkId: 'clerk-user-123',
     email: 'test@example.com',
     name: 'Test User',
     pushToken: null,
@@ -75,13 +84,38 @@ describe('Auth Middleware', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    // Reset environment for each test
+    // Set up Clerk environment
+    process.env.CLERK_SECRET_KEY = 'sk_test_xxx';
+  });
+
+  afterEach(() => {
     delete process.env.CLERK_SECRET_KEY;
-    delete process.env.CLERK_PUBLISHABLE_KEY;
   });
 
   describe('requireAuth', () => {
-    it('rejects requests without auth header', async () => {
+    it('returns 500 when CLERK_SECRET_KEY is not configured', async () => {
+      delete process.env.CLERK_SECRET_KEY;
+
+      const req = createMockRequest({ headers: {} });
+      const { res, statusMock, jsonMock } = createMockResponse();
+      const next = jest.fn();
+
+      await requireAuth(req as Request, res as Response, next);
+
+      expect(statusMock).toHaveBeenCalledWith(500);
+      expect(jsonMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({
+            code: 'INTERNAL_ERROR',
+            message: expect.stringContaining('CLERK_SECRET_KEY'),
+          }),
+        })
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('returns 401 when no auth header is provided', async () => {
       const req = createMockRequest({ headers: {} });
       const { res, statusMock, jsonMock } = createMockResponse();
       const next = jest.fn();
@@ -101,85 +135,11 @@ describe('Auth Middleware', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    it('accepts valid X-Mock-User-Id header', async () => {
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
+    it('returns 401 when token verification fails', async () => {
+      mockVerifyToken.mockRejectedValue(new Error('Invalid token'));
 
       const req = createMockRequest({
-        headers: {
-          'x-mock-user-id': mockUser.id,
-          'x-mock-user-email': mockUser.email,
-          'x-mock-user-name': mockUser.name || '',
-        },
-      });
-      const { res } = createMockResponse();
-      const next = jest.fn();
-
-      await requireAuth(req as Request, res as Response, next);
-
-      expect(next).toHaveBeenCalled();
-      expect(req.user).toBeDefined();
-      expect(req.user?.id).toBe(mockUser.id);
-    });
-
-    it('accepts valid Mock authorization header', async () => {
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
-
-      const mockAuthHeader = createMockAuthHeader({
-        userId: mockUser.id,
-        email: mockUser.email,
-        name: mockUser.name || undefined,
-      });
-
-      const req = createMockRequest({
-        headers: { authorization: mockAuthHeader },
-      });
-      const { res } = createMockResponse();
-      const next = jest.fn();
-
-      await requireAuth(req as Request, res as Response, next);
-
-      expect(next).toHaveBeenCalled();
-      expect(req.user).toBeDefined();
-      expect(req.user?.id).toBe(mockUser.id);
-    });
-
-    it('accepts Bearer test-token-{userId} format', async () => {
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
-
-      const req = createMockRequest({
-        headers: { authorization: `Bearer test-token-${mockUser.id}` },
-      });
-      const { res } = createMockResponse();
-      const next = jest.fn();
-
-      await requireAuth(req as Request, res as Response, next);
-
-      expect(next).toHaveBeenCalled();
-      expect(req.user).toBeDefined();
-    });
-
-    it('creates new user if not found', async () => {
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue(null);
-      (prisma.user.create as jest.Mock).mockResolvedValue(mockUser);
-
-      const req = createMockRequest({
-        headers: {
-          'x-mock-user-id': 'new-user-id',
-          'x-mock-user-email': 'new@example.com',
-        },
-      });
-      const { res } = createMockResponse();
-      const next = jest.fn();
-
-      await requireAuth(req as Request, res as Response, next);
-
-      expect(prisma.user.create).toHaveBeenCalled();
-      expect(next).toHaveBeenCalled();
-    });
-
-    it('rejects invalid authorization format', async () => {
-      const req = createMockRequest({
-        headers: { authorization: 'Invalid format' },
+        headers: { authorization: 'Bearer invalid-token' },
       });
       const { res, statusMock, jsonMock } = createMockResponse();
       const next = jest.fn();
@@ -188,6 +148,33 @@ describe('Auth Middleware', () => {
 
       expect(statusMock).toHaveBeenCalledWith(401);
       expect(next).not.toHaveBeenCalled();
+    });
+
+    it('authenticates user with valid Clerk token', async () => {
+      mockVerifyToken.mockResolvedValue({ sub: 'clerk-user-123' });
+      (prisma.user.upsert as jest.Mock).mockResolvedValue(mockUser);
+
+      const req = createMockRequest({
+        headers: { authorization: 'Bearer valid-clerk-token' },
+      });
+      const { res } = createMockResponse();
+      const next = jest.fn();
+
+      await requireAuth(req as Request, res as Response, next);
+
+      expect(mockVerifyToken).toHaveBeenCalledWith('valid-clerk-token', {
+        secretKey: 'sk_test_xxx',
+      });
+      expect(prisma.user.upsert).toHaveBeenCalledWith({
+        where: { clerkId: 'clerk-user-123' },
+        update: {},
+        create: expect.objectContaining({
+          clerkId: 'clerk-user-123',
+        }),
+      });
+      expect(next).toHaveBeenCalled();
+      expect(req.user).toEqual(mockUser);
+      expect(req.clerkUserId).toBe('clerk-user-123');
     });
   });
 
@@ -204,14 +191,12 @@ describe('Auth Middleware', () => {
       expect(req.user).toBeUndefined();
     });
 
-    it('populates user when valid auth header', async () => {
-      (prisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
+    it('populates user when valid Clerk token provided', async () => {
+      mockVerifyToken.mockResolvedValue({ sub: 'clerk-user-123' });
+      (prisma.user.upsert as jest.Mock).mockResolvedValue(mockUser);
 
       const req = createMockRequest({
-        headers: {
-          'x-mock-user-id': mockUser.id,
-          'x-mock-user-email': mockUser.email,
-        },
+        headers: { authorization: 'Bearer valid-clerk-token' },
       });
       const { res, statusMock } = createMockResponse();
       const next = jest.fn();
@@ -220,8 +205,23 @@ describe('Auth Middleware', () => {
 
       expect(next).toHaveBeenCalled();
       expect(statusMock).not.toHaveBeenCalled();
-      expect(req.user).toBeDefined();
-      expect(req.user?.id).toBe(mockUser.id);
+      expect(req.user).toEqual(mockUser);
+    });
+
+    it('continues without user when token is invalid', async () => {
+      mockVerifyToken.mockRejectedValue(new Error('Invalid token'));
+
+      const req = createMockRequest({
+        headers: { authorization: 'Bearer invalid-token' },
+      });
+      const { res, statusMock } = createMockResponse();
+      const next = jest.fn();
+
+      await optionalAuth(req as Request, res as Response, next);
+
+      expect(next).toHaveBeenCalled();
+      expect(statusMock).not.toHaveBeenCalled();
+      expect(req.user).toBeUndefined();
     });
   });
 
@@ -239,41 +239,6 @@ describe('Auth Middleware', () => {
       const req = createMockRequest({});
 
       expect(() => getUser(req as Request)).toThrow('No authenticated user');
-    });
-  });
-
-  describe('createMockAuthHeader', () => {
-    it('creates valid Mock authorization header', () => {
-      const header = createMockAuthHeader({
-        userId: 'user-123',
-        email: 'test@example.com',
-        name: 'Test User',
-      });
-
-      expect(header).toMatch(/^Mock /);
-
-      // Decode and verify
-      const payload = header.slice(5);
-      const decoded = JSON.parse(Buffer.from(payload, 'base64').toString('utf-8'));
-      expect(decoded).toEqual({
-        userId: 'user-123',
-        email: 'test@example.com',
-        name: 'Test User',
-      });
-    });
-
-    it('works without name', () => {
-      const header = createMockAuthHeader({
-        userId: 'user-123',
-        email: 'test@example.com',
-      });
-
-      expect(header).toMatch(/^Mock /);
-
-      const payload = header.slice(5);
-      const decoded = JSON.parse(Buffer.from(payload, 'base64').toString('utf-8'));
-      expect(decoded.userId).toBe('user-123');
-      expect(decoded.email).toBe('test@example.com');
     });
   });
 });

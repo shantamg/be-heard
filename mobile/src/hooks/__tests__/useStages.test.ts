@@ -33,7 +33,7 @@ import {
   useResolveSession,
   stageKeys,
 } from '../useStages';
-import { Stage, StageStatus, NeedCategory, AgreementType, AgreementStatus, StrategyPhase } from '@listen-well/shared';
+import { Stage, StageStatus, NeedCategory, AgreementType, AgreementStatus, StrategyPhase } from '@be-heard/shared';
 
 // Mock the API module
 jest.mock('../../lib/api', () => ({

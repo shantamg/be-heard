@@ -5,7 +5,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { ErrorCode, ApiError, ApiResponse } from '@listen-well/shared';
+import { ErrorCode, ApiError, ApiResponse } from '@be-heard/shared';
 import { ZodError } from 'zod';
 
 // ============================================================================

@@ -15,7 +15,7 @@ import {
   saveEmpathyDraftRequestSchema,
   consentToShareRequestSchema,
   validateEmpathyRequestSchema,
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 import { notifyPartner } from '../services/realtime';
 
 // ============================================================================

@@ -34,7 +34,7 @@ import { ChatInterface } from '../components/ChatInterface';
 import { NeedsSection } from '../components/NeedsSection';
 import { CommonGroundCard } from '../components/CommonGroundCard';
 import { WaitingRoom } from '../components/WaitingRoom';
-import { Stage, MessageRole, IdentifiedNeedDTO, CommonGroundDTO } from '@listen-well/shared';
+import { Stage, MessageRole, IdentifiedNeedDTO, CommonGroundDTO } from '@be-heard/shared';
 
 // ============================================================================
 // Types

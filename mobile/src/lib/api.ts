@@ -12,7 +12,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 import Constants from 'expo-constants';
-import { ApiError, ApiResponse, ErrorCode } from '@listen-well/shared';
+import { ApiError, ApiResponse, ErrorCode } from '@be-heard/shared';
 
 // ============================================================================
 // Configuration

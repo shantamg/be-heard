@@ -31,7 +31,7 @@ import { EmpathyAttemptCard } from '../components/EmpathyAttemptCard';
 import { ConsentPrompt } from '../components/ConsentPrompt';
 import { AccuracyFeedback } from '../components/AccuracyFeedback';
 import { WaitingRoom } from '../components/WaitingRoom';
-import { Stage, StageStatus } from '@listen-well/shared';
+import { Stage, StageStatus } from '@be-heard/shared';
 
 // ============================================================================
 // Types

@@ -18,7 +18,7 @@ import {
   useDeclineInvitation,
   sessionKeys,
 } from '../useSessions';
-import { SessionStatus } from '@listen-well/shared';
+import { SessionStatus } from '@be-heard/shared';
 
 // Mock the API module
 jest.mock('../../lib/api', () => ({

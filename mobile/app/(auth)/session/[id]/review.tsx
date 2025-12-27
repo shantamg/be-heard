@@ -9,7 +9,7 @@ import { useLocalSearchParams, Stack } from 'expo-router';
 import { CheckCircle } from 'lucide-react-native';
 
 import { useSession } from '../../../../src/hooks/useSessions';
-import { STAGE_NAMES, Stage, SessionStatus } from '@listen-well/shared';
+import { STAGE_NAMES, Stage, SessionStatus } from '@be-heard/shared';
 
 // ============================================================================
 // Types

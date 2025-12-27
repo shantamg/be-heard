@@ -17,10 +17,10 @@ import {
   proposeStrategyRequestSchema,
   rankStrategiesRequestSchema,
   confirmAgreementRequestSchema,
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 import { notifyPartner, publishSessionEvent } from '../services/realtime';
 import { z } from 'zod';
-import { AgreementType } from '@listen-well/shared';
+import { AgreementType } from '@be-heard/shared';
 
 // ============================================================================
 // Types

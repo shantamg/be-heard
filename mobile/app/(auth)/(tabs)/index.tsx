@@ -26,7 +26,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/src/hooks/useAuth';
 import { useSessions } from '../../../src/hooks/useSessions';
 import { SessionCard } from '../../../src/components/SessionCard';
-import type { SessionSummaryDTO } from '@listen-well/shared';
+import type { SessionSummaryDTO } from '@be-heard/shared';
 
 // ============================================================================
 // Component

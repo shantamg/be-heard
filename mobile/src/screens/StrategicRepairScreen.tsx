@@ -27,7 +27,7 @@ import {
   useResolveSession,
 } from '../hooks/useStages';
 import { useSession } from '../hooks/useSessions';
-import { StrategyPhase } from '@listen-well/shared';
+import { StrategyPhase } from '@be-heard/shared';
 
 // ============================================================================
 // Types

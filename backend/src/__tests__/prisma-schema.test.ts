@@ -26,7 +26,7 @@ import {
   AgreementType as SharedAgreementType,
   AgreementStatus as SharedAgreementStatus,
   GlobalLibrarySource as SharedGlobalLibrarySource,
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 
 /**
  * Prisma Schema Tests

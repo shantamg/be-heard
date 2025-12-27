@@ -17,7 +17,7 @@ import {
   AblyTokenResponse,
   updateProfileRequestSchema,
   updatePushTokenRequestSchema,
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 
 // ============================================================================
 // Helper Functions

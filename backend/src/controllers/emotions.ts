@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
-import { ApiResponse, ErrorCode } from '@listen-well/shared';
+import { ApiResponse, ErrorCode } from '@be-heard/shared';
 import { NotFoundError, ValidationError } from '../middleware/errors';
 
 // Validation schemas aligned with shared types

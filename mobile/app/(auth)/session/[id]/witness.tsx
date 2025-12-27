@@ -21,7 +21,7 @@ import { ChatInterface } from '@/src/components/ChatInterface';
 import { EmotionalBarometer } from '@/src/components/EmotionalBarometer';
 import { FeelHeardConfirmation } from '@/src/components/FeelHeardConfirmation';
 import { WaitingRoom } from '@/src/components/WaitingRoom';
-import { Stage, MessageRole } from '@listen-well/shared';
+import { Stage, MessageRole } from '@be-heard/shared';
 
 // ============================================================================
 // Component

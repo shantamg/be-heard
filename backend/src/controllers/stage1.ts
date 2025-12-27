@@ -15,7 +15,7 @@ import {
   sendMessageRequestSchema,
   feelHeardRequestSchema,
   getMessagesQuerySchema,
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 import { notifyPartner, publishSessionEvent } from '../services/realtime';
 
 // ============================================================================

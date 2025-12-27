@@ -94,7 +94,7 @@ import type {
   SessionDetailDTO,
   CreateSessionRequest,
   CreateSessionResponse
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 
 export function useSessions() {
   const api = useApiClient();
@@ -144,7 +144,7 @@ Create `mobile/src/hooks/useMessages.ts`:
 ```typescript
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApiClient } from '../lib/api';
-import type { MessageDTO } from '@listen-well/shared';
+import type { MessageDTO } from '@be-heard/shared';
 
 export function useMessages(sessionId: string) {
   const api = useApiClient();
@@ -185,7 +185,7 @@ Create `mobile/src/hooks/useProfile.ts`:
 ```typescript
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useApiClient } from '../lib/api';
-import type { GetMeResponse } from '@listen-well/shared';
+import type { GetMeResponse } from '@be-heard/shared';
 
 export function useProfile() {
   const api = useApiClient();

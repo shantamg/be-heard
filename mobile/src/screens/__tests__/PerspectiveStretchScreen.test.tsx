@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
-import { Stage, StageStatus } from '@listen-well/shared';
+import { Stage, StageStatus } from '@be-heard/shared';
 
 // ============================================================================
 // Mocks

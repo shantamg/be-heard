@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
-import { Stage, MessageRole } from '@listen-well/shared';
+import { Stage, MessageRole } from '@be-heard/shared';
 
 // Mock expo-router
 const mockReplace = jest.fn();

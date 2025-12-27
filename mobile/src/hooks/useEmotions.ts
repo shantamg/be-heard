@@ -25,7 +25,7 @@ import {
   CompleteExerciseResponse as SharedCompleteExerciseResponse,
   EmotionalReadingDTO,
   EmotionalSupportType,
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 
 // ============================================================================
 // Types

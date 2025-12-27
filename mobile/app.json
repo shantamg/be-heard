@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Listen Well",
-    "slug": "listen-well",
+    "name": "BeHeard",
+    "slug": "be-heard",
     "version": "0.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "listenwell",
+    "scheme": "beheard",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.listenwell.app",
+      "bundleIdentifier": "com.beheard.app",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -28,7 +28,7 @@
         "backgroundColor": "#111827"
       },
       "icon": "./assets/images/icon.png",
-      "package": "com.listenwell.app",
+      "package": "com.beheard.app",
       "versionCode": 1,
       "permissions": ["RECORD_AUDIO"]
     },

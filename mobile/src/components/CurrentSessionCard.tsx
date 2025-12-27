@@ -6,7 +6,7 @@
 
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Stage, STAGE_NAMES } from '@listen-well/shared';
+import { Stage, STAGE_NAMES } from '@be-heard/shared';
 
 // ============================================================================
 // Types

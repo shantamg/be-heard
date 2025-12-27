@@ -19,7 +19,7 @@ import {
   UpdatePushTokenRequest,
   UpdatePushTokenResponse,
   AblyTokenResponse,
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 
 // ============================================================================
 // Query Keys

@@ -1,12 +1,10 @@
 import { Resend } from 'resend';
 
-// Initialize Resend client - will be null if not configured
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null;
+// Initialize Resend client - required
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Default sender email
-const FROM_EMAIL = process.env.FROM_EMAIL || 'noreply@beheard.app';
+const FROM_EMAIL = process.env.FROM_EMAIL || 'onboarding@resend.dev';
 
 /**
  * Result of an email send operation
@@ -15,7 +13,6 @@ export interface EmailResult {
   success: boolean;
   messageId?: string;
   error?: string;
-  mocked: boolean;
 }
 
 /**
@@ -31,19 +28,11 @@ export async function sendInvitationEmail(
   inviterName: string,
   invitationUrl: string
 ): Promise<EmailResult> {
-  // If Resend is not configured, mock the email send
-  if (!resend) {
-    console.log('[Email Mock] Would send invitation email:', {
-      to,
-      from: FROM_EMAIL,
-      subject: `${inviterName} invited you to BeHeard`,
-      invitationUrl,
-    });
-
+  if (!process.env.RESEND_API_KEY) {
+    console.error('[Email] RESEND_API_KEY not configured');
     return {
-      success: true,
-      messageId: `mock-${Date.now()}`,
-      mocked: true,
+      success: false,
+      error: 'Email service not configured: set RESEND_API_KEY',
     };
   }
 
@@ -61,7 +50,6 @@ export async function sendInvitationEmail(
       return {
         success: false,
         error: error.message,
-        mocked: false,
       };
     }
 
@@ -69,7 +57,6 @@ export async function sendInvitationEmail(
     return {
       success: true,
       messageId: data?.id,
-      mocked: false,
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -77,7 +64,6 @@ export async function sendInvitationEmail(
     return {
       success: false,
       error: errorMessage,
-      mocked: false,
     };
   }
 }

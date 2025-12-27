@@ -20,7 +20,7 @@ import {
   useOptimisticMessage,
 } from '@/src/hooks/useMessages';
 import { ChatInterface } from '@/src/components/ChatInterface';
-import { Stage, MessageRole } from '@listen-well/shared';
+import { Stage, MessageRole } from '@be-heard/shared';
 
 // ============================================================================
 // Component

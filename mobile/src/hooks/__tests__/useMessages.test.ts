@@ -16,7 +16,7 @@ import {
   useOptimisticMessage,
   messageKeys,
 } from '../useMessages';
-import { MessageRole, Stage, EmotionalSupportType } from '@listen-well/shared';
+import { MessageRole, Stage, EmotionalSupportType } from '@be-heard/shared';
 
 // Mock the API module
 jest.mock('../../lib/api', () => ({

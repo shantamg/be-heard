@@ -8,7 +8,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { notifyPartner } from '../services/realtime';
-import { ApiResponse, ErrorCode, signCompactRequestSchema } from '@listen-well/shared';
+import { ApiResponse, ErrorCode, signCompactRequestSchema } from '@be-heard/shared';
 
 // ============================================================================
 // Types

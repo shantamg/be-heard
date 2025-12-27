@@ -14,7 +14,7 @@ import {
   SessionEventData,
   PresenceStatus,
   REALTIME_CHANNELS,
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 import { useAblyToken } from './useProfile';
 import { useAuth } from './useAuth';
 

@@ -6,7 +6,7 @@
  */
 
 import { View, Text, StyleSheet } from 'react-native';
-import { MessageRole } from '@listen-well/shared';
+import { MessageRole } from '@be-heard/shared';
 
 // ============================================================================
 // Types

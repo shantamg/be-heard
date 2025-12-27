@@ -9,7 +9,7 @@ import {
   PartnerStatusBadge,
   InlineTypingIndicator,
 } from '../PartnerStatus';
-import { ConnectionStatus } from '@listen-well/shared';
+import { ConnectionStatus } from '@be-heard/shared';
 
 describe('PartnerStatus', () => {
   describe('rendering', () => {

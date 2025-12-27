@@ -1,8 +1,8 @@
 {
-  "name": "@listen-well/backend",
+  "name": "@be-heard/backend",
   "version": "0.0.1",
   "private": true,
-  "description": "Listen Well API Backend",
+  "description": "BeHeard API Backend",
   "main": "dist/backend/src/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",

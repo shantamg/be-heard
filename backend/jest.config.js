@@ -14,7 +14,7 @@ module.exports = {
   transformIgnorePatterns: ['node_modules/(?!(yaml|@langchain|langchain)/)'],
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
   moduleNameMapper: {
-    '^@listen-well/shared/(.*)$': '<rootDir>/../shared/src/$1',
+    '^@be-heard/shared/(.*)$': '<rootDir>/../shared/src/$1',
     '^@shared/(.*)$': '<rootDir>/../shared/src/$1',
     '^@/(.*)$': '<rootDir>/src/$1'
   },

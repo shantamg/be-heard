@@ -12,7 +12,7 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { extractNeedsFromConversation, findCommonGround } from '../services/needs';
-import { confirmNeedsRequestSchema, ConsentContentType } from '@listen-well/shared';
+import { confirmNeedsRequestSchema, ConsentContentType } from '@be-heard/shared';
 import { notifyPartner, publishSessionEvent } from '../services/realtime';
 
 // ============================================================================

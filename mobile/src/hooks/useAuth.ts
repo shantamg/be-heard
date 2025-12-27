@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, createContext, useContext } from 'rea
 import { useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { apiClient } from '../lib/api';
-import type { ApiResponse, GetMeResponse } from '@listen-well/shared';
+import type { ApiResponse, GetMeResponse } from '@be-heard/shared';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';

@@ -63,7 +63,7 @@ Create `mobile/src/components/MessageBubble.tsx`:
 
 ```typescript
 import { View, Text, StyleSheet } from 'react-native';
-import type { MessageDTO } from '@listen-well/shared';
+import type { MessageDTO } from '@be-heard/shared';
 
 interface Props {
   message: MessageDTO;
@@ -177,7 +177,7 @@ import {
   Platform, StyleSheet
 } from 'react-native';
 import { Send } from 'lucide-react-native';
-import type { MessageDTO } from '@listen-well/shared';
+import type { MessageDTO } from '@be-heard/shared';
 import { MessageBubble } from './MessageBubble';
 import { TypingIndicator } from './TypingIndicator';
 

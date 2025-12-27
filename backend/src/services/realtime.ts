@@ -5,7 +5,7 @@ import {
   SessionEventData,
   PresenceStatus,
   REALTIME_CHANNELS,
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 
 /**
  * Session events for real-time communication between partners.
@@ -33,21 +33,20 @@ export type { SessionEventData };
 
 /**
  * Ably client singleton.
- * Returns null if ABLY_API_KEY is not configured (for development/testing).
+ * Throws if ABLY_API_KEY is not configured.
  */
-function getAblyClient(): Ably.Rest | null {
+function getAblyClient(): Ably.Rest {
   const apiKey = process.env.ABLY_API_KEY;
   if (!apiKey) {
-    console.warn('[Realtime] ABLY_API_KEY not configured - realtime events will be mocked');
-    return null;
+    throw new Error('ABLY_API_KEY not configured - realtime features require Ably');
   }
   return new Ably.Rest(apiKey);
 }
 
 // Lazy-initialized Ably client
-let ablyClient: Ably.Rest | null | undefined;
+let ablyClient: Ably.Rest | undefined;
 
-function getAbly(): Ably.Rest | null {
+function getAbly(): Ably.Rest {
   if (ablyClient === undefined) {
     ablyClient = getAblyClient();
   }
@@ -91,7 +90,6 @@ const TYPING_TIMEOUT = 5000;
 
 /**
  * Publishes a session event to the Ably channel for the given session.
- * If Ably is not configured, the event is logged but not published.
  *
  * @param sessionId - The session ID to publish to
  * @param event - The event type to publish
@@ -113,15 +111,6 @@ export async function publishSessionEvent(
     excludeUserId,
     ...data,
   };
-
-  if (!ably) {
-    // Mock mode: log the event
-    console.log(`[Realtime Mock] Publishing to ${REALTIME_CHANNELS.session(sessionId)}`, {
-      event,
-      data: eventData,
-    });
-    return;
-  }
 
   try {
     const channel = ably.channels.get(REALTIME_CHANNELS.session(sessionId));
@@ -147,12 +136,6 @@ export async function publishSessionEvent(
 export async function isUserPresent(sessionId: string, userId: string): Promise<boolean> {
   const ably = getAbly();
 
-  if (!ably) {
-    // Mock mode: assume user is not present (will trigger push notification)
-    console.log(`[Realtime Mock] Checking presence for user ${userId} in session ${sessionId}`);
-    return false;
-  }
-
   try {
     const presenceChannel = ably.channels.get(REALTIME_CHANNELS.session(sessionId));
     const presenceResult = await presenceChannel.presence.get();
@@ -173,11 +156,6 @@ export async function isUserPresent(sessionId: string, userId: string): Promise<
  */
 export async function getSessionPresence(sessionId: string): Promise<string[]> {
   const ably = getAbly();
-
-  if (!ably) {
-    console.log(`[Realtime Mock] Getting presence for session ${sessionId}`);
-    return [];
-  }
 
   try {
     const presenceChannel = ably.channels.get(REALTIME_CHANNELS.session(sessionId));

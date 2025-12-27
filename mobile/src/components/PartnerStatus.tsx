@@ -14,7 +14,7 @@ import {
   ViewStyle,
   TextStyle,
 } from 'react-native';
-import { ConnectionStatus, PresenceStatus } from '@listen-well/shared';
+import { ConnectionStatus, PresenceStatus } from '@be-heard/shared';
 
 // ============================================================================
 // Types

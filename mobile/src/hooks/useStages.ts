@@ -61,7 +61,7 @@ import {
   ConfirmAgreementResponse,
   ResolveSessionResponse,
   Stage,
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 import { sessionKeys } from './useSessions';
 
 // ============================================================================

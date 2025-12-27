@@ -9,7 +9,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { get, ApiClientError } from '../lib/api';
-import { Stage } from '@listen-well/shared';
+import { Stage } from '@be-heard/shared';
 
 // ============================================================================
 // Query Keys

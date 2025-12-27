@@ -22,7 +22,7 @@ import {
   StyleSheet,
   ListRenderItem,
 } from 'react-native';
-import type { MessageDTO } from '@listen-well/shared';
+import type { MessageDTO } from '@be-heard/shared';
 import { ChatBubble, ChatBubbleMessage } from './ChatBubble';
 import { TypingIndicator } from './TypingIndicator';
 import { ChatInput } from './ChatInput';

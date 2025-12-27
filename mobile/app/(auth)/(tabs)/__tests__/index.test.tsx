@@ -8,7 +8,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import HomeScreen from '../index';
-import { SessionSummaryDTO, SessionStatus, Stage, StageStatus } from '@listen-well/shared';
+import { SessionSummaryDTO, SessionStatus, Stage, StageStatus } from '@be-heard/shared';
 
 // Mock expo-router
 const mockPush = jest.fn();

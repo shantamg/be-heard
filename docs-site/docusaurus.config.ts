@@ -11,7 +11,7 @@ const config: Config = {
     v4: true,
   },
 
-  url: 'https://listen-well-planning.vercel.app',
+  url: 'https://be-heard-planning.vercel.app',
   baseUrl: '/',
 
   onBrokenLinks: 'warn',

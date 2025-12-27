@@ -7,7 +7,7 @@
 
 import { renderHook, act, waitFor } from '@testing-library/react-native';
 import { useRealtime, usePartnerTyping, usePartnerPresence } from '../useRealtime';
-import { ConnectionStatus, PresenceStatus } from '@listen-well/shared';
+import { ConnectionStatus, PresenceStatus } from '@be-heard/shared';
 
 // Mock the dependencies
 jest.mock('../useProfile', () => ({

@@ -7,7 +7,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react-native';
 import { CurrentSessionCard } from '../CurrentSessionCard';
-import { Stage } from '@listen-well/shared';
+import { Stage } from '@be-heard/shared';
 
 // Mock expo-router
 const mockPush = jest.fn();

@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
-import { Stage, StageStatus, NeedCategory, MessageRole, CommonGroundDTO } from '@listen-well/shared';
+import { Stage, StageStatus, NeedCategory, MessageRole, CommonGroundDTO } from '@be-heard/shared';
 
 // Mock expo-router
 const mockReplace = jest.fn();

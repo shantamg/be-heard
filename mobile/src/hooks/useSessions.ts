@@ -24,7 +24,7 @@ import {
   AcceptInvitationResponse,
   DeclineInvitationResponse,
   InvitationDTO,
-} from '@listen-well/shared';
+} from '@be-heard/shared';
 
 // ============================================================================
 // Query Keys

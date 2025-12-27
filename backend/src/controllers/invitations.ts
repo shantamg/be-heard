@@ -530,7 +530,6 @@ export async function resendInvitation(req: Request, res: Response): Promise<voi
 
     successResponse(res, {
       resent: true,
-      mocked: emailResult.mocked,
     });
   } catch (error) {
     console.error('[resendInvitation] Error:', error);
