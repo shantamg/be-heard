@@ -2,23 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { BreathingExercise } from '../BreathingExercise';
 
-// Mock react-native-reanimated
-jest.mock('react-native-reanimated', () => {
-  const Reanimated = require('react-native-reanimated/mock');
-  Reanimated.default.call = () => {};
-  return {
-    ...Reanimated,
-    useSharedValue: (initial: number) => ({ value: initial }),
-    useAnimatedStyle: () => ({}),
-    withTiming: (value: number) => value,
-    withSequence: (...args: number[]) => args[0],
-    Easing: {
-      inOut: () => {},
-      ease: {},
-    },
-    cancelAnimation: () => {},
-  };
-});
+// Note: react-native-reanimated is mocked globally in jest.setup.js
 
 describe('BreathingExercise', () => {
   const defaultProps = {

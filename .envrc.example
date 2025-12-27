@@ -1,0 +1,9 @@
+# Copy this file to .envrc and adjust as needed
+# Then run: direnv allow
+
+export DIRENV_WARN_TIMEOUT=20s
+eval "$(devenv direnvrc)"
+use devenv
+
+# Optional: Override DATABASE_URL if using external database
+# export DATABASE_URL="postgresql://user:password@host:5432/listen_well"
