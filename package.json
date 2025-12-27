@@ -30,6 +30,7 @@
     "kill:mobile": "lsof -ti:8081 | xargs kill -9 2>/dev/null || echo 'No process found on port 8081'",
     "docs:dev": "npm --workspace docs-site run start",
     "docs:build": "npm --workspace docs-site run build",
-    "docs:deploy": "npm --workspace docs-site run vercel:deploy"
+    "docs:deploy": "npm --workspace docs-site run vercel:deploy",
+    "docs:bundle": "node scripts/bundle-planning-docs.js"
   }
 }

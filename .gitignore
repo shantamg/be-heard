@@ -53,3 +53,6 @@ backend/prisma/*.db-journal
 *.pem
 google-services.json
 GoogleService-Info.plist
+
+# Generated bundles
+planning-docs-bundle.md
