@@ -8,8 +8,6 @@ import {
   updatePushTokenRequestSchema,
   updateProfileRequestSchema,
   getMeResponseSchema,
-  forgotPasswordRequestSchema,
-  resetPasswordRequestSchema,
   ablyTokenResponseSchema,
   userDTOSchema,
 } from '../auth';
@@ -147,48 +145,6 @@ describe('updateProfileRequestSchema', () => {
   it('rejects name over 100 chars', () => {
     const result = updateProfileRequestSchema.safeParse({
       name: 'x'.repeat(101),
-    });
-    expect(result.success).toBe(false);
-  });
-});
-
-describe('forgotPasswordRequestSchema', () => {
-  it('accepts valid email', () => {
-    const result = forgotPasswordRequestSchema.safeParse({
-      email: 'test@example.com',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects invalid email', () => {
-    const result = forgotPasswordRequestSchema.safeParse({
-      email: 'not-an-email',
-    });
-    expect(result.success).toBe(false);
-  });
-});
-
-describe('resetPasswordRequestSchema', () => {
-  it('accepts valid reset request', () => {
-    const result = resetPasswordRequestSchema.safeParse({
-      token: 'reset-token-123',
-      newPassword: 'securePassword123!',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects empty token', () => {
-    const result = resetPasswordRequestSchema.safeParse({
-      token: '',
-      newPassword: 'securePassword123!',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects password under 8 chars', () => {
-    const result = resetPasswordRequestSchema.safeParse({
-      token: 'reset-token-123',
-      newPassword: 'short',
     });
     expect(result.success).toBe(false);
   });

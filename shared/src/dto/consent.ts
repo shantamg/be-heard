@@ -2,6 +2,18 @@
  * Consent DTOs
  *
  * Data Transfer Objects for the Consensual Bridge mechanism.
+ *
+ * FUTURE FEATURE: These DTOs define the planned consent system where users
+ * explicitly control what data is shared with their partner through the
+ * Consensual Bridge. See /docs/mvp-planning/plans/backend/api/consent.md
+ * for the full API specification.
+ *
+ * Core principle: Nothing moves from UserVessel to SharedVessel without
+ * explicit consent. The AI generates transformed content (heat removed,
+ * need preserved), and users can review, edit, grant, deny, or revoke consent.
+ *
+ * Implementation status: DTOs defined, API endpoints not yet implemented.
+ * These types are kept for future implementation of the consent flow.
  */
 
 import { ConsentDecision, ConsentContentType } from '../enums';

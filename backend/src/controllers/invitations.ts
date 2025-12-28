@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma';
 import { sendInvitationEmail } from '../services/email';
 import { notifyPartner } from '../services/realtime';
 import { z } from 'zod';
+import { ApiResponse, ErrorCode } from '@be-heard/shared';
+import { successResponse, errorResponse } from '../utils/response';
 
 // ============================================================================
 // Types
@@ -10,34 +12,6 @@ import { z } from 'zod';
 
 // Note: AuthenticatedRequest uses the global Express.Request.user type
 // defined in middleware/auth.ts via declare global
-
-// API Response helpers
-interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-}
-
-function successResponse<T>(res: Response, data: T, status = 200): void {
-  res.status(status).json({ success: true, data } as ApiResponse<T>);
-}
-
-function errorResponse(
-  res: Response,
-  code: string,
-  message: string,
-  status = 400,
-  details?: unknown
-): void {
-  res.status(status).json({
-    success: false,
-    error: { code, message, details },
-  } as ApiResponse<never>);
-}
 
 // ============================================================================
 // Validation Schemas
@@ -103,11 +77,7 @@ export async function listSessions(req: Request, res: Response): Promise<void> {
             },
           },
         },
-        stageProgress: {
-          where: { userId: user.id },
-          orderBy: { stage: 'desc' },
-          take: 1,
-        },
+        stageProgress: true, // Get all stage progress records
       },
       orderBy: { updatedAt: 'desc' },
       take: takeLimit + 1,
@@ -118,23 +88,80 @@ export async function listSessions(req: Request, res: Response): Promise<void> {
     const items = hasMore ? sessions.slice(0, -1) : sessions;
 
     const formattedSessions = items.map((session) => {
-      const partner = session.relationship.members.find(
+      const partnerMember = session.relationship.members.find(
         (m: { userId: string }) => m.userId !== user.id
       );
-      const currentStage = session.stageProgress[0]?.stage ?? 0;
+
+      // Get user's latest stage progress
+      const myProgressRecord = session.stageProgress
+        .filter((sp: { userId: string }) => sp.userId === user.id)
+        .sort((a: { stage: number }, b: { stage: number }) => b.stage - a.stage)[0];
+
+      // Get partner's latest stage progress
+      const partnerProgressRecord = partnerMember
+        ? session.stageProgress
+            .filter((sp: { userId: string }) => sp.userId === partnerMember.userId)
+            .sort((a: { stage: number }, b: { stage: number }) => b.stage - a.stage)[0]
+        : null;
+
+      // Default progress for users who haven't started
+      const defaultProgress = {
+        stage: 0,
+        status: 'NOT_STARTED' as const,
+        startedAt: null,
+        completedAt: null,
+      };
+
+      const myProgress = myProgressRecord
+        ? {
+            stage: myProgressRecord.stage,
+            status: myProgressRecord.status,
+            startedAt: myProgressRecord.startedAt?.toISOString() ?? null,
+            completedAt: myProgressRecord.completedAt?.toISOString() ?? null,
+          }
+        : defaultProgress;
+
+      const partnerProgress = partnerProgressRecord
+        ? {
+            stage: partnerProgressRecord.stage,
+            status: partnerProgressRecord.status,
+            startedAt: partnerProgressRecord.startedAt?.toISOString() ?? null,
+            completedAt: partnerProgressRecord.completedAt?.toISOString() ?? null,
+          }
+        : defaultProgress;
+
+      // Compute action needed arrays
+      // selfActionNeeded: gates the user needs to satisfy
+      // partnerActionNeeded: gates the partner needs to satisfy
+      const selfActionNeeded: string[] = [];
+      const partnerActionNeeded: string[] = [];
+
+      // If user is behind partner or has incomplete status, they need action
+      if (myProgress.status === 'IN_PROGRESS' || myProgress.status === 'NOT_STARTED') {
+        selfActionNeeded.push('complete_stage');
+      }
+
+      // If partner is behind or has incomplete status
+      if (partnerProgress.status === 'IN_PROGRESS' || partnerProgress.status === 'NOT_STARTED') {
+        partnerActionNeeded.push('complete_stage');
+      }
 
       return {
         id: session.id,
+        relationshipId: session.relationshipId,
         status: session.status,
-        currentStage,
-        partner: partner
+        createdAt: session.createdAt.toISOString(),
+        updatedAt: session.updatedAt.toISOString(),
+        partner: partnerMember
           ? {
-              id: partner.user.id,
-              name: partner.user.name,
+              id: partnerMember.user.id,
+              name: partnerMember.user.name,
             }
-          : null,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
+          : { id: '', name: null }, // Placeholder for invited sessions
+        myProgress,
+        partnerProgress,
+        selfActionNeeded,
+        partnerActionNeeded,
       };
     });
 

@@ -51,12 +51,6 @@ export interface ListSessionsParams {
   cursor?: string;
 }
 
-export interface ListSessionsResponse extends PaginatedResponse<SessionSummaryDTO> {}
-
-export interface GetSessionResponse {
-  session: SessionDetailDTO;
-}
-
 // ============================================================================
 // List Sessions Hook
 // ============================================================================
@@ -70,7 +64,7 @@ export interface GetSessionResponse {
 export function useSessions(
   params: ListSessionsParams = {},
   options?: Omit<
-    UseQueryOptions<ListSessionsResponse, ApiClientError>,
+    UseQueryOptions<PaginatedResponse<SessionSummaryDTO>, ApiClientError>,
     'queryKey' | 'queryFn'
   >
 ) {
@@ -84,7 +78,7 @@ export function useSessions(
 
       const queryString = queryParams.toString();
       const url = queryString ? `/sessions?${queryString}` : '/sessions';
-      return get<ListSessionsResponse>(url);
+      return get<PaginatedResponse<SessionSummaryDTO>>(url);
     },
     staleTime: 30_000, // 30 seconds
     ...options,
@@ -97,7 +91,7 @@ export function useSessions(
 export function useInfiniteSessions(
   params: Omit<ListSessionsParams, 'cursor'> = {},
   options?: Omit<
-    UseInfiniteQueryOptions<ListSessionsResponse, ApiClientError>,
+    UseInfiniteQueryOptions<PaginatedResponse<SessionSummaryDTO>, ApiClientError>,
     'queryKey' | 'queryFn' | 'getNextPageParam' | 'initialPageParam'
   >
 ) {
@@ -111,7 +105,7 @@ export function useInfiniteSessions(
 
       const queryString = queryParams.toString();
       const url = queryString ? `/sessions?${queryString}` : '/sessions';
-      return get<ListSessionsResponse>(url);
+      return get<PaginatedResponse<SessionSummaryDTO>>(url);
     },
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) =>
@@ -134,7 +128,7 @@ export function useInfiniteSessions(
 export function useSession(
   sessionId: string | undefined,
   options?: Omit<
-    UseQueryOptions<GetSessionResponse, ApiClientError>,
+    UseQueryOptions<{ session: SessionDetailDTO }, ApiClientError>,
     'queryKey' | 'queryFn'
   >
 ) {
@@ -142,7 +136,7 @@ export function useSession(
     queryKey: sessionKeys.detail(sessionId || ''),
     queryFn: async () => {
       if (!sessionId) throw new Error('Session ID is required');
-      return get<GetSessionResponse>(`/sessions/${sessionId}`);
+      return get<{ session: SessionDetailDTO }>(`/sessions/${sessionId}`);
     },
     enabled: !!sessionId,
     staleTime: 30_000,
@@ -186,22 +180,13 @@ export function useCreateSession(
 // Pause Session Hook
 // ============================================================================
 
-export interface PauseSessionRequest {
-  reason?: string;
-}
-
-export interface PauseSessionResponse {
-  paused: boolean;
-  pausedAt: string;
-}
-
 /**
  * Pause an active session.
  */
 export function usePauseSession(
   options?: Omit<
     UseMutationOptions<
-      PauseSessionResponse,
+      { paused: boolean; pausedAt: string },
       ApiClientError,
       { sessionId: string; reason?: string }
     >,
@@ -212,7 +197,7 @@ export function usePauseSession(
 
   return useMutation({
     mutationFn: async ({ sessionId, reason }) => {
-      return post<PauseSessionResponse, PauseSessionRequest>(
+      return post<{ paused: boolean; pausedAt: string }, { reason?: string }>(
         `/sessions/${sessionId}/pause`,
         { reason }
       );
@@ -229,17 +214,12 @@ export function usePauseSession(
 // Resume Session Hook
 // ============================================================================
 
-export interface ResumeSessionResponse {
-  resumed: boolean;
-  resumedAt: string;
-}
-
 /**
  * Resume a paused session.
  */
 export function useResumeSession(
   options?: Omit<
-    UseMutationOptions<ResumeSessionResponse, ApiClientError, { sessionId: string }>,
+    UseMutationOptions<{ resumed: boolean; resumedAt: string }, ApiClientError, { sessionId: string }>,
     'mutationFn'
   >
 ) {
@@ -247,7 +227,7 @@ export function useResumeSession(
 
   return useMutation({
     mutationFn: async ({ sessionId }) => {
-      return post<ResumeSessionResponse>(`/sessions/${sessionId}/resume`);
+      return post<{ resumed: boolean; resumedAt: string }>(`/sessions/${sessionId}/resume`);
     },
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({ queryKey: sessionKeys.detail(sessionId) });

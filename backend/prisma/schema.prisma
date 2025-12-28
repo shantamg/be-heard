@@ -4,10 +4,10 @@ generator client {
 }
 
 datasource db {
-  provider     = "postgresql"
-  url          = env("DATABASE_URL")
-  directUrl    = env("DIRECT_URL")
-  extensions   = [vector]
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [vector]
 }
 
 // ============================================================================
@@ -19,7 +19,7 @@ model User {
   clerkId   String?  @unique // Clerk authentication user ID
   email     String   @unique
   name      String?
-  pushToken String?  // Expo push token for realtime fallbacks
+  pushToken String? // Expo push token for realtime fallbacks
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -28,8 +28,8 @@ model User {
   vessels             UserVessel[]
   stageProgress       StageProgress[]
   messages            Message[]
-  consentsGiven       ConsentRecord[]            @relation("ConsentsGiven")
-  consentsRequested   ConsentRecord[]            @relation("ConsentsRequested")
+  consentsGiven       ConsentRecord[]               @relation("ConsentsGiven")
+  consentsRequested   ConsentRecord[]               @relation("ConsentsRequested")
   consentedContent    ConsentedContent[]
   empathyDrafts       EmpathyDraft[]
   empathyAttempts     EmpathyAttempt[]
@@ -37,7 +37,7 @@ model User {
   strategyProposals   StrategyProposal[]
   strategyRankings    StrategyRanking[]
   exerciseCompletions EmotionalExerciseCompletion[]
-  invitationsSent     Invitation[]               @relation("InvitedBy")
+  invitationsSent     Invitation[]                  @relation("InvitedBy")
 }
 
 model Relationship {
@@ -77,30 +77,30 @@ model Session {
   resolvedAt     DateTime?
 
   // Related entities
-  messages             Message[]
-  sharedVessel         SharedVessel?
-  stageProgress        StageProgress[]
-  userVessels          UserVessel[]
-  empathyDrafts        EmpathyDraft[]
-  empathyAttempts      EmpathyAttempt[]
-  empathyValidations   EmpathyValidation[]
-  strategyProposals    StrategyProposal[]
-  strategyRankings     StrategyRanking[]
-  consentRecords       ConsentRecord[]
-  exerciseCompletions  EmotionalExerciseCompletion[]
-  invitations          Invitation[]
+  messages            Message[]
+  sharedVessel        SharedVessel?
+  stageProgress       StageProgress[]
+  userVessels         UserVessel[]
+  empathyDrafts       EmpathyDraft[]
+  empathyAttempts     EmpathyAttempt[]
+  empathyValidations  EmpathyValidation[]
+  strategyProposals   StrategyProposal[]
+  strategyRankings    StrategyRanking[]
+  consentRecords      ConsentRecord[]
+  exerciseCompletions EmotionalExerciseCompletion[]
+  invitations         Invitation[]
 
   @@index([relationshipId])
   @@index([status])
 }
 
 enum SessionStatus {
-  CREATED   // Invitation sent
-  INVITED   // Partner invited, awaiting join
-  ACTIVE    // Both users engaged
-  PAUSED    // Cooling period
-  WAITING   // One user ahead, waiting for other
-  RESOLVED  // Process completed
+  CREATED // Invitation sent
+  INVITED // Partner invited, awaiting join
+  ACTIVE // Both users engaged
+  PAUSED // Cooling period
+  WAITING // One user ahead, waiting for other
+  RESOLVED // Process completed
   ABANDONED // Timeout or withdrawal
 }
 
@@ -192,9 +192,9 @@ model EmotionalReading {
   id        String     @id @default(cuid())
   vessel    UserVessel @relation(fields: [vesselId], references: [id], onDelete: Cascade)
   vesselId  String
-  intensity Int        // 1-10 scale
+  intensity Int // 1-10 scale
   context   String?    @db.Text
-  stage     Int        // Stage when reading was taken
+  stage     Int // Stage when reading was taken
   timestamp DateTime   @default(now())
 
   @@index([vesselId, timestamp])
@@ -204,11 +204,11 @@ model IdentifiedNeed {
   id           String       @id @default(cuid())
   vessel       UserVessel   @relation(fields: [vesselId], references: [id], onDelete: Cascade)
   vesselId     String
-  need         String       // From universal needs taxonomy
+  need         String // From universal needs taxonomy
   category     NeedCategory
-  evidence     String[]     // Quotes/references supporting this need
+  evidence     String[] // Quotes/references supporting this need
   confirmed    Boolean      @default(false) // User confirmed this need
-  aiConfidence Float        // AI confidence in identification
+  aiConfidence Float // AI confidence in identification
   createdAt    DateTime     @default(now())
 
   // Link to shared version if consented
@@ -243,7 +243,7 @@ model UserDocument {
   vesselId  String
   title     String
   content   String     @db.Text
-  type      String     // e.g., "reflection", "journal", "note"
+  type      String // e.g., "reflection", "journal", "note"
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -302,14 +302,14 @@ model CommonGround {
 }
 
 model Agreement {
-  id             String          @id @default(cuid())
-  sharedVessel   SharedVessel    @relation(fields: [sharedVesselId], references: [id], onDelete: Cascade)
+  id             String            @id @default(cuid())
+  sharedVessel   SharedVessel      @relation(fields: [sharedVesselId], references: [id], onDelete: Cascade)
   sharedVesselId String
-  description    String          @db.Text
+  description    String            @db.Text
   type           AgreementType
-  status         AgreementStatus @default(PROPOSED)
-  agreedByA      Boolean         @default(false)
-  agreedByB      Boolean         @default(false)
+  status         AgreementStatus   @default(PROPOSED)
+  agreedByA      Boolean           @default(false)
+  agreedByB      Boolean           @default(false)
   agreedAt       DateTime?
   followUpDate   DateTime?
   completedAt    DateTime?
@@ -321,8 +321,8 @@ model Agreement {
 
 enum AgreementType {
   MICRO_EXPERIMENT // Small, reversible action
-  COMMITMENT       // Longer-term agreement
-  CHECK_IN         // Scheduled follow-up
+  COMMITMENT // Longer-term agreement
+  CHECK_IN // Scheduled follow-up
 }
 
 enum AgreementStatus {
@@ -338,20 +338,20 @@ enum AgreementStatus {
 // ============================================================================
 
 model ConsentRecord {
-  id                String              @id @default(cuid())
-  user              User                @relation("ConsentsGiven", fields: [userId], references: [id], onDelete: Cascade)
+  id                String             @id @default(cuid())
+  user              User               @relation("ConsentsGiven", fields: [userId], references: [id], onDelete: Cascade)
   userId            String
-  session           Session?            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session           Session?           @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   sessionId         String?
   targetType        ConsentContentType
-  targetId          String?             // e.g., empathy draft id, need id, boundary id
-  requestedBy       User                @relation("ConsentsRequested", fields: [requestedByUserId], references: [id], onDelete: Cascade)
+  targetId          String? // e.g., empathy draft id, need id, boundary id
+  requestedBy       User               @relation("ConsentsRequested", fields: [requestedByUserId], references: [id], onDelete: Cascade)
   requestedByUserId String
   decision          ConsentDecision?
   decidedAt         DateTime?
   revokedAt         DateTime?
-  metadata          Json?               // Additional context
-  createdAt         DateTime            @default(now())
+  metadata          Json? // Additional context
+  createdAt         DateTime           @default(now())
 
   // Link to resulting shared content
   consentedContent ConsentedContent[]
@@ -386,7 +386,7 @@ model Message {
   session   Session     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   sessionId String
   sender    User?       @relation(fields: [senderId], references: [id], onDelete: SetNull)
-  senderId  String?     // null for AI messages
+  senderId  String? // null for AI messages
   role      MessageRole
   content   String      @db.Text
   stage     Int
@@ -431,15 +431,15 @@ model EmpathyDraft {
 }
 
 model EmpathyAttempt {
-  id              String        @id @default(cuid())
-  draft           EmpathyDraft  @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  id              String         @id @default(cuid())
+  draft           EmpathyDraft   @relation(fields: [draftId], references: [id], onDelete: Cascade)
   draftId         String
-  session         Session       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session         Session        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   sessionId       String
-  sourceUser      User          @relation(fields: [sourceUserId], references: [id], onDelete: Cascade)
+  sourceUser      User           @relation(fields: [sourceUserId], references: [id], onDelete: Cascade)
   sourceUserId    String
-  content         String        @db.Text
-  sharedAt        DateTime      @default(now())
+  content         String         @db.Text
+  sharedAt        DateTime       @default(now())
   consentRecord   ConsentRecord? @relation(fields: [consentRecordId], references: [id], onDelete: SetNull)
   consentRecordId String?
 
@@ -455,7 +455,7 @@ model EmpathyValidation {
   session        Session        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   sessionId      String
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId         String         // Recipient validating partner attempt
+  userId         String // Recipient validating partner attempt
   validated      Boolean
   feedback       String?        @db.Text
   feedbackShared Boolean        @default(false)
@@ -469,19 +469,19 @@ model EmpathyValidation {
 // ============================================================================
 
 model StrategyProposal {
-  id               String          @id @default(cuid())
-  session          Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id               String         @id @default(cuid())
+  session          Session        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   sessionId        String
-  createdBy        User?           @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdBy        User?          @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
   createdByUserId  String?
-  description      String          @db.Text
+  description      String         @db.Text
   needsAddressed   String[]
   duration         String?
   measureOfSuccess String?
-  source           StrategySource  @default(USER_SUBMITTED)
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  consentRecord    ConsentRecord?  @relation(fields: [consentRecordId], references: [id], onDelete: SetNull)
+  source           StrategySource @default(USER_SUBMITTED)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  consentRecord    ConsentRecord? @relation(fields: [consentRecordId], references: [id], onDelete: SetNull)
   consentRecordId  String?
 
   // Note: Rankings reference proposals via rankedIds (String[]), not a direct relation
@@ -541,7 +541,7 @@ model GlobalLibraryItem {
   id          String              @id @default(cuid())
   title       String
   description String              @db.Text
-  category    String              // e.g., "communication", "quality-time", "conflict-resolution"
+  category    String // e.g., "communication", "quality-time", "conflict-resolution"
   source      GlobalLibrarySource
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
@@ -550,7 +550,7 @@ model GlobalLibraryItem {
   embedding Unsupported("vector(1536)")?
 
   // For user-contributed items only
-  contributedBy       String?   // User ID if contributed (anonymized in results)
+  contributedBy       String? // User ID if contributed (anonymized in results)
   contributionConsent DateTime? // When user consented to anonymized contribution
 
   @@index([category])
@@ -558,7 +558,7 @@ model GlobalLibraryItem {
 }
 
 enum GlobalLibrarySource {
-  CURATED     // Admin/expert authored
+  CURATED // Admin/expert authored
   CONTRIBUTED // User-contributed with explicit consent
 }
 

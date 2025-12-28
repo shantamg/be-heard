@@ -46,26 +46,6 @@ export interface UpdatePushTokenResponse {
   registered: boolean;
 }
 
-// ============================================================================
-// Password Reset
-// ============================================================================
-
-export interface ForgotPasswordRequest {
-  email: string;
-}
-
-export interface ForgotPasswordResponse {
-  sent: boolean;
-}
-
-export interface ResetPasswordRequest {
-  token: string;
-  newPassword: string;
-}
-
-export interface ResetPasswordResponse {
-  reset: boolean;
-}
 
 // ============================================================================
 // Ably Token

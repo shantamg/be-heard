@@ -32,11 +32,6 @@ export {
   sessionKeys,
   // Types
   type ListSessionsParams,
-  type ListSessionsResponse,
-  type GetSessionResponse,
-  type PauseSessionRequest,
-  type PauseSessionResponse,
-  type ResumeSessionResponse,
   // Hooks
   useSessions,
   useInfiniteSessions,

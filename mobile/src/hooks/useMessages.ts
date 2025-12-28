@@ -282,7 +282,7 @@ export function useCompleteExercise(
   return useMutation({
     mutationFn: async (request: CompleteExerciseRequest) => {
       return post<CompleteExerciseResponse, CompleteExerciseRequest>(
-        `/sessions/${request.sessionId}/exercises`,
+        `/sessions/${request.sessionId}/exercises/complete`,
         request
       );
     },

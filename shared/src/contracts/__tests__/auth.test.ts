@@ -5,8 +5,6 @@
 import {
   updateProfileRequestSchema,
   updatePushTokenRequestSchema,
-  forgotPasswordRequestSchema,
-  resetPasswordRequestSchema,
   userDTOSchema,
 } from '../auth';
 
@@ -98,47 +96,6 @@ describe('updatePushTokenRequestSchema', () => {
     const result = updatePushTokenRequestSchema.safeParse({
       pushToken: 'abc123',
       platform: 'web',
-    });
-    expect(result.success).toBe(false);
-  });
-});
-
-describe('forgotPasswordRequestSchema', () => {
-  it('accepts valid email', () => {
-    const result = forgotPasswordRequestSchema.safeParse({
-      email: 'test@example.com',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects invalid email', () => {
-    const result = forgotPasswordRequestSchema.safeParse({
-      email: 'not-an-email',
-    });
-    expect(result.success).toBe(false);
-  });
-});
-
-describe('resetPasswordRequestSchema', () => {
-  it('accepts valid request', () => {
-    const result = resetPasswordRequestSchema.safeParse({
-      token: 'reset-token-123',
-      newPassword: 'securePassword123',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects short password', () => {
-    const result = resetPasswordRequestSchema.safeParse({
-      token: 'reset-token-123',
-      newPassword: 'short',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects missing token', () => {
-    const result = resetPasswordRequestSchema.safeParse({
-      newPassword: 'securePassword123',
     });
     expect(result.success).toBe(false);
   });

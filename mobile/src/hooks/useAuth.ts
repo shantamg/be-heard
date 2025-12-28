@@ -2,18 +2,16 @@ import { useState, useEffect, useCallback, createContext, useContext } from 'rea
 import { useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { apiClient } from '../lib/api';
-import type { ApiResponse, GetMeResponse } from '@be-heard/shared';
+import type { ApiResponse, GetMeResponse, UserDTO } from '@be-heard/shared';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
 
 /**
- * User type for authentication
+ * Extended user type for authentication
+ * Extends UserDTO with optional fields for local auth state
  */
-export interface User {
-  id: string;
-  email: string;
-  name: string;
+export interface User extends UserDTO {
   firstName?: string;
   lastName?: string;
   avatarUrl?: string;
@@ -226,6 +224,7 @@ export function useAuthProvider(): AuthContextValue {
           id: response.data.data.user.id,
           email: response.data.data.user.email,
           name: response.data.data.user.name || response.data.data.user.email,
+          createdAt: response.data.data.user.createdAt,
         };
 
         await SecureStore.setItemAsync(AUTH_TOKEN_KEY, token);
@@ -299,6 +298,7 @@ export function useAuthProvider(): AuthContextValue {
           id: `user_${Date.now()}`,
           email: pendingEmail,
           name: pendingEmail.split('@')[0],
+          createdAt: new Date().toISOString(),
         };
 
         const token = `token_${Date.now()}`;
@@ -355,6 +355,7 @@ export function useAuthProvider(): AuthContextValue {
           id: `user_${Date.now()}`,
           email: pendingEmail,
           name: pendingName || pendingEmail.split('@')[0],
+          createdAt: new Date().toISOString(),
           firstName: pendingName?.split(' ')[0],
           lastName: pendingName?.split(' ').slice(1).join(' ') || undefined,
         };

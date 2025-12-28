@@ -14,21 +14,13 @@ import {
 } from '@tanstack/react-query';
 import { get, post, ApiClientError } from '../lib/api';
 import {
-  // Stage contracts
-  SignCompactResponseInput,
-  CompactStatusResponseInput,
-  FeelHeardResponseInput,
-  SaveEmpathyDraftResponseInput,
-  ConsentToShareResponseInput,
-  ValidateEmpathyResponseInput,
-  RecordEmotionResponseInput,
-  ConfirmNeedsResponseInput,
-  NeedsMappingResponseInput,
-  ProposeStrategyResponseInput,
-  RankStrategiesResponseInput,
-  StrategiesRevealResponseInput,
-  ConfirmAgreementResponseInput,
-  GetProgressResponseInput,
+  // Response types
+  SignCompactResponse,
+  CompactStatusResponse,
+  ConfirmFeelHeardResponse,
+  SaveEmpathyDraftResponse,
+  ConsentToShareEmpathyResponse,
+  GetProgressResponse,
   // DTOs
   EmpathyDraftDTO,
   GetEmpathyDraftResponse,
@@ -105,7 +97,7 @@ export const stageKeys = {
 export function useProgress(
   sessionId: string | undefined,
   options?: Omit<
-    UseQueryOptions<GetProgressResponseInput, ApiClientError>,
+    UseQueryOptions<GetProgressResponse, ApiClientError>,
     'queryKey' | 'queryFn'
   >
 ) {
@@ -113,7 +105,7 @@ export function useProgress(
     queryKey: stageKeys.progress(sessionId || ''),
     queryFn: async () => {
       if (!sessionId) throw new Error('Session ID is required');
-      return get<GetProgressResponseInput>(`/sessions/${sessionId}/progress`);
+      return get<GetProgressResponse>(`/sessions/${sessionId}/progress`);
     },
     enabled: !!sessionId,
     staleTime: 10_000, // Progress can change frequently
@@ -131,7 +123,7 @@ export function useProgress(
 export function useCompactStatus(
   sessionId: string | undefined,
   options?: Omit<
-    UseQueryOptions<CompactStatusResponseInput, ApiClientError>,
+    UseQueryOptions<CompactStatusResponse, ApiClientError>,
     'queryKey' | 'queryFn'
   >
 ) {
@@ -139,7 +131,7 @@ export function useCompactStatus(
     queryKey: stageKeys.compact(sessionId || ''),
     queryFn: async () => {
       if (!sessionId) throw new Error('Session ID is required');
-      return get<CompactStatusResponseInput>(`/sessions/${sessionId}/compact`);
+      return get<CompactStatusResponse>(`/sessions/${sessionId}/compact/status`);
     },
     enabled: !!sessionId,
     staleTime: 30_000,
@@ -153,7 +145,7 @@ export function useCompactStatus(
 export function useSignCompact(
   options?: Omit<
     UseMutationOptions<
-      SignCompactResponseInput,
+      SignCompactResponse,
       ApiClientError,
       { sessionId: string }
     >,
@@ -164,7 +156,7 @@ export function useSignCompact(
 
   return useMutation({
     mutationFn: async ({ sessionId }) => {
-      return post<SignCompactResponseInput>(`/sessions/${sessionId}/compact/sign`, {
+      return post<SignCompactResponse>(`/sessions/${sessionId}/compact/sign`, {
         agreed: true,
       });
     },
@@ -187,7 +179,7 @@ export function useSignCompact(
 export function useConfirmFeelHeard(
   options?: Omit<
     UseMutationOptions<
-      FeelHeardResponseInput,
+      ConfirmFeelHeardResponse,
       ApiClientError,
       { sessionId: string; confirmed: boolean; feedback?: string }
     >,
@@ -198,7 +190,7 @@ export function useConfirmFeelHeard(
 
   return useMutation({
     mutationFn: async ({ sessionId, confirmed, feedback }) => {
-      return post<FeelHeardResponseInput>(`/sessions/${sessionId}/feel-heard`, {
+      return post<ConfirmFeelHeardResponse>(`/sessions/${sessionId}/feel-heard`, {
         confirmed,
         feedback,
       });
@@ -243,7 +235,7 @@ export function useEmpathyDraft(
 export function useSaveEmpathyDraft(
   options?: Omit<
     UseMutationOptions<
-      SaveEmpathyDraftResponseInput,
+      SaveEmpathyDraftResponse,
       ApiClientError,
       { sessionId: string; content: string; readyToShare?: boolean }
     >,
@@ -254,7 +246,7 @@ export function useSaveEmpathyDraft(
 
   return useMutation({
     mutationFn: async ({ sessionId, content, readyToShare }) => {
-      return post<SaveEmpathyDraftResponseInput>(
+      return post<SaveEmpathyDraftResponse>(
         `/sessions/${sessionId}/empathy/draft`,
         { content, readyToShare }
       );
@@ -272,7 +264,7 @@ export function useSaveEmpathyDraft(
 export function useConsentToShareEmpathy(
   options?: Omit<
     UseMutationOptions<
-      ConsentToShareResponseInput,
+      ConsentToShareEmpathyResponse,
       ApiClientError,
       { sessionId: string; consent: boolean }
     >,
@@ -283,7 +275,7 @@ export function useConsentToShareEmpathy(
 
   return useMutation({
     mutationFn: async ({ sessionId, consent }) => {
-      return post<ConsentToShareResponseInput>(
+      return post<ConsentToShareEmpathyResponse>(
         `/sessions/${sessionId}/empathy/consent`,
         { consent }
       );
@@ -672,7 +664,7 @@ export function useStrategiesReveal(
     queryKey: stageKeys.strategiesReveal(sessionId || ''),
     queryFn: async () => {
       if (!sessionId) throw new Error('Session ID is required');
-      return get<RevealOverlapResponse>(`/sessions/${sessionId}/strategies/reveal`);
+      return get<RevealOverlapResponse>(`/sessions/${sessionId}/strategies/overlap`);
     },
     enabled: !!sessionId,
     staleTime: 30_000,

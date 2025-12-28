@@ -59,35 +59,6 @@ export const updatePushTokenResponseSchema = z.object({
 });
 
 // ============================================================================
-// POST /auth/forgot-password
-// ============================================================================
-
-export const forgotPasswordRequestSchema = z.object({
-  email: z.string().email('Invalid email format'),
-});
-
-export type ForgotPasswordRequestInput = z.infer<typeof forgotPasswordRequestSchema>;
-
-export const forgotPasswordResponseSchema = z.object({
-  sent: z.boolean(),
-});
-
-// ============================================================================
-// POST /auth/reset-password
-// ============================================================================
-
-export const resetPasswordRequestSchema = z.object({
-  token: z.string().min(1, 'Token is required'),
-  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
-});
-
-export type ResetPasswordRequestInput = z.infer<typeof resetPasswordRequestSchema>;
-
-export const resetPasswordResponseSchema = z.object({
-  reset: z.boolean(),
-});
-
-// ============================================================================
 // GET /auth/ably-token
 // ============================================================================
 

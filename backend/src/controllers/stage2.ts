@@ -15,43 +15,11 @@ import {
   saveEmpathyDraftRequestSchema,
   consentToShareRequestSchema,
   validateEmpathyRequestSchema,
+  ApiResponse,
+  ErrorCode,
 } from '@be-heard/shared';
 import { notifyPartner } from '../services/realtime';
-
-// ============================================================================
-// Types
-// ============================================================================
-
-interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-}
-
-// ============================================================================
-// Response Helpers
-// ============================================================================
-
-function successResponse<T>(res: Response, data: T, status = 200): void {
-  res.status(status).json({ success: true, data } as ApiResponse<T>);
-}
-
-function errorResponse(
-  res: Response,
-  code: string,
-  message: string,
-  status = 400,
-  details?: unknown
-): void {
-  res.status(status).json({
-    success: false,
-    error: { code, message, details },
-  } as ApiResponse<never>);
-}
+import { successResponse, errorResponse } from '../utils/response';
 
 // ============================================================================
 // Types
