@@ -10,6 +10,9 @@ describe('userDTOSchema', () => {
       id: 'user-123',
       email: 'test@example.com',
       name: 'John Doe',
+      firstName: 'John',
+      lastName: 'Doe',
+      biometricEnabled: false,
       createdAt: '2024-01-01T00:00:00.000Z',
     });
     expect(result.success).toBe(true);
@@ -20,6 +23,9 @@ describe('userDTOSchema', () => {
       id: 'user-123',
       email: 'test@example.com',
       name: null,
+      firstName: null,
+      lastName: null,
+      biometricEnabled: true,
       createdAt: '2024-01-01T00:00:00.000Z',
     });
     expect(result.success).toBe(true);
@@ -30,6 +36,9 @@ describe('userDTOSchema', () => {
       id: 'user-123',
       email: 'not-an-email',
       name: 'John',
+      firstName: 'John',
+      lastName: null,
+      biometricEnabled: false,
       createdAt: '2024-01-01T00:00:00.000Z',
     });
     expect(result.success).toBe(false);

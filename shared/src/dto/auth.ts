@@ -12,6 +12,9 @@ export interface UserDTO {
   id: string;
   email: string;
   name: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  biometricEnabled: boolean;
   createdAt: string;
 }
 
@@ -93,4 +96,17 @@ export interface AblyTokenResponse {
     nonce: string;
     mac: string;
   };
+}
+
+// ============================================================================
+// Biometric Preferences
+// ============================================================================
+
+export interface UpdateBiometricPreferenceRequest {
+  enabled: boolean;
+}
+
+export interface UpdateBiometricPreferenceResponse {
+  biometricEnabled: boolean;
+  biometricEnrolledAt: string | null;
 }

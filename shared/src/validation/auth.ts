@@ -14,8 +14,12 @@ export {
   getMeResponseSchema,
   ablyTokenResponseSchema,
   userDTOSchema,
+  updateBiometricPreferenceRequestSchema,
+  updateBiometricPreferenceResponseSchema,
   type UpdatePushTokenRequestInput,
   type UpdateProfileRequestInput,
   type GetMeResponseInput,
   type AblyTokenResponseInput,
+  type UpdateBiometricPreferenceRequestInput,
+  type UpdateBiometricPreferenceResponseInput,
 } from '../contracts/auth';

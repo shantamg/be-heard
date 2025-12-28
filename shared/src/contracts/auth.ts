@@ -14,6 +14,9 @@ export const userDTOSchema = z.object({
   id: z.string(),
   email: z.string().email(),
   name: z.string().nullable(),
+  firstName: z.string().nullable(),
+  lastName: z.string().nullable(),
+  biometricEnabled: z.boolean(),
   createdAt: z.string().datetime(),
 });
 
@@ -75,3 +78,20 @@ export const ablyTokenResponseSchema = z.object({
 });
 
 export type AblyTokenResponseInput = z.infer<typeof ablyTokenResponseSchema>;
+
+// ============================================================================
+// PATCH /auth/biometric
+// ============================================================================
+
+export const updateBiometricPreferenceRequestSchema = z.object({
+  enabled: z.boolean(),
+});
+
+export type UpdateBiometricPreferenceRequestInput = z.infer<typeof updateBiometricPreferenceRequestSchema>;
+
+export const updateBiometricPreferenceResponseSchema = z.object({
+  biometricEnabled: z.boolean(),
+  biometricEnrolledAt: z.string().datetime().nullable(),
+});
+
+export type UpdateBiometricPreferenceResponseInput = z.infer<typeof updateBiometricPreferenceResponseSchema>;

@@ -10,6 +10,8 @@ import {
   getMeResponseSchema,
   ablyTokenResponseSchema,
   userDTOSchema,
+  updateBiometricPreferenceRequestSchema,
+  updateBiometricPreferenceResponseSchema,
 } from '../auth';
 
 describe('userDTOSchema', () => {
@@ -18,6 +20,9 @@ describe('userDTOSchema', () => {
       id: 'user-123',
       email: 'test@example.com',
       name: 'John Doe',
+      firstName: 'John',
+      lastName: 'Doe',
+      biometricEnabled: false,
       createdAt: '2024-01-01T00:00:00.000Z',
     });
     expect(result.success).toBe(true);
@@ -28,6 +33,9 @@ describe('userDTOSchema', () => {
       id: 'user-123',
       email: 'test@example.com',
       name: null,
+      firstName: null,
+      lastName: null,
+      biometricEnabled: true,
       createdAt: '2024-01-01T00:00:00.000Z',
     });
     expect(result.success).toBe(true);
@@ -38,6 +46,9 @@ describe('userDTOSchema', () => {
       id: 'user-123',
       email: 'not-an-email',
       name: 'John',
+      firstName: 'John',
+      lastName: null,
+      biometricEnabled: false,
       createdAt: '2024-01-01T00:00:00.000Z',
     });
     expect(result.success).toBe(false);
@@ -51,6 +62,9 @@ describe('getMeResponseSchema', () => {
         id: 'user-123',
         email: 'test@example.com',
         name: 'John',
+        firstName: 'John',
+        lastName: null,
+        biometricEnabled: false,
         createdAt: '2024-01-01T00:00:00.000Z',
       },
       activeSessions: 2,
@@ -65,6 +79,9 @@ describe('getMeResponseSchema', () => {
         id: 'user-123',
         email: 'test@example.com',
         name: null,
+        firstName: null,
+        lastName: null,
+        biometricEnabled: true,
         createdAt: '2024-01-01T00:00:00.000Z',
       },
       activeSessions: 0,
@@ -79,6 +96,9 @@ describe('getMeResponseSchema', () => {
         id: 'user-123',
         email: 'test@example.com',
         name: null,
+        firstName: null,
+        lastName: null,
+        biometricEnabled: false,
         createdAt: '2024-01-01T00:00:00.000Z',
       },
       activeSessions: -1,
@@ -173,6 +193,59 @@ describe('ablyTokenResponseSchema', () => {
         ttl: 3600000,
         // missing other required fields
       },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('updateBiometricPreferenceRequestSchema', () => {
+  it('accepts enabled true', () => {
+    const result = updateBiometricPreferenceRequestSchema.safeParse({
+      enabled: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts enabled false', () => {
+    const result = updateBiometricPreferenceRequestSchema.safeParse({
+      enabled: false,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects missing enabled', () => {
+    const result = updateBiometricPreferenceRequestSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects non-boolean enabled', () => {
+    const result = updateBiometricPreferenceRequestSchema.safeParse({
+      enabled: 'true',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('updateBiometricPreferenceResponseSchema', () => {
+  it('accepts valid response with enrollment date', () => {
+    const result = updateBiometricPreferenceResponseSchema.safeParse({
+      biometricEnabled: true,
+      biometricEnrolledAt: '2024-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts valid response with null enrollment date', () => {
+    const result = updateBiometricPreferenceResponseSchema.safeParse({
+      biometricEnabled: false,
+      biometricEnrolledAt: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects missing fields', () => {
+    const result = updateBiometricPreferenceResponseSchema.safeParse({
+      biometricEnabled: true,
     });
     expect(result.success).toBe(false);
   });
