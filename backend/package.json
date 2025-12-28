@@ -21,7 +21,7 @@
     "db:query": "tsx src/scripts/db-query.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.71.2",
+    "@aws-sdk/client-bedrock-runtime": "^3.958.0",
     "@clerk/express": "^1.7.60",
     "@prisma/client": "^6.1.0",
     "@react-native-community/netinfo": "^11.4.1",

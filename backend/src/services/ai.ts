@@ -2,10 +2,16 @@
  * AI Service
  *
  * Provides AI-powered responses for the BeHeard process.
- * Uses Anthropic's Claude API for witnessing conversations in Stage 1.
+ * Uses AWS Bedrock Converse API with Claude for witnessing conversations in Stage 1.
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import {
+  BedrockRuntimeClient,
+  ConverseCommand,
+  type Message,
+  type SystemContentBlock,
+  type InferenceConfiguration,
+} from '@aws-sdk/client-bedrock-runtime';
 
 // ============================================================================
 // Types
@@ -24,41 +30,51 @@ export interface ConversationMessage {
   content: string;
 }
 
+export interface AIConfig {
+  /** Maximum tokens for thinking/reasoning (default: 1024) */
+  thinkingBudget?: number;
+  /** Maximum tokens for response (default: 1024) */
+  maxTokens?: number;
+}
+
 // ============================================================================
 // Configuration
 // ============================================================================
 
-const MODEL = 'claude-sonnet-4-20250514';
-const MAX_TOKENS = 1024;
+const MODEL_ID = 'anthropic.claude-sonnet-4-20250514-v1:0';
+const DEFAULT_MAX_TOKENS = 1024;
+const DEFAULT_THINKING_BUDGET = 1024;
 
 /**
- * Get Anthropic client singleton.
- * Returns null if ANTHROPIC_API_KEY is not configured.
+ * Get Bedrock client singleton.
+ * Returns null if AWS credentials are not configured.
+ * Reads AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION from environment.
  */
-function getAnthropicClient(): Anthropic | null {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    console.warn('[AI Service] ANTHROPIC_API_KEY not configured - using mock responses');
+function getBedrockClient(): BedrockRuntimeClient | null {
+  if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
+    console.warn('[AI Service] AWS credentials not configured - using mock responses');
     return null;
   }
-  return new Anthropic({ apiKey });
+  return new BedrockRuntimeClient({
+    region: process.env.AWS_REGION || 'us-east-1',
+  });
 }
 
 // Lazy-initialized client
-let anthropicClient: Anthropic | null | undefined;
+let bedrockClient: BedrockRuntimeClient | null | undefined;
 
-function getClient(): Anthropic | null {
-  if (anthropicClient === undefined) {
-    anthropicClient = getAnthropicClient();
+function getClient(): BedrockRuntimeClient | null {
+  if (bedrockClient === undefined) {
+    bedrockClient = getBedrockClient();
   }
-  return anthropicClient;
+  return bedrockClient;
 }
 
 /**
  * Reset the client (useful for testing)
  */
 export function resetAIClient(): void {
-  anthropicClient = undefined;
+  bedrockClient = undefined;
 }
 
 // ============================================================================
@@ -153,15 +169,27 @@ CRITICAL: After your <analysis>, provide your response to the user. Do NOT inclu
 // ============================================================================
 
 /**
+ * Convert our message format to Bedrock Converse API format
+ */
+function toBedrockMessages(messages: ConversationMessage[]): Message[] {
+  return messages.map((m) => ({
+    role: m.role,
+    content: [{ text: m.content }],
+  }));
+}
+
+/**
  * Get a witness response from the AI for Stage 1 conversations.
  *
  * @param messages - The conversation history
  * @param context - Context about the user and session
+ * @param config - Optional AI configuration (thinking budget, max tokens)
  * @returns The AI's response text
  */
 export async function getWitnessResponse(
   messages: ConversationMessage[],
-  context: WitnessContext
+  context: WitnessContext,
+  config?: AIConfig
 ): Promise<string> {
   const client = getClient();
 
@@ -172,26 +200,50 @@ export async function getWitnessResponse(
 
   try {
     const systemPrompt = buildWitnessSystemPrompt(context);
+    const maxTokens = config?.maxTokens ?? DEFAULT_MAX_TOKENS;
+    const thinkingBudget = config?.thinkingBudget ?? DEFAULT_THINKING_BUDGET;
 
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      messages: messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
+    // Build system content blocks
+    const system: SystemContentBlock[] = [{ text: systemPrompt }];
+
+    // Build inference configuration
+    const inferenceConfig: InferenceConfiguration = {
+      maxTokens,
+    };
+
+    // Build the Converse command with thinking budget
+    const command = new ConverseCommand({
+      modelId: MODEL_ID,
+      messages: toBedrockMessages(messages),
+      system,
+      inferenceConfig,
+      // Configure extended thinking via additional model fields
+      additionalModelRequestFields: {
+        thinking: {
+          type: 'enabled',
+          budget_tokens: thinkingBudget,
+        },
+      },
     });
 
+    const response = await client.send(command);
+
     // Extract text content from response
-    const textContent = response.content.find((block) => block.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
+    const outputMessage = response.output?.message;
+    if (!outputMessage?.content) {
+      console.error('[AI Service] No content in response');
+      return getMockWitnessResponse(messages, context);
+    }
+
+    // Find the text block in the response (skip thinking blocks)
+    const textBlock = outputMessage.content.find((block) => 'text' in block);
+    if (!textBlock || !('text' in textBlock)) {
       console.error('[AI Service] No text content in response');
       return getMockWitnessResponse(messages, context);
     }
 
     // Strip analysis tags before returning
-    return stripAnalysisTags(textContent.text);
+    return stripAnalysisTags(textBlock.text ?? '');
   } catch (error) {
     console.error('[AI Service] Error getting witness response:', error);
     // Fall back to mock response on error
@@ -253,17 +305,19 @@ export async function checkAIServiceHealth(): Promise<{
     return {
       configured: false,
       accessible: false,
-      error: 'ANTHROPIC_API_KEY not configured',
+      error: 'AWS credentials not configured',
     };
   }
 
   try {
     // Make a minimal API call to verify connectivity
-    await client.messages.create({
-      model: MODEL,
-      max_tokens: 10,
-      messages: [{ role: 'user', content: 'Hello' }],
+    const command = new ConverseCommand({
+      modelId: MODEL_ID,
+      messages: [{ role: 'user', content: [{ text: 'Hello' }] }],
+      inferenceConfig: { maxTokens: 10 },
     });
+
+    await client.send(command);
 
     return {
       configured: true,
