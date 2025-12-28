@@ -22,6 +22,8 @@ export { BreathingExercise } from './BreathingExercise';
 export { CompactTerms } from './CompactTerms';
 export { CuriosityCompact } from './CuriosityCompact';
 export { WaitingRoom } from './WaitingRoom';
+export { WaitingStatusMessage } from './WaitingStatusMessage';
+export type { WaitingStatusType, WaitingStatusMessageProps } from './WaitingStatusMessage';
 
 // Stage 1 components
 export { FeelHeardConfirmation } from './FeelHeardConfirmation';
@@ -63,3 +65,6 @@ export type {
   NotificationItem,
   NotificationType,
 } from './NotificationInbox';
+
+// Biometric authentication components
+export { BiometricPrompt } from './BiometricPrompt';
