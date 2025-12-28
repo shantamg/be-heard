@@ -207,6 +207,7 @@ export async function requireRelationshipAccess(
 
 /**
  * Checks if the current user has access to a session
+ * Supports both :id and :sessionId route params
  */
 export async function requireSessionAccess(
   req: Request,
@@ -218,7 +219,8 @@ export async function requireSessionAccess(
     throw new UnauthorizedError();
   }
 
-  const sessionId = req.params.sessionId;
+  // Support both :id and :sessionId (prefer :id for consistency)
+  const sessionId = req.params.id || req.params.sessionId;
   if (!sessionId) {
     next();
     return;

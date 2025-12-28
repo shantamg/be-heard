@@ -11,7 +11,7 @@
  */
 
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireSessionAccess } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errors';
 import {
   getStrategies,
@@ -20,6 +20,9 @@ import {
   getOverlap,
   createAgreement,
   confirmAgreement,
+  requestSuggestions,
+  markReady,
+  getAgreements,
 } from '../controllers/stage4';
 
 const router = Router();
@@ -28,6 +31,7 @@ const router = Router();
 router.get(
   '/sessions/:id/strategies',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(getStrategies)
 );
 
@@ -35,6 +39,7 @@ router.get(
 router.post(
   '/sessions/:id/strategies',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(proposeStrategy)
 );
 
@@ -42,6 +47,7 @@ router.post(
 router.post(
   '/sessions/:id/strategies/rank',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(submitRanking)
 );
 
@@ -49,6 +55,7 @@ router.post(
 router.get(
   '/sessions/:id/strategies/overlap',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(getOverlap)
 );
 
@@ -56,6 +63,7 @@ router.get(
 router.post(
   '/sessions/:id/agreements',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(createAgreement)
 );
 
@@ -63,7 +71,32 @@ router.post(
 router.post(
   '/sessions/:id/agreements/:agreementId/confirm',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(confirmAgreement)
+);
+
+// Request AI strategy suggestions
+router.post(
+  '/sessions/:id/strategies/suggest',
+  requireAuth,
+  requireSessionAccess,
+  asyncHandler(requestSuggestions)
+);
+
+// Mark ready to rank
+router.post(
+  '/sessions/:id/strategies/ready',
+  requireAuth,
+  requireSessionAccess,
+  asyncHandler(markReady)
+);
+
+// Get agreements list
+router.get(
+  '/sessions/:id/agreements',
+  requireAuth,
+  requireSessionAccess,
+  asyncHandler(getAgreements)
 );
 
 export default router;

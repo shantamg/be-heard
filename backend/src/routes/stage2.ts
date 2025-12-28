@@ -10,7 +10,7 @@
  */
 
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireSessionAccess } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errors';
 import {
   saveDraft,
@@ -26,6 +26,7 @@ const router = Router();
 router.post(
   '/sessions/:id/empathy/draft',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(saveDraft)
 );
 
@@ -33,6 +34,7 @@ router.post(
 router.get(
   '/sessions/:id/empathy/draft',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(getDraft)
 );
 
@@ -40,6 +42,7 @@ router.get(
 router.post(
   '/sessions/:id/empathy/consent',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(consentToShare)
 );
 
@@ -47,6 +50,7 @@ router.post(
 router.get(
   '/sessions/:id/empathy/partner',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(getPartnerEmpathy)
 );
 
@@ -54,6 +58,7 @@ router.get(
 router.post(
   '/sessions/:id/empathy/validate',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(validateEmpathy)
 );
 

@@ -77,7 +77,11 @@ export type SessionEventType =
   | 'partner.advanced'
   | 'partner.empathy_shared'
   | 'partner.needs_shared'
+  | 'partner.common_ground_confirmed'
   | 'partner.ranking_submitted'
+  | 'partner.ready_to_rank'
+  | 'partner.consent_granted'
+  | 'partner.consent_revoked'
   // Agreements
   | 'agreement.proposed'
   | 'agreement.confirmed'

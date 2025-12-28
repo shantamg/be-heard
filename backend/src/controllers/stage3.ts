@@ -12,74 +12,14 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { extractNeedsFromConversation, findCommonGround } from '../services/needs';
-import { confirmNeedsRequestSchema, ConsentContentType } from '@be-heard/shared';
+import { confirmNeedsRequestSchema, ConsentContentType, ApiResponse, ErrorCode } from '@be-heard/shared';
 import { notifyPartner, publishSessionEvent } from '../services/realtime';
-
-// ============================================================================
-// Types
-// ============================================================================
-
-interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: unknown;
-  };
-}
-
-// ============================================================================
-// Response Helpers
-// ============================================================================
-
-function successResponse<T>(res: Response, data: T, status = 200): void {
-  res.status(status).json({ success: true, data } as ApiResponse<T>);
-}
-
-function errorResponse(
-  res: Response,
-  code: string,
-  message: string,
-  status = 400,
-  details?: unknown
-): void {
-  res.status(status).json({
-    success: false,
-    error: { code, message, details },
-  } as ApiResponse<never>);
-}
+import { successResponse, errorResponse } from '../utils/response';
+import { getPartnerUserId } from '../utils/session';
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/**
- * Get partner's user ID from a session
- */
-async function getPartnerUserId(
-  sessionId: string,
-  currentUserId: string
-): Promise<string | null> {
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    include: {
-      relationship: {
-        include: {
-          members: true,
-        },
-      },
-    },
-  });
-
-  if (!session) return null;
-
-  const partner = session.relationship.members.find(
-    (m) => m.userId !== currentUserId
-  );
-
-  return partner?.userId ?? null;
-}
 
 /**
  * Get or create user vessel for a session
@@ -683,5 +623,291 @@ export async function getCommonGround(
   } catch (error) {
     console.error('[getCommonGround] Error:', error);
     errorResponse(res, 'INTERNAL_ERROR', 'Failed to get common ground', 500);
+  }
+}
+
+/**
+ * Add custom need
+ * POST /sessions/:id/needs
+ */
+export async function addCustomNeed(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      errorResponse(res, 'UNAUTHORIZED', 'Authentication required', 401);
+      return;
+    }
+
+    const { id: sessionId } = req.params;
+    const { need, category, description } = req.body as {
+      need?: string;
+      category?: import('@be-heard/shared').NeedCategory;
+      description?: string;
+    };
+
+    if (!need || !category) {
+      errorResponse(res, 'VALIDATION_ERROR', 'need and category are required', 400);
+      return;
+    }
+
+    // Check session exists and user has access
+    const session = await prisma.session.findFirst({
+      where: {
+        id: sessionId,
+        relationship: {
+          members: {
+            some: { userId: user.id },
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      errorResponse(res, 'NOT_FOUND', 'Session not found', 404);
+      return;
+    }
+
+    // Check session is active
+    if (session.status !== 'ACTIVE') {
+      errorResponse(res, 'SESSION_NOT_ACTIVE', 'Session is not active', 400);
+      return;
+    }
+
+    // Get user's current stage progress
+    const progress = await prisma.stageProgress.findFirst({
+      where: {
+        sessionId,
+        userId: user.id,
+      },
+      orderBy: { stage: 'desc' },
+    });
+
+    // Check user is in stage 3
+    const currentStage = progress?.stage ?? 0;
+    if (currentStage !== 3) {
+      errorResponse(
+        res,
+        'VALIDATION_ERROR',
+        `Cannot add need: you are in stage ${currentStage}, but stage 3 is required`,
+        400
+      );
+      return;
+    }
+
+    // Get user's vessel
+    const userVessel = await getOrCreateUserVessel(sessionId, user.id);
+
+    // Create custom need
+    const customNeed = await prisma.identifiedNeed.create({
+      data: {
+        vesselId: userVessel.id,
+        need,
+        category: category as import('@be-heard/shared').NeedCategory,
+        evidence: [],
+        aiConfidence: 1.0, // User-added needs are considered 100% confident
+        confirmed: true, // User-added needs are auto-confirmed
+      },
+    });
+
+    successResponse(res, {
+      need: {
+        id: customNeed.id,
+        need: customNeed.need,
+        category: customNeed.category,
+        description: customNeed.need,
+        evidence: customNeed.evidence,
+        aiConfidence: customNeed.aiConfidence,
+        confirmed: customNeed.confirmed,
+      },
+    }, 201);
+  } catch (error) {
+    console.error('[addCustomNeed] Error:', error);
+    errorResponse(res, 'INTERNAL_ERROR', 'Failed to add custom need', 500);
+  }
+}
+
+/**
+ * Confirm common ground
+ * POST /sessions/:id/common-ground/confirm
+ */
+export async function confirmCommonGround(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      errorResponse(res, 'UNAUTHORIZED', 'Authentication required', 401);
+      return;
+    }
+
+    const { id: sessionId } = req.params;
+    const { commonGroundIds } = req.body as { commonGroundIds?: string[] };
+
+    if (!commonGroundIds || !Array.isArray(commonGroundIds) || commonGroundIds.length === 0) {
+      errorResponse(
+        res,
+        'VALIDATION_ERROR',
+        'commonGroundIds array is required',
+        400
+      );
+      return;
+    }
+
+    // Check session exists and user has access
+    const session = await prisma.session.findFirst({
+      where: {
+        id: sessionId,
+        relationship: {
+          members: {
+            some: { userId: user.id },
+          },
+        },
+      },
+      include: {
+        relationship: {
+          include: {
+            members: {
+              orderBy: { joinedAt: 'asc' },
+            },
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      errorResponse(res, 'NOT_FOUND', 'Session not found', 404);
+      return;
+    }
+
+    // Check session is active
+    if (session.status !== 'ACTIVE') {
+      errorResponse(res, 'SESSION_NOT_ACTIVE', 'Session is not active', 400);
+      return;
+    }
+
+    // Get user's current stage progress
+    const progress = await prisma.stageProgress.findFirst({
+      where: {
+        sessionId,
+        userId: user.id,
+      },
+      orderBy: { stage: 'desc' },
+    });
+
+    // Check user is in stage 3
+    const currentStage = progress?.stage ?? 0;
+    if (currentStage !== 3) {
+      errorResponse(
+        res,
+        'VALIDATION_ERROR',
+        `Cannot confirm common ground: you are in stage ${currentStage}, but stage 3 is required`,
+        400
+      );
+      return;
+    }
+
+    // Get shared vessel
+    const sharedVessel = await prisma.sharedVessel.findUnique({
+      where: { sessionId },
+    });
+
+    if (!sharedVessel) {
+      errorResponse(res, 'NOT_FOUND', 'Shared vessel not found', 404);
+      return;
+    }
+
+    // Determine if user is A or B
+    const members = session.relationship.members;
+    const userIsA = members[0]?.userId === user.id;
+
+    const now = new Date();
+
+    // Update confirmation status for each common ground
+    for (const cgId of commonGroundIds) {
+      const cg = await prisma.commonGround.findUnique({
+        where: { id: cgId },
+      });
+
+      if (!cg || cg.sharedVesselId !== sharedVessel.id) {
+        continue; // Skip invalid IDs
+      }
+
+      // Update confirmation based on user's slot
+      const updateData: Prisma.CommonGroundUpdateInput = userIsA
+        ? { confirmedByA: true }
+        : { confirmedByB: true };
+
+      // If both have now confirmed, set confirmedAt
+      const willBothConfirm = userIsA
+        ? cg.confirmedByB
+        : cg.confirmedByA;
+
+      if (willBothConfirm) {
+        updateData.confirmedAt = now;
+      }
+
+      await prisma.commonGround.update({
+        where: { id: cgId },
+        data: updateData,
+      });
+    }
+
+    // Get all common ground to check if all are confirmed
+    const allCommonGround = await prisma.commonGround.findMany({
+      where: { sharedVesselId: sharedVessel.id },
+    });
+
+    const allConfirmedByMe = allCommonGround.every((cg) =>
+      userIsA ? cg.confirmedByA : cg.confirmedByB
+    );
+
+    const allConfirmedByBoth = allCommonGround.every(
+      (cg) => cg.confirmedByA && cg.confirmedByB
+    );
+
+    // Update stage progress if all confirmed
+    if (allConfirmedByMe) {
+      const gatesSatisfied = {
+        ...(progress?.gatesSatisfied as Record<string, unknown> || {}),
+        commonGroundConfirmed: true,
+        confirmedAt: now.toISOString(),
+      } satisfies Prisma.InputJsonValue;
+
+      await prisma.stageProgress.update({
+        where: {
+          sessionId_userId_stage: {
+            sessionId,
+            userId: user.id,
+            stage: 3,
+          },
+        },
+        data: {
+          gatesSatisfied,
+          status: allConfirmedByBoth ? 'COMPLETED' : 'GATE_PENDING',
+          completedAt: allConfirmedByBoth ? now : null,
+        },
+      });
+    }
+
+    // Notify partner
+    const partnerId = await getPartnerUserId(sessionId, user.id);
+    if (partnerId) {
+      await notifyPartner(sessionId, partnerId, 'partner.common_ground_confirmed', {
+        stage: 3,
+        confirmedBy: user.id,
+      });
+    }
+
+    successResponse(res, {
+      confirmed: true,
+      confirmedAt: now.toISOString(),
+      allConfirmedByMe,
+      allConfirmedByBoth,
+      canAdvance: allConfirmedByBoth,
+    });
+  } catch (error) {
+    console.error('[confirmCommonGround] Error:', error);
+    errorResponse(res, 'INTERNAL_ERROR', 'Failed to confirm common ground', 500);
   }
 }

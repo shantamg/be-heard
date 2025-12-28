@@ -51,6 +51,22 @@ export const PUSH_MESSAGES: Record<SessionEvent, { title: string; body: string }
     title: 'Ranking submitted',
     body: 'Your partner submitted their strategy rankings.',
   },
+  'partner.common_ground_confirmed': {
+    title: 'Common ground confirmed',
+    body: 'Your partner confirmed the common ground.',
+  },
+  'partner.ready_to_rank': {
+    title: 'Ready to rank',
+    body: 'Your partner is ready to rank strategies.',
+  },
+  'partner.consent_granted': {
+    title: 'Content shared',
+    body: 'Your partner has shared some content with you.',
+  },
+  'partner.consent_revoked': {
+    title: 'Content withdrawn',
+    body: 'Your partner has withdrawn some shared content.',
+  },
   'agreement.proposed': {
     title: 'Agreement proposed',
     body: 'A new agreement has been proposed. Review it together.',

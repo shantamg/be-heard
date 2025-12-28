@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import authRoutes from './auth';
+import consentRoutes from './consent';
 import emotionsRoutes from './emotions';
 import invitationsRoutes from './invitations';
+import sessionsRoutes from './sessions';
 import stage0Routes from './stage0';
 import stage1Routes from './stage1';
 import stage2Routes from './stage2';
@@ -13,6 +15,8 @@ const router = Router();
 // Mount all route modules
 router.use('/auth', authRoutes);
 router.use(invitationsRoutes);
+router.use(sessionsRoutes);
+router.use(consentRoutes);
 router.use(emotionsRoutes);
 router.use(stage0Routes);
 router.use(stage1Routes);

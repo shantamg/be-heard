@@ -9,6 +9,8 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { notifyPartner } from '../services/realtime';
 import { ApiResponse, ErrorCode, signCompactRequestSchema } from '@be-heard/shared';
+import { successResponse, errorResponse } from '../utils/response';
+import { getPartnerUserId } from '../utils/session';
 
 // ============================================================================
 // Types
@@ -20,58 +22,8 @@ interface CompactGates {
 }
 
 // ============================================================================
-// Response Helpers
-// ============================================================================
-
-function successResponse<T>(res: Response, data: T, status = 200): void {
-  res.status(status).json({ success: true, data } as ApiResponse<T>);
-}
-
-function errorResponse(
-  res: Response,
-  code: string,
-  message: string,
-  status = 400,
-  details?: unknown
-): void {
-  res.status(status).json({
-    success: false,
-    error: { code, message, details },
-  } as ApiResponse<never>);
-}
-
-// ============================================================================
 // Helper Functions
 // ============================================================================
-
-/**
- * Gets the partner's user ID from a session
- */
-async function getPartnerUserId(
-  sessionId: string,
-  currentUserId: string
-): Promise<string | null> {
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    include: {
-      relationship: {
-        include: {
-          members: true,
-        },
-      },
-    },
-  });
-
-  if (!session) {
-    return null;
-  }
-
-  const partnerMember = session.relationship.members.find(
-    (m) => m.userId !== currentUserId
-  );
-
-  return partnerMember?.userId ?? null;
-}
 
 /**
  * Gets a partner's stage 0 progress
@@ -146,7 +98,7 @@ export async function signCompact(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const sessionId = req.params.sessionId || req.params.id;
+    const sessionId = req.params.id;
 
     // Validate request body
     const parseResult = signCompactRequestSchema.safeParse(req.body);
@@ -244,7 +196,7 @@ export async function getCompactStatus(req: Request, res: Response): Promise<voi
       return;
     }
 
-    const sessionId = req.params.sessionId || req.params.id;
+    const sessionId = req.params.id;
 
     // Check session exists and user has access
     const sessionCheck = await validateSessionAccess(sessionId, user.id);

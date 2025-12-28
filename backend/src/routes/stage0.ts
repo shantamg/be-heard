@@ -6,32 +6,33 @@
 
 import { Router } from 'express';
 import { requireAuth, requireSessionAccess } from '../middleware/auth';
+import { asyncHandler } from '../middleware/errors';
 import { signCompact, getCompactStatus } from '../controllers/stage0';
 
 const router = Router();
 
 /**
- * @route POST /api/v1/sessions/:sessionId/compact/sign
+ * @route POST /api/v1/sessions/:id/compact/sign
  * @description Sign the Curiosity Compact for a session
  * @access Private - requires authentication and session access
  */
 router.post(
-  '/sessions/:sessionId/compact/sign',
+  '/sessions/:id/compact/sign',
   requireAuth,
   requireSessionAccess,
-  signCompact
+  asyncHandler(signCompact)
 );
 
 /**
- * @route GET /api/v1/sessions/:sessionId/compact/status
+ * @route GET /api/v1/sessions/:id/compact/status
  * @description Get the compact signing status for a session
  * @access Private - requires authentication and session access
  */
 router.get(
-  '/sessions/:sessionId/compact/status',
+  '/sessions/:id/compact/status',
   requireAuth,
   requireSessionAccess,
-  getCompactStatus
+  asyncHandler(getCompactStatus)
 );
 
 export default router;

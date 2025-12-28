@@ -4,6 +4,7 @@
  * Routes for authentication-related endpoints.
  *
  * All routes in this file require authentication via requireAuth middleware.
+ * Note: Controllers already use asyncHandler internally.
  */
 
 import { Router } from 'express';

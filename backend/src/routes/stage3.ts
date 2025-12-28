@@ -9,13 +9,15 @@
  */
 
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireSessionAccess } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errors';
 import {
   getNeeds,
   confirmNeeds,
   consentToShareNeeds,
   getCommonGround,
+  addCustomNeed,
+  confirmCommonGround,
 } from '../controllers/stage3';
 
 const router = Router();
@@ -24,6 +26,7 @@ const router = Router();
 router.get(
   '/sessions/:id/needs',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(getNeeds)
 );
 
@@ -31,6 +34,7 @@ router.get(
 router.post(
   '/sessions/:id/needs/confirm',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(confirmNeeds)
 );
 
@@ -38,6 +42,7 @@ router.post(
 router.post(
   '/sessions/:id/needs/consent',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(consentToShareNeeds)
 );
 
@@ -45,7 +50,24 @@ router.post(
 router.get(
   '/sessions/:id/common-ground',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(getCommonGround)
+);
+
+// Add custom need
+router.post(
+  '/sessions/:id/needs',
+  requireAuth,
+  requireSessionAccess,
+  asyncHandler(addCustomNeed)
+);
+
+// Confirm common ground
+router.post(
+  '/sessions/:id/common-ground/confirm',
+  requireAuth,
+  requireSessionAccess,
+  asyncHandler(confirmCommonGround)
 );
 
 export default router;

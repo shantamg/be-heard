@@ -8,7 +8,7 @@
  */
 
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireSessionAccess } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errors';
 import {
   sendMessage,
@@ -22,6 +22,7 @@ const router = Router();
 router.post(
   '/sessions/:id/messages',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(sendMessage)
 );
 
@@ -29,6 +30,7 @@ router.post(
 router.post(
   '/sessions/:id/feel-heard',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(confirmFeelHeard)
 );
 
@@ -36,6 +38,7 @@ router.post(
 router.get(
   '/sessions/:id/messages',
   requireAuth,
+  requireSessionAccess,
   asyncHandler(getConversationHistory)
 );
 
