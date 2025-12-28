@@ -86,26 +86,47 @@ apiClient.interceptors.request.use(
 );
 
 // ============================================================================
-// Response Interceptor - Handle Errors
+// Response Interceptor - Handle Errors with Token Refresh Retry
 // ============================================================================
+
+// Track retry attempts to prevent infinite loops
+const RETRY_KEY = '__isRetry';
 
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   async (error: AxiosError<ApiResponse<unknown>>) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & { [RETRY_KEY]?: boolean };
+
     if (error.response) {
       const { status, data } = error.response;
+
+      // Handle 401 with automatic retry after token refresh
+      if (status === 401 && originalRequest && !originalRequest[RETRY_KEY]) {
+        originalRequest[RETRY_KEY] = true;
+
+        // Attempt to get a fresh token from Clerk
+        if (tokenProvider) {
+          try {
+            const freshToken = await tokenProvider.getToken();
+            if (freshToken) {
+              // Update the request with fresh token and retry
+              originalRequest.headers.Authorization = `Bearer ${freshToken}`;
+              return apiClient(originalRequest);
+            }
+          } catch (refreshError) {
+            console.warn('Failed to refresh auth token:', refreshError);
+          }
+        }
+
+        // If we couldn't refresh, the user needs to re-authenticate
+        console.warn('Unauthorized - session may have expired, please sign in again');
+      }
 
       // Create standardized API error
       const apiError: ApiError = data?.error || {
         code: mapStatusToErrorCode(status),
         message: error.message || 'An error occurred',
       };
-
-      // Handle specific error cases
-      if (status === 401) {
-        // Token expired or invalid - could trigger re-auth here
-        console.warn('Unauthorized - token may be expired');
-      }
 
       return Promise.reject(new ApiClientError(apiError, status));
     }

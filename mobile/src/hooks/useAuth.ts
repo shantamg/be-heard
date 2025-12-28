@@ -9,11 +9,9 @@ const USER_KEY = 'auth_user';
 
 /**
  * Extended user type for authentication
- * Extends UserDTO with optional fields for local auth state
+ * Extends UserDTO with optional avatar field for local auth state
  */
 export interface User extends UserDTO {
-  firstName?: string;
-  lastName?: string;
   avatarUrl?: string;
 }
 
@@ -224,6 +222,9 @@ export function useAuthProvider(): AuthContextValue {
           id: response.data.data.user.id,
           email: response.data.data.user.email,
           name: response.data.data.user.name || response.data.data.user.email,
+          firstName: response.data.data.user.firstName,
+          lastName: response.data.data.user.lastName,
+          biometricEnabled: response.data.data.user.biometricEnabled,
           createdAt: response.data.data.user.createdAt,
         };
 
@@ -239,6 +240,8 @@ export function useAuthProvider(): AuthContextValue {
         return true;
       } catch {
         if (fallbackUser) {
+          await SecureStore.setItemAsync(AUTH_TOKEN_KEY, token);
+          await SecureStore.setItemAsync(USER_KEY, JSON.stringify(fallbackUser));
           setState({
             user: fallbackUser,
             isLoading: false,
@@ -298,6 +301,9 @@ export function useAuthProvider(): AuthContextValue {
           id: `user_${Date.now()}`,
           email: pendingEmail,
           name: pendingEmail.split('@')[0],
+          firstName: null,
+          lastName: null,
+          biometricEnabled: false,
           createdAt: new Date().toISOString(),
         };
 
@@ -355,9 +361,10 @@ export function useAuthProvider(): AuthContextValue {
           id: `user_${Date.now()}`,
           email: pendingEmail,
           name: pendingName || pendingEmail.split('@')[0],
+          firstName: pendingName?.split(' ')[0] || null,
+          lastName: pendingName?.split(' ').slice(1).join(' ') || null,
+          biometricEnabled: false,
           createdAt: new Date().toISOString(),
-          firstName: pendingName?.split(' ')[0],
-          lastName: pendingName?.split(' ').slice(1).join(' ') || undefined,
         };
 
         const token = `token_${Date.now()}`;

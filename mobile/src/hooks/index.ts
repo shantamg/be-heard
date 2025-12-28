@@ -213,3 +213,25 @@ export {
   type NotificationPreferencesDTO,
   type UpdateNotificationPreferencesRequest,
 } from './useNotificationPreferences';
+
+// ============================================================================
+// Biometric Authentication
+// ============================================================================
+
+export {
+  useBiometricAuth,
+  type BiometricAuthState,
+  type BiometricAuthActions,
+  type UseBiometricAuthReturn,
+} from './useBiometricAuth';
+
+// ============================================================================
+// Unified Session (Chat-Centric Interface)
+// ============================================================================
+
+export {
+  useUnifiedSession,
+  type OverlayType,
+  type InlineCardType,
+  type InlineChatCard,
+} from './useUnifiedSession';
