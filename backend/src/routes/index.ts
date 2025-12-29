@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import authRoutes from './auth';
+import chatRoutes from './chat';
 import consentRoutes from './consent';
 import emotionsRoutes from './emotions';
 import invitationsRoutes from './invitations';
@@ -14,6 +15,7 @@ const router = Router();
 
 // Mount all route modules
 router.use('/auth', authRoutes);
+router.use(chatRoutes); // Unified chat router
 router.use(invitationsRoutes);
 router.use(sessionsRoutes);
 router.use(consentRoutes);
