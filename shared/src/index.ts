@@ -20,6 +20,7 @@ export * from './dto/strategy';
 export * from './dto/auth';
 export * from './dto/empathy';
 export * from './dto/realtime';
+export * from './dto/chat-router';
 
 // Validation schemas
 export * from './validation';
