@@ -11,6 +11,7 @@ import type { MessageDTO } from '@be-heard/shared';
 import { ChatBubble, ChatBubbleMessage, MessageDeliveryStatus } from './ChatBubble';
 import { TypingIndicator } from './TypingIndicator';
 import { ChatInput } from './ChatInput';
+import { EmotionSlider } from './EmotionSlider';
 import { createStyles } from '../theme/styled';
 
 // ============================================================================
@@ -29,6 +30,14 @@ interface ChatInterfaceProps {
   disabled?: boolean;
   emptyStateTitle?: string;
   emptyStateMessage?: string;
+  /** Whether to show emotion slider */
+  showEmotionSlider?: boolean;
+  /** Current emotion value (1-10) */
+  emotionValue?: number;
+  /** Callback when emotion value changes */
+  onEmotionChange?: (value: number) => void;
+  /** Callback when emotion reaches high threshold */
+  onHighEmotion?: (value: number) => void;
 }
 
 // ============================================================================
@@ -46,6 +55,10 @@ export function ChatInterface({
   disabled = false,
   emptyStateTitle = DEFAULT_EMPTY_TITLE,
   emptyStateMessage = DEFAULT_EMPTY_MESSAGE,
+  showEmotionSlider = false,
+  emotionValue = 5,
+  onEmotionChange,
+  onHighEmotion,
 }: ChatInterfaceProps) {
   const styles = useStyles();
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
@@ -119,6 +132,14 @@ export function ChatInterface({
         showsVerticalScrollIndicator={false}
         testID="chat-message-list"
       />
+      {showEmotionSlider && onEmotionChange && (
+        <EmotionSlider
+          value={emotionValue}
+          onChange={onEmotionChange}
+          onHighEmotion={onHighEmotion}
+          testID="chat-emotion-slider"
+        />
+      )}
       <ChatInput onSend={onSendMessage} disabled={disabled || isLoading} />
     </KeyboardAvoidingView>
   );

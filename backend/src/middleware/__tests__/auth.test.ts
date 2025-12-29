@@ -179,11 +179,13 @@ describe('Auth Middleware', () => {
       expect(mockGetUser).toHaveBeenCalledWith('clerk-user-123');
       expect(prisma.user.upsert).toHaveBeenCalledWith({
         where: { clerkId: 'clerk-user-123' },
-        update: { email: 'test@example.com', name: 'Test User' },
+        update: { email: 'test@example.com', name: 'Test User', firstName: 'Test', lastName: 'User' },
         create: {
           clerkId: 'clerk-user-123',
           email: 'test@example.com',
           name: 'Test User',
+          firstName: 'Test',
+          lastName: 'User',
         },
       });
       expect(next).toHaveBeenCalled();

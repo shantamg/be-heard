@@ -37,7 +37,7 @@ const REQUEST_TIMEOUT = 30000; // 30 seconds
  * This will be implemented by Clerk or other auth providers.
  */
 export interface TokenProvider {
-  getToken: () => Promise<string | null>;
+  getToken: (options?: { forceRefresh?: boolean }) => Promise<string | null>;
 }
 
 let tokenProvider: TokenProvider | null = null;
@@ -49,6 +49,31 @@ let tokenProvider: TokenProvider | null = null;
 export function setTokenProvider(provider: TokenProvider): void {
   tokenProvider = provider;
 }
+
+// ============================================================================
+// Token Validation
+// ============================================================================
+
+/**
+ * Validates that a token has valid JWT format (three dot-separated parts).
+ * Does not validate the token signature or claims, just the structure.
+ */
+function isValidJwtFormat(token: string): boolean {
+  if (!token || typeof token !== 'string') {
+    return false;
+  }
+
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return false;
+  }
+
+  // Each part should be non-empty and be valid base64url
+  return parts.every((part) => part.length > 0 && /^[A-Za-z0-9_-]+$/.test(part));
+}
+
+// Track if we've already logged an invalid token warning to avoid spam
+let hasLoggedInvalidToken = false;
 
 // ============================================================================
 // API Client Instance
@@ -72,10 +97,26 @@ apiClient.interceptors.request.use(
       try {
         const token = await tokenProvider.getToken();
         if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+          // Validate JWT format before sending to prevent backend errors
+          if (isValidJwtFormat(token)) {
+            config.headers.Authorization = `Bearer ${token}`;
+            hasLoggedInvalidToken = false; // Reset on successful token
+          } else {
+            // Log once to avoid spam, then skip adding invalid token
+            if (!hasLoggedInvalidToken) {
+              console.warn(
+                '[API] Invalid JWT format from token provider. Token will not be sent.',
+                'Token starts with:',
+                token.substring(0, 20) + '...'
+              );
+              hasLoggedInvalidToken = true;
+            }
+            // Don't add Authorization header - request will go through unauthenticated
+            // This allows the 401 handler to properly trigger sign-in flow
+          }
         }
       } catch (error) {
-        console.warn('Failed to get auth token:', error);
+        console.warn('[API] Failed to get auth token:', error);
       }
     }
     return config;
@@ -91,35 +132,54 @@ apiClient.interceptors.request.use(
 
 // Track retry attempts to prevent infinite loops
 const RETRY_KEY = '__isRetry';
+const INVALID_TOKEN_KEY = '__hasInvalidToken';
 
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   async (error: AxiosError<ApiResponse<unknown>>) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & { [RETRY_KEY]?: boolean };
+    const originalRequest = error.config as InternalAxiosRequestConfig & {
+      [RETRY_KEY]?: boolean;
+      [INVALID_TOKEN_KEY]?: boolean;
+    };
 
     if (error.response) {
       const { status, data } = error.response;
 
       // Handle 401 with automatic retry after token refresh
-      if (status === 401 && originalRequest && !originalRequest[RETRY_KEY]) {
+      // Skip retry if we already tried or if we know the token is invalid
+      if (
+        status === 401 &&
+        originalRequest &&
+        !originalRequest[RETRY_KEY] &&
+        !originalRequest[INVALID_TOKEN_KEY]
+      ) {
         originalRequest[RETRY_KEY] = true;
 
-        // Attempt to get a fresh token from Clerk
+        // Attempt to get a fresh token from Clerk (force refresh to bypass cache)
         if (tokenProvider) {
           try {
-            const freshToken = await tokenProvider.getToken();
+            const freshToken = await tokenProvider.getToken({ forceRefresh: true });
             if (freshToken) {
-              // Update the request with fresh token and retry
-              originalRequest.headers.Authorization = `Bearer ${freshToken}`;
-              return apiClient(originalRequest);
+              // Validate the fresh token before retrying
+              if (isValidJwtFormat(freshToken)) {
+                // Update the request with fresh token and retry
+                originalRequest.headers.Authorization = `Bearer ${freshToken}`;
+                return apiClient(originalRequest);
+              } else {
+                // Fresh token is also invalid - don't retry, user needs to re-auth
+                console.warn(
+                  '[API] Fresh token from provider is also invalid. User needs to sign in again.'
+                );
+                originalRequest[INVALID_TOKEN_KEY] = true;
+              }
             }
           } catch (refreshError) {
-            console.warn('Failed to refresh auth token:', refreshError);
+            console.warn('[API] Failed to refresh auth token:', refreshError);
           }
         }
 
-        // If we couldn't refresh, the user needs to re-authenticate
-        console.warn('Unauthorized - session may have expired, please sign in again');
+        // If we couldn't refresh or token is invalid, the user needs to re-authenticate
+        console.warn('[API] Unauthorized - session may have expired, please sign in again');
       }
 
       // Create standardized API error

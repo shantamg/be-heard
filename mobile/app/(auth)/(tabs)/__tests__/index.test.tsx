@@ -38,6 +38,26 @@ jest.mock('@/src/hooks/useAuth', () => ({
   }),
 }));
 
+// Mock useBiometricAuth hook to prevent async state updates
+jest.mock('@/src/hooks', () => ({
+  useBiometricAuth: () => ({
+    isAvailable: false,
+    isEnrolled: false,
+    isEnabled: false,
+    isLoading: false,
+    biometricType: null,
+    biometricName: null,
+    hasPrompted: true, // Already prompted, so no async effects
+    error: null,
+    checkAvailability: jest.fn(),
+    authenticate: jest.fn(),
+    enableBiometric: jest.fn(),
+    disableBiometric: jest.fn(),
+    markPrompted: jest.fn(),
+    refresh: jest.fn(),
+  }),
+}));
+
 // Mock react-native-safe-area-context
 jest.mock('react-native-safe-area-context', () => ({
   SafeAreaView: ({ children }: { children: React.ReactNode }) => children,

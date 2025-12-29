@@ -73,6 +73,8 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
     // Validate request body
     const parseResult = sendMessageRequestSchema.safeParse(req.body);
     if (!parseResult.success) {
+      console.log('[sendMessage] Validation failed:', JSON.stringify(parseResult.error.issues, null, 2));
+      console.log('[sendMessage] Request body:', JSON.stringify(req.body, null, 2));
       errorResponse(
         res,
         'VALIDATION_ERROR',
@@ -104,6 +106,7 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
 
     // Check session is active
     if (session.status !== 'ACTIVE') {
+      console.log(`[sendMessage] Session ${sessionId} is not active: ${session.status}`);
       errorResponse(res, 'SESSION_NOT_ACTIVE', 'Session is not active', 400);
       return;
     }
@@ -121,6 +124,8 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
     // Check user is in stage 1
     const currentStage = progress?.stage ?? 0;
     if (currentStage !== 1) {
+      console.log(`[sendMessage] User ${user.id} in session ${sessionId} is in stage ${currentStage}, not stage 1`);
+      console.log(`[sendMessage] Progress record:`, JSON.stringify(progress, null, 2));
       errorResponse(
         res,
         'VALIDATION_ERROR',
@@ -180,12 +185,20 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
     successResponse(res, {
       userMessage: {
         id: userMessage.id,
+        sessionId: userMessage.sessionId,
+        senderId: userMessage.senderId,
+        role: userMessage.role,
         content: userMessage.content,
+        stage: userMessage.stage,
         timestamp: userMessage.timestamp.toISOString(),
       },
       aiResponse: {
         id: aiMessage.id,
+        sessionId: aiMessage.sessionId,
+        senderId: aiMessage.senderId,
+        role: aiMessage.role,
         content: aiMessage.content,
+        stage: aiMessage.stage,
         timestamp: aiMessage.timestamp.toISOString(),
       },
     });
@@ -414,9 +427,12 @@ export async function getConversationHistory(
     successResponse(res, {
       messages: resultMessages.map((m) => ({
         id: m.id,
-        content: m.content,
+        sessionId: m.sessionId,
+        senderId: m.senderId,
         role: m.role,
-        createdAt: m.timestamp.toISOString(),
+        content: m.content,
+        stage: m.stage,
+        timestamp: m.timestamp.toISOString(),
       })),
       hasMore,
     });

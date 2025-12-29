@@ -44,15 +44,16 @@ function ClerkAuthSetup() {
   useEffect(() => {
     // Register Clerk as the auth adapter
     registerAuthAdapter({
-      getToken: async () => getToken(),
+      getToken: async (options) => getToken({ skipCache: options?.forceRefresh }),
       signOut: async () => {
         await signOut();
       },
     });
 
     // Also set token provider for API client
+    // When forceRefresh is true, use skipCache to bypass Clerk's token cache
     setTokenProvider({
-      getToken: async () => getToken(),
+      getToken: async (options) => getToken({ skipCache: options?.forceRefresh }),
     });
   }, [getToken, signOut]);
 

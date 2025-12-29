@@ -446,3 +446,51 @@ try {
 } catch {
   // If react-native isn't available for some reason, ignore
 }
+
+// Suppress expected console output during tests
+const originalConsoleLog = console.log;
+const originalConsoleWarn = console.warn;
+const originalConsoleError = console.error;
+
+// Patterns for expected console.log output that should be silenced
+const silencedLogPatterns = [
+  /^\[Mock Ably\]/, // Mock Ably presence logs from useRealtime tests
+  /^\[Invitation\]/, // Invitation processing logs
+  /^\[Auth\]/, // Authentication flow logs
+];
+
+// Patterns for expected console.warn output that should be silenced
+const silencedWarnPatterns = [
+  /^Failed to sync biometric preference/, // Expected in error handling tests
+  /^Unauthorized - session may have expired/, // Expected when testing auth expiry handling
+];
+
+// Patterns for expected console.error output that should be silenced
+const silencedErrorPatterns = [
+  /not wrapped in act\(\.\.\.\)/, // React Query async updates
+  /^\[useInvitationDetails\] Error fetching invitation/, // Expected in error handling tests
+];
+
+console.log = (...args) => {
+  const message = args[0]?.toString() || '';
+  const shouldSilence = silencedLogPatterns.some(pattern => pattern.test(message));
+  if (!shouldSilence) {
+    originalConsoleLog.apply(console, args);
+  }
+};
+
+console.warn = (...args) => {
+  const message = args[0]?.toString() || '';
+  const shouldSilence = silencedWarnPatterns.some(pattern => pattern.test(message));
+  if (!shouldSilence) {
+    originalConsoleWarn.apply(console, args);
+  }
+};
+
+console.error = (...args) => {
+  const message = args[0]?.toString() || '';
+  const shouldSilence = silencedErrorPatterns.some(pattern => pattern.test(message));
+  if (!shouldSilence) {
+    originalConsoleError.apply(console, args);
+  }
+};

@@ -19,7 +19,7 @@ export interface User extends UserDTO {
  * Optional external auth adapter (e.g., Clerk) so we can bridge to backend tokens.
  */
 export interface AuthAdapter {
-  getToken: () => Promise<string | null>;
+  getToken: (options?: { forceRefresh?: boolean }) => Promise<string | null>;
   getUser?: () => Promise<User | null>;
   signOut?: () => Promise<void>;
 }
@@ -129,8 +129,18 @@ export function useAuthProvider(): AuthContextValue {
           const hydrated = await syncFromBackend(token, externalUser);
           if (hydrated) return;
         }
+        // If Clerk is configured but returns no token, user needs to re-authenticate
+        // Don't fall back to SecureStore as it may contain stale/mock tokens
+        setState({
+          user: null,
+          isLoading: false,
+          isAuthenticated: false,
+          pendingVerification: false,
+        });
+        return;
       }
 
+      // Only use SecureStore when no external adapter (Clerk) is configured
       const token = await SecureStore.getItemAsync(AUTH_TOKEN_KEY);
       const userJson = await SecureStore.getItemAsync(USER_KEY);
 

@@ -10,6 +10,19 @@ export type { ChatBubbleMessage } from './ChatBubble';
 export { ChatInput } from './ChatInput';
 export { ChatInterface } from './ChatInterface';
 export { TypingIndicator } from './TypingIndicator';
+export { SimpleChatHeader } from './SimpleChatHeader';
+export { EmotionSlider } from './EmotionSlider';
+export { InlineCompact } from './InlineCompact';
+export { UniversalChat } from './UniversalChat';
+export type {
+  UniversalChatMessage,
+  InlineTrigger,
+  TriggerType,
+  TriggerState,
+  TriggerAction,
+  TriggerActionPayload,
+  StageContext,
+} from './UniversalChat';
 
 // Session components
 export { SessionCard } from './SessionCard';

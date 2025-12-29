@@ -27,7 +27,7 @@ interface ChatBubbleProps {
 // Component
 // ============================================================================
 
-export function ChatBubble({ message, showTimestamp = true }: ChatBubbleProps) {
+export function ChatBubble({ message, showTimestamp = false }: ChatBubbleProps) {
   const styles = useStyles();
   const isUser = message.role === MessageRole.USER;
   const isSystem = message.role === MessageRole.SYSTEM;
@@ -72,12 +72,15 @@ export function ChatBubble({ message, showTimestamp = true }: ChatBubbleProps) {
     return styles.text;
   };
 
+  // AI messages get full width container
+  const isAI = !isUser && !isSystem;
+
   return (
     <View
       style={[styles.container, getContainerStyle()]}
       testID={`chat-bubble-${message.id}`}
     >
-      <View style={[styles.bubble, getBubbleStyle()]}>
+      <View style={[styles.bubble, isAI && styles.aiBubbleContainer, getBubbleStyle()]}>
         <Text style={getTextStyle()}>{message.content}</Text>
       </View>
       <View style={styles.metaContainer}>
@@ -120,6 +123,10 @@ const useStyles = () =>
     bubble: {
       maxWidth: '85%',
     },
+    // AI messages should be full width
+    aiBubbleContainer: {
+      maxWidth: '100%',
+    },
     // User messages: bgSecondary background, 16px border-radius
     userBubble: {
       backgroundColor: colors.bgSecondary,
@@ -127,13 +134,12 @@ const useStyles = () =>
       paddingHorizontal: t.spacing.lg,
       borderRadius: 16,
     },
-    // AI messages: light gray background with asymmetric border radius
+    // AI messages: full-width, no bubble background (like demo)
     aiBubble: {
-      backgroundColor: colors.bgSecondary,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      borderRadius: 16,
-      borderBottomLeftRadius: 4,
+      backgroundColor: 'transparent',
+      paddingVertical: t.spacing.sm,
+      paddingHorizontal: 0,
+      borderRadius: 0,
     },
     // System messages: bgTertiary background, 12px border-radius, centered
     systemBubble: {

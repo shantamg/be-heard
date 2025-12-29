@@ -333,24 +333,38 @@ export function useUnifiedSession(sessionId: string | undefined) {
   );
 
   // -------------------------------------------------------------------------
-  // Stage-Specific Data Hooks (conditionally enabled)
+  // Stage-Specific Data Hooks (conditionally enabled based on current stage)
   // -------------------------------------------------------------------------
 
   // Stage 0: Compact
   const { data: compactData } = useCompactStatus(sessionId);
 
-  // Stage 2: Empathy
-  const { data: empathyDraftData } = useEmpathyDraft(sessionId);
-  const { data: partnerEmpathyData } = usePartnerEmpathy(sessionId);
+  // Stage 2: Empathy - only fetch when in stage 2 or later
+  const { data: empathyDraftData } = useEmpathyDraft(sessionId, {
+    enabled: !!sessionId && currentStage >= Stage.PERSPECTIVE_STRETCH,
+  });
+  const { data: partnerEmpathyData } = usePartnerEmpathy(sessionId, {
+    enabled: !!sessionId && currentStage >= Stage.PERSPECTIVE_STRETCH,
+  });
 
-  // Stage 3: Needs
-  const { data: needsData } = useNeeds(sessionId);
-  const { data: commonGroundData } = useCommonGround(sessionId);
+  // Stage 3: Needs - only fetch when in stage 3 or later
+  const { data: needsData } = useNeeds(sessionId, {
+    enabled: !!sessionId && currentStage >= Stage.NEED_MAPPING,
+  });
+  const { data: commonGroundData } = useCommonGround(sessionId, {
+    enabled: !!sessionId && currentStage >= Stage.NEED_MAPPING,
+  });
 
-  // Stage 4: Strategies
-  const { data: strategyData } = useStrategies(sessionId);
-  const { data: revealData } = useStrategiesReveal(sessionId);
-  const { data: agreementsData } = useAgreements(sessionId);
+  // Stage 4: Strategies - only fetch when in stage 4 or later
+  const { data: strategyData } = useStrategies(sessionId, {
+    enabled: !!sessionId && currentStage >= Stage.STRATEGIC_REPAIR,
+  });
+  const { data: revealData } = useStrategiesReveal(sessionId, {
+    enabled: !!sessionId && currentStage >= Stage.STRATEGIC_REPAIR,
+  });
+  const { data: agreementsData } = useAgreements(sessionId, {
+    enabled: !!sessionId && currentStage >= Stage.STRATEGIC_REPAIR,
+  });
 
   // -------------------------------------------------------------------------
   // Mutation Hooks
