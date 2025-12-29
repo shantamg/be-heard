@@ -75,11 +75,11 @@ export const createSessionRequestSchema = z
     personId: z.string().cuid().optional(),
     inviteEmail: z.string().email('Invalid email format').optional(),
     invitePhone: z.string().optional(),
-    inviteName: z.string().max(100, 'Name too long').optional(),
+    inviteName: z.string().min(1, 'Name is required').max(100, 'Name too long').optional(),
     context: z.string().max(500, 'Context too long').optional(),
   })
-  .refine(data => data.personId || data.inviteEmail || data.invitePhone, {
-    message: 'Must provide personId, inviteEmail, or invitePhone',
+  .refine(data => data.personId || data.inviteEmail || data.invitePhone || data.inviteName, {
+    message: 'Must provide personId, inviteEmail, invitePhone, or inviteName',
   });
 
 export type CreateSessionRequestInput = z.infer<typeof createSessionRequestSchema>;
