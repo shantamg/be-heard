@@ -1,208 +1,143 @@
-import { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Alert,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { Send } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useCreateSession } from '@/src/hooks/useSessions';
-import { colors } from '@/src/theme';
-
 /**
- * New session screen
- * Allows user to start a new session
+ * New Session Screen (Chat-Based Creation)
+ *
+ * Uses the same ChatInterface as other screens to gather
+ * session creation info conversationally. Accessed from the
+ * "New Session" button in the Sessions tab.
  */
+
+import { useCallback, useEffect, useState } from 'react';
+import { View, TouchableOpacity, ActivityIndicator, Text } from 'react-native';
+import { useRouter, Stack } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { X } from 'lucide-react-native';
+
+import { ChatInterface } from '@/src/components/ChatInterface';
+import { useRouterChat } from '@/src/hooks/useRouterChat';
+import { createStyles } from '@/src/theme/styled';
+import { MessageDTO, MessageRole, Stage } from '@be-heard/shared';
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const NEW_SESSION_WELCOME: MessageDTO = {
+  id: 'new-session-welcome',
+  sessionId: 'router',
+  senderId: null,
+  role: MessageRole.AI,
+  content: "Who would you like to start a session with? Just tell me their name, and I'll help you send them an invitation.",
+  stage: Stage.ONBOARDING,
+  timestamp: new Date().toISOString(),
+};
+
+// ============================================================================
+// Component
+// ============================================================================
+
 export default function NewSessionScreen() {
+  const styles = useStyles();
   const router = useRouter();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [personName, setPersonName] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
-  const { mutateAsync: createSession, isPending } = useCreateSession();
 
-  const handleSubmit = async () => {
-    if (!title.trim()) {
-      Alert.alert('Error', 'Please enter a title for your session');
-      return;
-    }
+  // Use router chat but with custom welcome message
+  const { messages, isSending, isLoading, sendMessage, clearMessages } = useRouterChat({
+    onSessionCreated: (sessionId) => {
+      // Navigate to the new session, replacing this screen
+      router.replace(`/session/${sessionId}`);
+    },
+  });
 
-    const context = [title.trim(), description.trim()].filter(Boolean).join('\n\n');
+  // Replace the default welcome with our custom one
+  const displayMessages = messages.length <= 1 ? [NEW_SESSION_WELCOME] : messages;
 
-    try {
-      const response = await createSession({
-        context,
-        inviteName: personName.trim() || undefined,
-        inviteEmail: inviteEmail.trim() || undefined,
-      });
+  const handleSendMessage = useCallback(
+    (content: string) => {
+      sendMessage(content);
+    },
+    [sendMessage]
+  );
 
-      router.replace(`/session/${response.session.id}`);
-    } catch (error) {
-      console.error('Failed to create session:', error);
-      Alert.alert('Error', 'Failed to create session. Please try again.');
-    }
-  };
+  const handleClose = useCallback(() => {
+    clearMessages();
+    router.back();
+  }, [clearMessages, router]);
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'New Session',
+            headerLeft: () => (
+              <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+                <X color={styles.closeIcon.color} size={24} />
+              </TouchableOpacity>
+            ),
+          }}
+        />
+        <SafeAreaView style={styles.container} edges={['bottom']}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#4F46E5" />
+            <Text style={styles.loadingText}>Loading...</Text>
+          </View>
+        </SafeAreaView>
+      </>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <KeyboardAvoidingView
-        style={styles.keyboardView}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-          <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>What do you want to talk about?</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Give your session a title..."
-                placeholderTextColor={colors.textMuted}
-                value={title}
-                onChangeText={setTitle}
-                maxLength={100}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Share more details (optional)</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Describe what you're feeling or experiencing..."
-                placeholderTextColor={colors.textMuted}
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                numberOfLines={4}
-                maxLength={500}
-                textAlignVertical="top"
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Who do you want to share with? (optional)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Enter their name..."
-                placeholderTextColor={colors.textMuted}
-                value={personName}
-                onChangeText={setPersonName}
-                maxLength={50}
-              />
-              <Text style={styles.hint}>
-                You can invite them after creating the session
-              </Text>
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Invite by email (optional)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="name@email.com"
-                placeholderTextColor={colors.textMuted}
-                value={inviteEmail}
-                onChangeText={setInviteEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              <Text style={styles.hint}>
-                If provided, we will send an invitation link automatically.
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.footer}>
-            <TouchableOpacity
-            style={[
-              styles.submitButton,
-              (!title.trim() || isPending) && styles.submitButtonDisabled,
-            ]}
-            onPress={handleSubmit}
-            disabled={!title.trim() || isPending}
-          >
-            <Text style={styles.submitButtonText}>
-              {isPending ? 'Creating...' : 'Start Session'}
-            </Text>
-            <Send color="#FFFFFF" size={20} />
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    <>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          title: 'New Session',
+          headerLeft: () => (
+            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+              <X color={styles.closeIcon.color} size={24} />
+            </TouchableOpacity>
+          ),
+        }}
+      />
+      <SafeAreaView style={styles.container} edges={['bottom']}>
+        <ChatInterface
+          messages={displayMessages}
+          onSendMessage={handleSendMessage}
+          isLoading={isSending}
+          emptyStateTitle="New Session"
+          emptyStateMessage="Tell me who you'd like to have a conversation with."
+        />
+      </SafeAreaView>
+    </>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bgPrimary,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    flexGrow: 1,
-    justifyContent: 'space-between',
-  },
-  form: {
-    padding: 16,
-    gap: 24,
-  },
-  inputGroup: {
-    gap: 8,
-  },
-  label: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  input: {
-    backgroundColor: colors.bgSecondary,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 17,
-    borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.textPrimary,
-  },
-  textArea: {
-    minHeight: 120,
-    paddingTop: 16,
-  },
-  hint: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 4,
-  },
-  footer: {
-    padding: 16,
-    paddingBottom: 24,
-  },
-  submitButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.accent,
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
-  },
-  submitButtonDisabled: {
-    backgroundColor: colors.bgTertiary,
-  },
-  submitButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-});
+// ============================================================================
+// Styles
+// ============================================================================
+
+const useStyles = () =>
+  createStyles((t) => ({
+    container: {
+      flex: 1,
+      backgroundColor: t.colors.bgPrimary,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loadingText: {
+      marginTop: 12,
+      fontSize: 16,
+      color: t.colors.textSecondary,
+    },
+    closeButton: {
+      padding: 8,
+      marginLeft: 8,
+    },
+    closeIcon: {
+      color: t.colors.textSecondary,
+    },
+  }));

@@ -107,7 +107,9 @@ export function ChatInterface({
     return (
       <View style={styles.emptyState} testID="chat-empty-state">
         <Text style={styles.emptyStateTitle}>{emptyStateTitle}</Text>
-        <Text style={styles.emptyStateMessage}>{emptyStateMessage}</Text>
+        {emptyStateMessage ? (
+          <Text style={styles.emptyStateMessage}>{emptyStateMessage}</Text>
+        ) : null}
       </View>
     );
   }, [isLoading, emptyStateTitle, emptyStateMessage]);
@@ -171,16 +173,17 @@ const useStyles = () =>
       paddingVertical: t.spacing['3xl'],
     },
     emptyStateTitle: {
-      fontSize: t.typography.fontSize['2xl'],
-      fontWeight: '700',
+      fontSize: 28,
+      fontWeight: '600',
       color: t.colors.textPrimary,
       textAlign: 'center',
-      marginBottom: t.spacing.md,
+      lineHeight: 36,
     },
     emptyStateMessage: {
       fontSize: t.typography.fontSize.lg,
       lineHeight: 24,
       color: t.colors.textSecondary,
       textAlign: 'center',
+      marginTop: t.spacing.md,
     },
   }));
