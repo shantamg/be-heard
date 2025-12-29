@@ -8,8 +8,8 @@
 // Authentication
 // ============================================================================
 
-export { useAuth, useProtectedRoute, useAuthProvider, AuthContext } from './useAuth';
-export type { User, AuthState, AuthContextValue } from './useAuth';
+export { useAuth, useAuthProvider, AuthContext } from './useAuth';
+export type { User, AuthContextValue } from './useAuth';
 
 // ============================================================================
 // Invitation Deep Links
@@ -235,3 +235,13 @@ export {
   type InlineCardType,
   type InlineChatCard,
 } from './useUnifiedSession';
+
+// ============================================================================
+// Router Chat (Chat-First Session Creation)
+// ============================================================================
+
+export {
+  useRouterChat,
+  type UseRouterChatOptions,
+  type UseRouterChatReturn,
+} from './useRouterChat';

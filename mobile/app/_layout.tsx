@@ -9,14 +9,14 @@ import { StyleSheet } from 'react-native';
 import { ClerkProvider, ClerkLoaded, useAuth as useClerkAuth } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache';
 
-import { AuthContext, useAuthProvider, registerAuthAdapter } from '@/src/hooks/useAuth';
+import { AuthContext, useAuthProvider } from '@/src/hooks/useAuth';
 import { QueryProvider } from '@/src/providers/QueryProvider';
 import { setTokenProvider } from '@/src/lib/api';
 import { ToastProvider } from '@/src/contexts/ToastContext';
 import { useNotifications } from '@/src/hooks/useNotifications';
 import { configureNotificationHandler } from '@/src/services/notifications';
 
-// Configure notification handler at module load (before app renders)
+// Configure notification handler at module load
 configureNotificationHandler();
 
 // Prevent splash screen from auto-hiding
@@ -27,7 +27,6 @@ const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || '
 
 /**
  * Notification initializer component
- * Must be inside QueryProvider to use React Query hooks
  */
 function NotificationInitializer() {
   useNotifications();
@@ -35,29 +34,16 @@ function NotificationInitializer() {
 }
 
 /**
- * Clerk auth adapter setup
- * Registers Clerk's getToken with the auth system and API client
+ * Clerk auth setup - just configures API client token provider
  */
 function ClerkAuthSetup() {
   const { getToken, signOut } = useClerkAuth();
 
   useEffect(() => {
-    // Register Clerk as the auth adapter
-    registerAuthAdapter({
-      getToken: async (options) => getToken({ skipCache: options?.forceRefresh }),
-      signOut: async () => {
-        await signOut();
-      },
-    });
-
-    // Also set token provider for API client
-    // When forceRefresh is true, use skipCache to bypass Clerk's token cache
-    // Include signOut so API client can sign out on unrecoverable 401
+    // Tell the API client how to get tokens from Clerk
     setTokenProvider({
       getToken: async (options) => getToken({ skipCache: options?.forceRefresh }),
-      signOut: async () => {
-        await signOut();
-      },
+      signOut,
     });
   }, [getToken, signOut]);
 
@@ -66,57 +52,54 @@ function ClerkAuthSetup() {
 
 /**
  * Root layout component
- * Provides authentication context and global providers
  */
 export default function RootLayout() {
-  const auth = useAuthProvider();
-
-  const [fontsLoaded, fontError] = useFonts({
-    // Add custom fonts here if needed
-  });
+  const [fontsLoaded, fontError] = useFonts({});
 
   useEffect(() => {
-    if ((fontsLoaded || fontError) && !auth.isLoading) {
+    if (fontsLoaded || fontError) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError, auth.isLoading]);
+  }, [fontsLoaded, fontError]);
 
-  // Show nothing while loading fonts or auth
-  if ((!fontsLoaded && !fontError) || auth.isLoading) {
+  if (!fontsLoaded && !fontError) {
     return null;
   }
 
   return (
     <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
       <ClerkLoaded>
-        {/* Setup Clerk auth adapter - must be inside ClerkLoaded */}
         <ClerkAuthSetup />
-        <GestureHandlerRootView style={styles.container}>
-          <SafeAreaProvider>
-            <AuthContext.Provider value={auth}>
-              <QueryProvider>
-                <ToastProvider>
-                  {/* Initialize notifications - must be inside QueryProvider */}
-                  <NotificationInitializer />
-
-                  <Stack screenOptions={{ headerShown: false }}>
-                    {/* Public routes - no auth required */}
-                    <Stack.Screen name="(public)" />
-
-                    {/* Auth-required routes */}
-                    <Stack.Screen name="(auth)" />
-
-                    {/* 404 handler */}
-                    <Stack.Screen name="+not-found" options={{ headerShown: true }} />
-                  </Stack>
-                  <StatusBar style="light" />
-                </ToastProvider>
-              </QueryProvider>
-            </AuthContext.Provider>
-          </SafeAreaProvider>
-        </GestureHandlerRootView>
+        <AuthProviderWrapper />
       </ClerkLoaded>
     </ClerkProvider>
+  );
+}
+
+/**
+ * Auth provider wrapper - must be inside ClerkLoaded so useAuthProvider can use Clerk hooks
+ */
+function AuthProviderWrapper() {
+  const auth = useAuthProvider();
+
+  return (
+    <GestureHandlerRootView style={styles.container}>
+      <SafeAreaProvider>
+        <AuthContext.Provider value={auth}>
+          <QueryProvider>
+            <ToastProvider>
+              <NotificationInitializer />
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(public)" />
+                <Stack.Screen name="(auth)" />
+                <Stack.Screen name="+not-found" options={{ headerShown: true }} />
+              </Stack>
+              <StatusBar style="light" />
+            </ToastProvider>
+          </QueryProvider>
+        </AuthContext.Provider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 

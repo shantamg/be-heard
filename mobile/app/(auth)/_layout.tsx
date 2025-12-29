@@ -1,24 +1,26 @@
-import { Redirect, Stack } from 'expo-router';
-import { useAuth } from '@clerk/clerk-expo';
+import { Stack, Redirect } from 'expo-router';
+import { useAuth as useClerkAuth } from '@clerk/clerk-expo';
 import { colors } from '@/theme';
 
 /**
  * Auth group layout
- * Redirects to login if user is not authenticated
+ * Uses Clerk as the single source of truth for authentication.
+ * If Clerk says signed in, we're in. No double-checking with backend.
  */
 export default function AuthLayout() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded } = useClerkAuth();
 
-  // Show nothing while checking auth
+  // Wait for Clerk to initialize
   if (!isLoaded) {
     return null;
   }
 
-  // Redirect to welcome screen if not authenticated
+  // If Clerk says not signed in, redirect to public
   if (!isSignedIn) {
     return <Redirect href="/(public)" />;
   }
 
+  // Render the app - backend profile sync happens in useAuth hook
   return (
     <Stack
       screenOptions={{

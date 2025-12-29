@@ -56,8 +56,9 @@ export function setTokenProvider(provider: TokenProvider): void {
  * Called when we get an unrecoverable 401.
  */
 async function handleAuthFailure(): Promise<void> {
+  console.warn('[API] Auth failure - signing out');
+
   if (tokenProvider?.signOut) {
-    console.warn('[API] Signing out due to auth failure');
     try {
       await tokenProvider.signOut();
     } catch (error) {
