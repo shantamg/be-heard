@@ -19,6 +19,7 @@ import {
   useProgress,
   useCompactStatus,
   useSignCompact,
+  useAdvanceStage,
   useConfirmFeelHeard,
   useEmpathyDraft,
   usePartnerEmpathy,
@@ -378,6 +379,7 @@ export function useUnifiedSession(sessionId: string | undefined) {
   const { mutate: recordEmotion } = useRecordEmotion();
   const { mutate: confirmHeard } = useConfirmFeelHeard();
   const { mutate: signCompact } = useSignCompact();
+  const { mutate: advanceStage } = useAdvanceStage();
   const { mutate: saveDraft } = useSaveEmpathyDraft();
   const { mutate: consentToShare } = useConsentToShareEmpathy();
   const { mutate: validateEmpathy } = useValidateEmpathy();
@@ -818,9 +820,17 @@ export function useUnifiedSession(sessionId: string | undefined) {
   const handleSignCompact = useCallback(
     (onSuccess?: () => void) => {
       if (!sessionId) return;
-      signCompact({ sessionId }, { onSuccess });
+      signCompact(
+        { sessionId },
+        {
+          onSuccess: () => {
+            // Auto-advance to stage 1 after signing compact
+            advanceStage({ sessionId }, { onSuccess });
+          },
+        }
+      );
     },
-    [sessionId, signCompact]
+    [sessionId, signCompact, advanceStage]
   );
 
   const handleSaveEmpathyDraft = useCallback(

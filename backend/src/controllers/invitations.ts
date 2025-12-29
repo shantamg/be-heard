@@ -312,6 +312,12 @@ export async function createSession(req: Request, res: Response): Promise<void> 
           id: session.id,
           status: session.status,
           createdAt: session.createdAt,
+          // Include partner info with nickname for immediate display
+          partner: {
+            id: '',
+            name: inviteName || null,
+            nickname: inviteName || null,
+          },
         },
         invitationId: invitation.id,
         invitationUrl,
