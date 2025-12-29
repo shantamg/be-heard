@@ -6,9 +6,6 @@
 // Session stage types
 // Maps to conceptual stages in the Meet Without Fear conflict resolution process
 export type SessionStage =
-  // Stage 0: Initial stages
-  | 'onboarding'  // Stage 0a: Session onboarding/setup
-  | 'compact'     // Stage 0b: Initial compact format entry
   // Stage 1: Understanding
   | 'chat'        // Stage 1a: AI-guided chat exploration
   | 'witness'     // Stage 1b: Witness mode - being heard
@@ -52,9 +49,6 @@ export type AppRoutes = {
   // Session routes
   '/session/new': undefined;
   '/session/[id]': SessionRouteParams;
-  // Stage 0: Initial stages
-  '/session/[id]/onboarding': SessionRouteParams;
-  '/session/[id]/compact': SessionRouteParams;
   // Stage 1: Understanding
   '/session/[id]/chat': SessionRouteParams;
   '/session/[id]/witness': SessionRouteParams;

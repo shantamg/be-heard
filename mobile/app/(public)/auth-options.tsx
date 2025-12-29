@@ -355,7 +355,7 @@ export default function AuthOptionsScreen() {
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.title}>Welcome to Meet Without Fear</Text>
+          <Text style={styles.title}>Sign in</Text>
           <Text style={styles.subtitle}>Sign in or create an account to continue</Text>
 
           {error && <Text style={styles.error}>{error}</Text>}

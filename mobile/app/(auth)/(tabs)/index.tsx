@@ -1,55 +1,49 @@
 /**
  * Home Screen
  *
- * Main dashboard showing sessions with smart hero card for urgent sessions.
- * Features:
- * - Hero card for most urgent session (action needed first)
- * - Session list sorted by priority
- * - Empty state with new session CTA
- * - Pull to refresh
- * - Biometric authentication opt-in prompt
+ * Simplified landing page with:
+ * - Big greeting: "Hi [username]"
+ * - Main question: "What can I help you work through today?"
+ * - Low-profile quick actions: Continue with [nickname], New Session, Inner Work
  */
 
 import { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
-  FlatList,
-  StyleSheet,
   TouchableOpacity,
-  RefreshControl,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Plus } from 'lucide-react-native';
+import { ArrowRight, Plus, Heart } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/src/hooks/useAuth';
 import { useBiometricAuth } from '@/src/hooks';
 import { useSessions } from '../../../src/hooks/useSessions';
-import { SessionCard } from '../../../src/components/SessionCard';
 import { BiometricPrompt } from '../../../src/components/BiometricPrompt';
-import { colors } from '@/src/theme';
-import type { SessionSummaryDTO } from '@meet-without-fear/shared';
+import { createStyles } from '@/src/theme/styled';
 
 // ============================================================================
 // Component
 // ============================================================================
 
 export default function HomeScreen() {
+  const styles = useStyles();
   const router = useRouter();
-  const { user } = useAuth();
-  const { data, isLoading, refetch, isRefetching } = useSessions();
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const { data, isLoading: isSessionsLoading } = useSessions();
   const { isAvailable, isEnrolled, hasPrompted, isLoading: biometricLoading } = useBiometricAuth();
+
+  // Wait for both auth and sessions to load
+  const isLoading = isAuthLoading || isSessionsLoading;
 
   // Biometric prompt state
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
 
   // Show biometric prompt when conditions are met
   useEffect(() => {
-    // Show prompt if biometrics available, enrolled, and user hasn't been prompted yet
     if (!biometricLoading && isAvailable && isEnrolled && !hasPrompted) {
-      // Small delay to let the UI settle after login
       const timer = setTimeout(() => {
         setShowBiometricPrompt(true);
       }, 500);
@@ -57,144 +51,103 @@ export default function HomeScreen() {
     }
   }, [biometricLoading, isAvailable, isEnrolled, hasPrompted]);
 
-  // Sort sessions: action needed first, then by last updated
-  const sortedSessions = useMemo(() => {
+  // Find the most recent session with a partner nickname
+  const mostRecentSession = useMemo(() => {
     const sessions = data?.items || [];
-    return [...sessions].sort((a, b) => {
-      // Sessions with selfActionNeeded come first
-      const aHasAction = a.selfActionNeeded.length > 0;
-      const bHasAction = b.selfActionNeeded.length > 0;
+    if (sessions.length === 0) return null;
 
-      if (aHasAction && !bHasAction) return -1;
-      if (bHasAction && !aHasAction) return 1;
-
-      // Then sort by most recently updated
+    // Sort by most recently updated
+    const sorted = [...sessions].sort((a, b) => {
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
     });
+
+    return sorted[0];
   }, [data?.items]);
 
-  const heroSession = sortedSessions[0];
-  const otherSessions = sortedSessions.slice(1);
+  // Get the partner's nickname or name for the continue button
+  const partnerDisplayName = mostRecentSession?.partner?.nickname || mostRecentSession?.partner?.name;
 
   const handleNewSession = () => {
     router.push('/session/new');
   };
+
+  const handleContinueSession = () => {
+    if (mostRecentSession) {
+      router.push(`/session/${mostRecentSession.id}`);
+    }
+  };
+
+  const handleInnerWork = () => {
+    // Navigate to inner work / self-session flow
+    router.push('/session/new?mode=inner');
+  };
+
+  // Get the user's display name
+  const userName = user?.firstName || user?.name?.split(' ')[0] || 'there';
 
   // Loading state
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.accent} />
+          <ActivityIndicator size="large" color="#10a37f" />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  // Empty state
-  if (!sortedSessions.length) {
-    return (
-      <SafeAreaView style={styles.container} edges={['bottom']}>
-        <View style={styles.emptyContainer}>
-          {/* Welcome header */}
-          <View style={styles.welcomeSection}>
-            <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.userName}>{user?.firstName || user?.name || 'User'}</Text>
-          </View>
-
-          <View style={styles.emptyContent}>
-            <View style={styles.emptyIconContainer}>
-              <Text style={styles.emptyIcon}>&#128172;</Text>
-            </View>
-            <Text style={styles.emptyTitle}>No active sessions</Text>
-            <Text style={styles.emptySubtitle}>
-              Start a new conversation to work through something together
-            </Text>
-            <TouchableOpacity
-              style={styles.newSessionButton}
-              onPress={handleNewSession}
-              accessibilityRole="button"
-              accessibilityLabel="Create new session"
-            >
-              <Plus color={colors.textPrimary} size={20} />
-              <Text style={styles.newSessionButtonText}>New Session</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Biometric opt-in prompt */}
-        <BiometricPrompt
-          visible={showBiometricPrompt}
-          onDismiss={() => setShowBiometricPrompt(false)}
-          testID="biometric-prompt"
-        />
-      </SafeAreaView>
-    );
-  }
-
-  // Render session list item
-  const renderSession = ({ item }: { item: SessionSummaryDTO }) => (
-    <SessionCard session={item} />
-  );
-
-  // Key extractor for FlatList
-  const keyExtractor = (item: SessionSummaryDTO) => item.id;
-
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <FlatList
-        data={otherSessions}
-        keyExtractor={keyExtractor}
-        renderItem={renderSession}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
-          />
-        }
-        ListHeaderComponent={
-          <View>
-            {/* Welcome section */}
-            <View style={styles.welcomeSection}>
-              <Text style={styles.greeting}>Welcome back,</Text>
-              <Text style={styles.userName}>{user?.firstName || user?.name || 'User'}</Text>
-            </View>
+      <View style={styles.content}>
+        {/* Main greeting section - centered */}
+        <View style={styles.greetingSection}>
+          <Text style={styles.greeting}>Hi {userName}</Text>
+          <Text style={styles.question}>
+            What can I help you work through today?
+          </Text>
+        </View>
 
-            {/* Header with new session button */}
-            <View style={styles.header}>
-              <Text style={styles.headerTitle}>Your Sessions</Text>
-              <TouchableOpacity
-                style={styles.headerNewButton}
-                onPress={handleNewSession}
-                accessibilityRole="button"
-                accessibilityLabel="Create new session"
-              >
-                <Plus color={colors.accent} size={24} />
-              </TouchableOpacity>
-            </View>
+        {/* Low-profile action buttons at bottom */}
+        <View style={styles.actionsSection}>
+          {/* Continue with partner - only show if there's a recent session */}
+          {mostRecentSession && partnerDisplayName && (
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={handleContinueSession}
+              accessibilityRole="button"
+              accessibilityLabel={`Continue with ${partnerDisplayName}`}
+            >
+              <ArrowRight color="#888" size={18} />
+              <Text style={styles.actionText}>
+                Continue with {partnerDisplayName}
+              </Text>
+            </TouchableOpacity>
+          )}
 
-            {/* Hero card for most urgent session */}
-            {heroSession && (
-              <SessionCard session={heroSession} isHero />
-            )}
+          {/* New Session */}
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleNewSession}
+            accessibilityRole="button"
+            accessibilityLabel="Start new session"
+          >
+            <Plus color="#888" size={18} />
+            <Text style={styles.actionText}>New Session</Text>
+          </TouchableOpacity>
 
-            {/* Section header for other sessions */}
-            {otherSessions.length > 0 && (
-              <Text style={styles.sectionTitle}>Other Sessions</Text>
-            )}
-          </View>
-        }
-        ListEmptyComponent={
-          heroSession ? null : (
-            <Text style={styles.noMoreSessions}>No other sessions</Text>
-          )
-        }
-      />
+          {/* Inner Work */}
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleInnerWork}
+            accessibilityRole="button"
+            accessibilityLabel="Inner work"
+          >
+            <Heart color="#888" size={18} />
+            <Text style={styles.actionText}>Inner Work</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* Biometric opt-in prompt */}
       <BiometricPrompt
@@ -210,139 +163,61 @@ export default function HomeScreen() {
 // Styles
 // ============================================================================
 
-const styles = StyleSheet.create({
-  // Layout containers
-  container: {
-    flex: 1,
-    backgroundColor: colors.bgPrimary,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  emptyContainer: {
-    flex: 1,
-    padding: 16,
-  },
-  emptyContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    maxWidth: 280,
-    alignSelf: 'center',
-  },
-  listContent: {
-    padding: 16,
-    paddingTop: 8,
-  },
-
-  // Welcome section
-  welcomeSection: {
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-  greeting: {
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-  userName: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-
-  // Header
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  headerNewButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: colors.bgTertiary,
-  },
-
-  // Section title
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textMuted,
-    marginTop: 8,
-    marginBottom: 16,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  // Loading state
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: colors.textSecondary,
-  },
-
-  // Empty state
-  emptyIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.bgTertiary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  emptyIcon: {
-    fontSize: 36,
-  },
-  emptyTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
-    marginBottom: 32,
-  },
-
-  // New session button
-  newSessionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.accent,
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 12,
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  newSessionButtonText: {
-    color: colors.textPrimary,
-    fontSize: 17,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-
-  // No more sessions text
-  noMoreSessions: {
-    fontSize: 14,
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: 24,
-  },
-});
+const useStyles = () =>
+  createStyles((t) => ({
+    container: {
+      flex: 1,
+      backgroundColor: t.colors.bgPrimary,
+    },
+    centerContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+    loadingText: {
+      marginTop: 12,
+      fontSize: 16,
+      color: t.colors.textSecondary,
+    },
+    content: {
+      flex: 1,
+      paddingHorizontal: t.spacing.xl,
+    },
+    greetingSection: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingBottom: 60, // Offset slightly above center
+    },
+    greeting: {
+      fontSize: 36,
+      fontWeight: '700',
+      color: t.colors.textPrimary,
+      marginBottom: t.spacing.lg,
+      textAlign: 'center',
+    },
+    question: {
+      fontSize: 20,
+      color: t.colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 28,
+      maxWidth: 280,
+    },
+    actionsSection: {
+      paddingBottom: t.spacing['3xl'],
+      gap: t.spacing.sm,
+    },
+    actionButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: t.spacing.md,
+      paddingHorizontal: t.spacing.lg,
+      gap: t.spacing.sm,
+    },
+    actionText: {
+      fontSize: 15,
+      color: t.colors.textMuted,
+    },
+  }));

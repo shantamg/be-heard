@@ -1,5 +1,5 @@
 import { Tabs, useRouter } from 'expo-router';
-import { MessageCircle, FolderOpen, User, Bell } from 'lucide-react-native';
+import { Home, FolderOpen, User, Bell } from 'lucide-react-native';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { colors } from '@/src/theme';
 import { NotificationBadge } from '@/src/components/NotificationBadge';
@@ -34,9 +34,9 @@ function NotificationButton() {
 
 /**
  * Tab bar configuration
- * Three main tabs: Chat (main), Sessions (list), Profile
+ * Three main tabs: Home (main), Sessions (list), Profile
  *
- * Chat is the primary interface - users start and continue conversations here.
+ * Home is the main landing page with greeting and quick actions.
  * Sessions provides a list view of all sessions for quick access.
  */
 export default function TabLayout() {
@@ -54,9 +54,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Chat',
+          title: 'Home',
           tabBarIcon: ({ color, size }: { color: string; size: number }) => (
-            <MessageCircle color={color} size={size} />
+            <Home color={color} size={size} />
           ),
           headerTitle: 'Meet Without Fear',
           headerRight: () => <NotificationButton />,
