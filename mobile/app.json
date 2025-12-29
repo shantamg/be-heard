@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "BeHeard",
-    "slug": "be-heard",
+    "name": "Meet Without Fear",
+    "slug": "meet-without-fear",
     "version": "0.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "beheard",
+    "scheme": "meetwithoutfear",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.beheard.app",
+      "bundleIdentifier": "com.meetwithoutfear.app",
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -28,9 +28,11 @@
         "backgroundColor": "#111827"
       },
       "icon": "./assets/images/icon.png",
-      "package": "com.beheard.app",
+      "package": "com.meetwithoutfear.app",
       "versionCode": 1,
-      "permissions": ["RECORD_AUDIO"]
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -57,11 +59,16 @@
     ],
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "f381a744-a85d-478c-a8dd-75d54414aa5a"
+      },
+      "apiUrl": "https://meet-without-fear-api.onrender.com",
+      "router": {
+        "root": "./app"
       }
     },
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "owner": "shantamg"
   }
 }

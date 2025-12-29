@@ -21,7 +21,7 @@ import {
 } from '@/src/hooks/useMessages';
 import { ChatInterface } from '@/src/components/ChatInterface';
 import { ChatHeader } from '@/src/components/ChatHeader';
-import { Stage, MessageRole } from '@be-heard/shared';
+import { Stage, MessageRole } from '@meet-without-fear/shared';
 import { createStyles } from '@/src/theme/styled';
 
 // ============================================================================

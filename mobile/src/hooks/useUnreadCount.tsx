@@ -1,5 +1,5 @@
 /**
- * useUnreadCount Hook for BeHeard Mobile
+ * useUnreadCount Hook for Meet Without Fear Mobile
  *
  * Manages unread notification count with real-time updates.
  * Provides count display for notification badge in header.

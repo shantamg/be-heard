@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { UnifiedSessionScreen } from '@/src/screens/UnifiedSessionScreen';
-import { Stage } from '@be-heard/shared';
+import { Stage } from '@meet-without-fear/shared';
 
 /**
  * Unified Session Screen

@@ -7,7 +7,7 @@ import {
   Platform,
   ListRenderItem,
 } from 'react-native';
-import type { MessageDTO } from '@be-heard/shared';
+import type { MessageDTO } from '@meet-without-fear/shared';
 import { ChatBubble, ChatBubbleMessage, MessageDeliveryStatus } from './ChatBubble';
 import { TypingIndicator } from './TypingIndicator';
 import { ChatInput } from './ChatInput';

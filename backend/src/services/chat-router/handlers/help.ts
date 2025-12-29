@@ -2,10 +2,10 @@
  * Help Handler
  *
  * Handles HELP and UNKNOWN intents.
- * Provides guidance on how to use BeHeard.
+ * Provides guidance on how to use Meet Without Fear.
  */
 
-import { ChatIntent } from '@be-heard/shared';
+import { ChatIntent } from '@meet-without-fear/shared';
 import { IntentHandler, IntentHandlerContext, IntentHandlerResult } from '../types';
 
 /**
@@ -58,7 +58,7 @@ export const helpHandler: IntentHandler = {
 
 function getHelpMessage(hasActiveSession: boolean): string {
   if (hasActiveSession) {
-    return `BeHeard helps you have difficult conversations in a healthy way. Here's how it works:
+    return `Meet Without Fear helps you have difficult conversations in a healthy way. Here's how it works:
 
 In your current session, you can:
 • Share how you're feeling - I'll listen and help you feel heard
@@ -69,7 +69,7 @@ In your current session, you can:
 Just share what's on your mind, and I'll guide you through the process.`;
   }
 
-  return `I'm here to help you work through difficult conversations. Here's how BeHeard works:
+  return `I'm here to help you work through difficult conversations. Here's how Meet Without Fear works:
 
 1. **Start a session** - Tell me who you'd like to talk to (e.g., "I need to talk to my partner John")
 2. **Feel heard** - Share your feelings privately with me first
@@ -80,5 +80,5 @@ To get started, just tell me who you'd like to work things out with.`;
 }
 
 function getFallbackMessage(): string {
-  return "I'm here to help you work through difficult conversations. You can start a session with someone by telling me their name, or ask for help to learn more about how BeHeard works.";
+  return "I'm here to help you work through difficult conversations. You can start a session with someone by telling me their name, or ask for help to learn more about how Meet Without Fear works.";
 }

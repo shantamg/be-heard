@@ -58,7 +58,7 @@ const MOCK_NOTIFICATIONS: NotificationItem[] = [
   {
     id: '5',
     type: 'general',
-    title: 'Welcome to BeHeard',
+    title: 'Welcome to Meet Without Fear',
     body: 'Thanks for joining! Start your first session to begin.',
     timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 1 week ago
     read: true,

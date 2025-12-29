@@ -1,8 +1,8 @@
 {
-  "name": "@be-heard/backend",
+  "name": "@meet-without-fear/backend",
   "version": "0.0.1",
   "private": true,
-  "description": "BeHeard API Backend",
+  "description": "Meet Without Fear API Backend",
   "main": "dist/backend/src/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",

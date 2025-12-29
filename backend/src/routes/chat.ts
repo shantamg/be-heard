@@ -15,7 +15,7 @@ import {
   initializeChatRouter,
 } from '../services/chat-router';
 import { success, error } from '../utils/response';
-import { SendUnifiedChatRequest } from '@be-heard/shared';
+import { SendUnifiedChatRequest } from '@meet-without-fear/shared';
 
 const router = Router();
 

@@ -1,5 +1,5 @@
 /**
- * BeHeard Shared Types
+ * Meet Without Fear Shared Types
  *
  * Single source of truth for all DTOs and enums used by both backend and mobile.
  */

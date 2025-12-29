@@ -1,6 +1,6 @@
 # Implementation Plans
 
-Executable implementation plans for building BeHeard. These plans reference the [MVP Planning Docs](../docs/mvp-planning/plans/index.md) as the source of truth.
+Executable implementation plans for building Meet Without Fear. These plans reference the [MVP Planning Docs](../docs/mvp-planning/plans/index.md) as the source of truth.
 
 ## Structure
 
@@ -72,6 +72,6 @@ shared/session-types.md  ─┬─> backend/auth.md ──> backend/stage-0-api.
 
 Use git worktrees for independent commit/test cycles:
 ```bash
-git worktree add ../beheard-backend -b backend-implementation
-git worktree add ../beheard-mobile -b mobile-implementation
+git worktree add ../meetwithoutfear-backend -b backend-implementation
+git worktree add ../meetwithoutfear-mobile -b mobile-implementation
 ```

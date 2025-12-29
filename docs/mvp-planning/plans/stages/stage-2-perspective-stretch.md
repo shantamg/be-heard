@@ -199,7 +199,7 @@ This exchange:
 flowchart TB
     subgraph Screen[Building Your Understanding]
         subgraph Header[Header]
-            Logo[BeHeard]
+            Logo[Meet Without Fear]
             Stage[Stage 2: Perspective Stretch]
             Status[Building empathy]
         end
@@ -223,7 +223,7 @@ flowchart TB
 flowchart TB
     subgraph Screen[Partners Understanding of You]
         subgraph Header[Header]
-            Logo[BeHeard]
+            Logo[Meet Without Fear]
             Stage[Stage 2: Perspective Stretch]
             Status[Reviewing attempt]
         end

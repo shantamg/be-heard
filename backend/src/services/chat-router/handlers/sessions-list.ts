@@ -5,7 +5,7 @@
  * Shows users their active sessions.
  */
 
-import { ChatIntent, SessionSummaryDTO } from '@be-heard/shared';
+import { ChatIntent, SessionSummaryDTO } from '@meet-without-fear/shared';
 import { prisma } from '../../../lib/prisma';
 import { mapSessionToSummary } from '../../../utils/session';
 import { IntentHandler, IntentHandlerContext, IntentHandlerResult } from '../types';

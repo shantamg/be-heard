@@ -13,7 +13,7 @@ import {
   Animated,
   ViewStyle,
 } from 'react-native';
-import { ConnectionStatus } from '@be-heard/shared';
+import { ConnectionStatus } from '@meet-without-fear/shared';
 import { colors } from '@/theme';
 
 // ============================================================================

@@ -1,5 +1,5 @@
 /**
- * Notification Preferences Hook for BeHeard Mobile
+ * Notification Preferences Hook for Meet Without Fear Mobile
  *
  * React Query hooks for fetching and updating notification preferences.
  * Supports optimistic updates for a responsive toggle experience.
@@ -17,7 +17,7 @@ import {
   GetNotificationPreferencesResponse,
   UpdateNotificationPreferencesRequest,
   UpdateNotificationPreferencesResponse,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 
 // ============================================================================
 // Query Keys

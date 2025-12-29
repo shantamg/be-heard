@@ -15,7 +15,7 @@ import { X } from 'lucide-react-native';
 import { ChatInterface } from '@/src/components/ChatInterface';
 import { useRouterChat } from '@/src/hooks/useRouterChat';
 import { createStyles } from '@/src/theme/styled';
-import { MessageDTO, MessageRole, Stage } from '@be-heard/shared';
+import { MessageDTO, MessageRole, Stage } from '@meet-without-fear/shared';
 
 // ============================================================================
 // Constants

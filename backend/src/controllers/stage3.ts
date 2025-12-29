@@ -12,7 +12,7 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { extractNeedsFromConversation, findCommonGround } from '../services/needs';
-import { confirmNeedsRequestSchema, ConsentContentType, ApiResponse, ErrorCode } from '@be-heard/shared';
+import { confirmNeedsRequestSchema, ConsentContentType, ApiResponse, ErrorCode } from '@meet-without-fear/shared';
 import { notifyPartner, publishSessionEvent } from '../services/realtime';
 import { successResponse, errorResponse } from '../utils/response';
 import { getPartnerUserId } from '../utils/session';
@@ -641,7 +641,7 @@ export async function addCustomNeed(req: Request, res: Response): Promise<void> 
     const { id: sessionId } = req.params;
     const { need, category, description } = req.body as {
       need?: string;
-      category?: import('@be-heard/shared').NeedCategory;
+      category?: import('@meet-without-fear/shared').NeedCategory;
       description?: string;
     };
 
@@ -702,7 +702,7 @@ export async function addCustomNeed(req: Request, res: Response): Promise<void> 
       data: {
         vesselId: userVessel.id,
         need,
-        category: category as import('@be-heard/shared').NeedCategory,
+        category: category as import('@meet-without-fear/shared').NeedCategory,
         evidence: [],
         aiConfidence: 1.0, // User-added needs are considered 100% confident
         confirmed: true, // User-added needs are auto-confirmed

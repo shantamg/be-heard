@@ -116,7 +116,7 @@ Create `mobile/src/components/CurrentSessionCard.tsx`:
 ```typescript
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { STAGE_NAMES } from '@be-heard/shared';
+import { STAGE_NAMES } from '@meet-without-fear/shared';
 
 interface Props {
   sessionId: string;

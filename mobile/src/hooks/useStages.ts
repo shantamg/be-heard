@@ -1,5 +1,5 @@
 /**
- * Stage Hooks for BeHeard Mobile
+ * Stage Hooks for Meet Without Fear Mobile
  *
  * React Query hooks for stage-specific API operations.
  * Covers all 5 stages: Onboarding, Witness, Perspective Stretch, Need Mapping, Strategic Repair.
@@ -51,7 +51,7 @@ import {
   ResolveSessionResponse,
   Stage,
   StageStatus,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 import { sessionKeys } from './useSessions';
 
 // ============================================================================

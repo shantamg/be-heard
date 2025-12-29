@@ -8,7 +8,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { UnauthorizedError, ForbiddenError } from './errors';
 import { prisma } from '../lib/prisma';
-import { ApiResponse, ErrorCode } from '@be-heard/shared';
+import { ApiResponse, ErrorCode } from '@meet-without-fear/shared';
 
 // ============================================================================
 // Types

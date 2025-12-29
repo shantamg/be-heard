@@ -94,7 +94,7 @@ import type {
   SessionDetailDTO,
   CreateSessionRequest,
   CreateSessionResponse
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 
 export function useSessions() {
   const api = useApiClient();
@@ -144,7 +144,7 @@ Create `mobile/src/hooks/useMessages.ts`:
 ```typescript
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApiClient } from '../lib/api';
-import type { MessageDTO } from '@be-heard/shared';
+import type { MessageDTO } from '@meet-without-fear/shared';
 
 export function useMessages(sessionId: string) {
   const api = useApiClient();
@@ -185,7 +185,7 @@ Create `mobile/src/hooks/useProfile.ts`:
 ```typescript
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useApiClient } from '../lib/api';
-import type { GetMeResponse } from '@be-heard/shared';
+import type { GetMeResponse } from '@meet-without-fear/shared';
 
 export function useProfile() {
   const api = useApiClient();

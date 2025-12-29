@@ -10,6 +10,7 @@ import { sessionSwitchHandler } from './session-switch';
 import { conversationHandler } from './conversation';
 import { sessionsListHandler } from './sessions-list';
 import { helpHandler } from './help';
+import { witnessingHandler } from './witnessing';
 
 // Export individual handlers for direct use
 export { sessionCreationHandler } from './session-creation';
@@ -17,6 +18,7 @@ export { sessionSwitchHandler } from './session-switch';
 export { conversationHandler } from './conversation';
 export { sessionsListHandler } from './sessions-list';
 export { helpHandler } from './help';
+export { witnessingHandler, isInWitnessingMode, getLastPersonMention } from './witnessing';
 
 // Export helper functions
 export {
@@ -33,7 +35,8 @@ export function registerBuiltInHandlers(): void {
   registerHandler(sessionSwitchHandler);
   registerHandler(conversationHandler);
   registerHandler(sessionsListHandler);
-  registerHandler(helpHandler);
+  registerHandler(witnessingHandler); // Handles pre-session witnessing/Inner Work
+  registerHandler(helpHandler); // Lowest priority fallback
 
   console.log('[ChatRouter] Registered all built-in handlers');
 }

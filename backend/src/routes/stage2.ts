@@ -1,7 +1,7 @@
 /**
  * Stage 2 Routes
  *
- * Routes for the Perspective Stretch / Empathy stage of the BeHeard process.
+ * Routes for the Perspective Stretch / Empathy stage of the Meet Without Fear process.
  * - POST /sessions/:id/empathy/draft - Save empathy draft
  * - GET /sessions/:id/empathy/draft - Get current draft
  * - POST /sessions/:id/empathy/consent - Consent to share

@@ -49,7 +49,7 @@ model Relationship {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Members (exactly 2 for BeHeard)
+  // Members (exactly 2 for Meet Without Fear)
   members  RelationshipMember[]
   sessions Session[]
 }
@@ -413,6 +413,41 @@ enum MessageRole {
   USER
   AI
   SYSTEM
+}
+
+// ============================================================================
+// Pre-Session Messages
+// ============================================================================
+
+// Messages captured before a session is created or identified.
+// These are associated with a session retroactively once the user
+// starts or switches to a session.
+model PreSessionMessage {
+  id        String      @id @default(cuid())
+  userId    String
+  role      MessageRole
+  content   String      @db.Text
+  timestamp DateTime    @default(now())
+
+  // Embedding for semantic search
+  embedding Unsupported("vector(1024)")?
+
+  // Metadata from intent detection
+  detectedIntent    String? // The intent detected for this message
+  emotionalTone     String? // neutral, upset, hopeful, anxious
+  extractedPerson   String? // If a person was mentioned
+  extractedTopic    String? // If a topic was identified
+
+  // Association tracking
+  associatedSessionId String?   // Set when message is linked to a session
+  associatedAt        DateTime? // When it was associated
+
+  // Cleanup
+  expiresAt DateTime // Auto-cleanup after 24 hours if not associated
+
+  @@index([userId, timestamp])
+  @@index([userId, associatedSessionId])
+  @@index([expiresAt])
 }
 
 // ============================================================================

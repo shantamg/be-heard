@@ -19,7 +19,7 @@ import {
   updateProfileRequestSchema,
   updatePushTokenRequestSchema,
   updateBiometricPreferenceRequestSchema,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 
 // ============================================================================
 // Helper Functions
@@ -204,13 +204,13 @@ export const getAblyToken = asyncHandler(async (req: Request, res: Response): Pr
   // Build capability object - scope to user's active sessions
   const capability: Record<string, string[]> = {};
   for (const session of sessions) {
-    capability[`beheard:session:${session.id}`] = ['subscribe', 'publish'];
-    capability[`beheard:session:${session.id}:presence`] = ['presence'];
+    capability[`meetwithoutfear:session:${session.id}`] = ['subscribe', 'publish'];
+    capability[`meetwithoutfear:session:${session.id}:presence`] = ['presence'];
   }
 
   // If no active sessions, allow basic user channel
   if (Object.keys(capability).length === 0) {
-    capability[`beheard:user:${user.id}`] = ['subscribe'];
+    capability[`meetwithoutfear:user:${user.id}`] = ['subscribe'];
   }
 
   try {

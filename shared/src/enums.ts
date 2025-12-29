@@ -1,5 +1,5 @@
 /**
- * Shared Enums for BeHeard
+ * Shared Enums for Meet Without Fear
  *
  * These mirror the Prisma enums but are available to both backend and mobile
  * without requiring the Prisma client.

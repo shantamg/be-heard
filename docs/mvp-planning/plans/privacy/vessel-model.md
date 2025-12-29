@@ -2,7 +2,7 @@
 
 ## The Three Vessels
 
-BeHeard separates data into three distinct containers with different access rules.
+Meet Without Fear separates data into three distinct containers with different access rules.
 
 ```mermaid
 flowchart TB

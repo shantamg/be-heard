@@ -1,6 +1,6 @@
 # Information Architecture
 
-The navigation structure for BeHeard follows a **People-first** model. Users navigate through relationships, not transactions.
+The navigation structure for Meet Without Fear follows a **People-first** model. Users navigate through relationships, not transactions.
 
 ## Navigation Hierarchy
 

@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # System Architecture
 
-BeHeard is built as a **Finite State Machine with Typed Memory Objects and Role-segmented Models**.
+Meet Without Fear is built as a **Finite State Machine with Typed Memory Objects and Role-segmented Models**.
 
 ## Core Mental Model
 
@@ -162,7 +162,7 @@ const missed = await api.get('/notifications/unread');
 
 ## Row-Level Security (RLS)
 
-BeHeard uses Postgres RLS to enforce vessel isolation at the database level.
+Meet Without Fear uses Postgres RLS to enforce vessel isolation at the database level.
 
 ### The Prisma + RLS Challenge
 

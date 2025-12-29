@@ -1,5 +1,5 @@
 /**
- * Notification Service for BeHeard Mobile
+ * Notification Service for Meet Without Fear Mobile
  *
  * Handles push notification registration, permissions, and platform-specific setup.
  */

@@ -59,7 +59,7 @@ model Relationship {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Members (exactly 2 for BeHeard)
+  // Members (exactly 2 for Meet Without Fear)
   members  RelationshipMember[]
   sessions Session[]
 }

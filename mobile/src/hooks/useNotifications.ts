@@ -1,5 +1,5 @@
 /**
- * Notifications Hook for BeHeard Mobile
+ * Notifications Hook for Meet Without Fear Mobile
  *
  * Manages push notification registration, listeners, and navigation.
  */

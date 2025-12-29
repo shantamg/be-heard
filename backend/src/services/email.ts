@@ -40,7 +40,7 @@ export async function sendInvitationEmail(
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to,
-      subject: `${inviterName} invited you to BeHeard`,
+      subject: `${inviterName} invited you to Meet Without Fear`,
       html: buildInvitationEmailHtml(inviterName, invitationUrl),
       text: buildInvitationEmailText(inviterName, invitationUrl),
     });
@@ -78,7 +78,7 @@ function buildInvitationEmailHtml(inviterName: string, invitationUrl: string): s
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BeHeard Invitation</title>
+  <title>Meet Without Fear Invitation</title>
 </head>
 <body style="
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -89,16 +89,16 @@ function buildInvitationEmailHtml(inviterName: string, invitationUrl: string): s
   padding: 20px;
 ">
   <div style="text-align: center; margin-bottom: 30px;">
-    <h1 style="color: #4F46E5; margin-bottom: 10px;">BeHeard</h1>
+    <h1 style="color: #4F46E5; margin-bottom: 10px;">Meet Without Fear</h1>
   </div>
 
   <div style="background: #F9FAFB; border-radius: 12px; padding: 30px; margin-bottom: 30px;">
     <h2 style="margin-top: 0; color: #111827;">You've been invited</h2>
     <p style="font-size: 16px; color: #4B5563;">
-      <strong>${escapeHtml(inviterName)}</strong> wants to work through something together using BeHeard.
+      <strong>${escapeHtml(inviterName)}</strong> wants to work through something together using Meet Without Fear.
     </p>
     <p style="font-size: 14px; color: #6B7280;">
-      BeHeard is a guided process that helps two people understand each other better and find common ground.
+      Meet Without Fear is a guided process that helps two people understand each other better and find common ground.
     </p>
   </div>
 
@@ -129,11 +129,11 @@ function buildInvitationEmailHtml(inviterName: string, invitationUrl: string): s
  */
 function buildInvitationEmailText(inviterName: string, invitationUrl: string): string {
   return `
-You've been invited to BeHeard
+You've been invited to Meet Without Fear
 
-${inviterName} wants to work through something together using BeHeard.
+${inviterName} wants to work through something together using Meet Without Fear.
 
-BeHeard is a guided process that helps two people understand each other better and find common ground.
+Meet Without Fear is a guided process that helps two people understand each other better and find common ground.
 
 Accept the invitation here:
 ${invitationUrl}

@@ -110,8 +110,15 @@ export async function embedSessionVessel(
 
   // Build session summary
   const partner = session.relationship.members.find((m) => m.userId !== userId);
+  const myMember = session.relationship.members.find((m) => m.userId === userId);
+  // Partner name: use partner's actual name if they've joined,
+  // otherwise use the nickname I gave them when creating the session
   const partnerName =
-    partner?.nickname || partner?.user.firstName || partner?.user.name || 'Unknown';
+    partner?.user.firstName ||
+    partner?.user.name ||
+    partner?.nickname ||
+    myMember?.nickname ||
+    'Unknown';
   const topic = vessel.documents[0]?.content;
   const recentContext = session.messages.map((m) => m.content).join(' ');
 
@@ -218,18 +225,22 @@ export async function findSimilarSessions(
   // Query using cosine similarity
   // Note: pgvector uses <=> for cosine distance (0 = identical, 2 = opposite)
   // We convert to similarity: 1 - (distance / 2)
+  // The query handles both:
+  // 1. Partner has joined: use their actual name
+  // 2. Partner hasn't joined: use the nickname stored on the inviter's membership
   const results = await prisma.$queryRaw<
     Array<{ session_id: string; partner_name: string; distance: number }>
   >`
     SELECT
       s.id as session_id,
-      COALESCE(rm.nickname, u.name, 'Unknown') as partner_name,
+      COALESCE(partner_user.name, partner_member.nickname, my_member.nickname, 'Unknown') as partner_name,
       uv.embedding <=> ${vectorToSql(queryEmbedding)}::vector as distance
     FROM "UserVessel" uv
     JOIN "Session" s ON uv."sessionId" = s.id
     JOIN "Relationship" r ON s."relationshipId" = r.id
-    JOIN "RelationshipMember" rm ON r.id = rm."relationshipId" AND rm."userId" != ${userId}
-    JOIN "User" u ON rm."userId" = u.id
+    JOIN "RelationshipMember" my_member ON r.id = my_member."relationshipId" AND my_member."userId" = ${userId}
+    LEFT JOIN "RelationshipMember" partner_member ON r.id = partner_member."relationshipId" AND partner_member."userId" != ${userId}
+    LEFT JOIN "User" partner_user ON partner_member."userId" = partner_user.id
     WHERE uv."userId" = ${userId}
       AND uv.embedding IS NOT NULL
       AND s.status NOT IN ('ABANDONED', 'RESOLVED')

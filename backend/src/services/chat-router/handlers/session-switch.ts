@@ -1,21 +1,23 @@
 /**
  * Session Switch Handler
  *
- * Handles SWITCH_SESSION intent - switches to an existing session.
+ * Handles SWITCH_SESSION intent - switches to an existing session
+ * and processes the message within that session's context.
  */
 
-import { ChatIntent } from '@be-heard/shared';
+import { ChatIntent } from '@meet-without-fear/shared';
 import { prisma } from '../../../lib/prisma';
 import { mapSessionToSummary } from '../../../utils/session';
 import { IntentHandler, IntentHandlerContext, IntentHandlerResult } from '../types';
-import { generateConversationalResponse } from '../response-generator';
+import { convertPreSessionToSessionMessages } from '../../witnessing';
+import { processSessionMessage } from '../session-processor';
 
 // Get access to the creation state management
 import { startPendingCreation } from './session-creation';
 
 /**
  * Session Switch Handler
- * Switches to an existing session by ID or partner name
+ * Switches to an existing session and processes the message there
  */
 export const sessionSwitchHandler: IntentHandler = {
   id: 'session-switch',
@@ -86,7 +88,14 @@ export const sessionSwitchHandler: IntentHandler = {
       // Find session where partner name matches
       session = sessions.find((s) => {
         const partner = s.relationship.members.find((m) => m.userId !== userId);
-        const name = partner?.nickname || partner?.user.firstName || partner?.user.name || '';
+        const myMember = s.relationship.members.find((m) => m.userId === userId);
+        // Partner name: partner's actual name if joined, or the nickname I gave them
+        const name =
+          partner?.user.firstName ||
+          partner?.user.name ||
+          partner?.nickname ||
+          myMember?.nickname ||
+          '';
         return name.toLowerCase().includes(partnerName);
       });
 
@@ -101,8 +110,6 @@ export const sessionSwitchHandler: IntentHandler = {
       const personName = intent.person?.firstName || 'that person';
 
       // Set up pending creation state for this person
-      // This clears any previous pending state (e.g., if user was creating session with Jason
-      // but now wants to start one with Tara instead)
       if (intent.person?.firstName) {
         startPendingCreation(userId, intent.person.firstName);
       }
@@ -127,32 +134,58 @@ export const sessionSwitchHandler: IntentHandler = {
 
     // Found the session - switch to it
     const partner = session.relationship.members.find((m) => m.userId !== userId);
+    const myMember = session.relationship.members.find((m) => m.userId === userId);
     const partnerName =
-      partner?.nickname || partner?.user.firstName || partner?.user.name || 'your partner';
+      partner?.user.firstName ||
+      partner?.user.name ||
+      partner?.nickname ||
+      myMember?.nickname ||
+      'your partner';
 
     const summary = mapSessionToSummary(session, userId);
 
     console.log('[SessionSwitch] Switching to session:', session.id, 'with', partnerName);
 
-    const responseMessage = await generateConversationalResponse({
-      action: 'session_switched',
-      context: {
-        personName: partnerName,
-        sessionStatus: session.status,
-      },
+    // Convert any pre-session messages to session messages
+    try {
+      const preSessionCount = await convertPreSessionToSessionMessages(userId, session.id);
+      if (preSessionCount > 0) {
+        console.log('[SessionSwitch] Converted pre-session messages:', preSessionCount);
+      }
+    } catch (err) {
+      console.warn('[SessionSwitch] Failed to convert pre-session messages:', err);
+    }
+
+    // Get user info for AI context
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, firstName: true },
     });
+    const userName = user?.firstName || user?.name || 'there';
+
+    // Process the message in the session - the original message that triggered
+    // the switch should be treated as a message IN that session
+    const result = await processSessionMessage({
+      sessionId: session.id,
+      userId,
+      userName,
+      content: message,
+    });
+
+    console.log('[SessionSwitch] Processed message in session, AI responded');
 
     return {
       actionType: 'SWITCH_SESSION',
-      message: responseMessage || `Switching to your session with ${partnerName}.`,
+      message: result.aiResponse.content,
       sessionChange: {
         type: 'switched',
         sessionId: session.id,
         session: summary,
       },
-      // Also pass through to load session messages
       passThrough: {
         sessionId: session.id,
+        userMessage: result.userMessage,
+        aiResponse: result.aiResponse,
       },
     };
   },

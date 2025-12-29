@@ -1,6 +1,6 @@
 # Wireframes
 
-UI concepts and screen layouts for key BeHeard interfaces.
+UI concepts and screen layouts for key Meet Without Fear interfaces.
 
 ## Documents
 

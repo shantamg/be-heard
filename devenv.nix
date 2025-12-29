@@ -33,29 +33,29 @@
     port = 5432;
     initialDatabases = [
       {
-        name = "be_heard";
-        user = "be_heard_user";
-        pass = "be_heard_password";
+        name = "meet_without_fear";
+        user = "mwf_user";
+        pass = "mwf_password";
       }
       {
-        name = "be_heard_shadow";
-        user = "be_heard_user";
-        pass = "be_heard_password";
+        name = "meet_without_fear_shadow";
+        user = "mwf_user";
+        pass = "mwf_password";
       }
       {
-        name = "be_heard_test";
-        user = "be_heard_user";
-        pass = "be_heard_password";
+        name = "meet_without_fear_test";
+        user = "mwf_user";
+        pass = "mwf_password";
       }
     ];
     initialScript = ''
-      ALTER USER be_heard_user LOGIN CREATEDB;
+      ALTER USER mwf_user LOGIN CREATEDB;
       CREATE EXTENSION IF NOT EXISTS vector;
     '';
   };
 
   # Test database URL
-  env.DATABASE_URL_TEST = "postgresql://be_heard_user:be_heard_password@localhost:5432/be_heard_test";
+  env.DATABASE_URL_TEST = "postgresql://mwf_user:mwf_password@localhost:5432/meet_without_fear_test";
 
   # Setup script
   scripts.setup.exec = ''
@@ -67,7 +67,7 @@
 
   # Shell hook
   enterShell = ''
-    echo "Welcome to BeHeard"
+    echo "Welcome to Meet Without Fear"
     echo ""
     echo "Available commands:"
     echo "  setup          - Install deps and run migrations"
@@ -77,7 +77,7 @@
     echo "  npm run check       - Type check all workspaces"
     echo ""
     echo "PostgreSQL is running on port 5432"
-    echo "Database: be_heard"
+    echo "Database: meet_without_fear"
     echo ""
   '';
 }

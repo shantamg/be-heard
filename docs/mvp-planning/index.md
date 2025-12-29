@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # MVP Planning
 
-This directory contains all documentation for BeHeard MVP planning - an AI-Facilitated Conflict Resolution System.
+This directory contains all documentation for Meet Without Fear MVP planning - an AI-Facilitated Conflict Resolution System.
 
 ## Directories
 

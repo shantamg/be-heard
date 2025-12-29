@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Backend Overview
 
-High-level architecture and design philosophy for the BeHeard backend.
+High-level architecture and design philosophy for the Meet Without Fear backend.
 
 ## Documents
 
@@ -13,7 +13,7 @@ High-level architecture and design philosophy for the BeHeard backend.
 Three-layer architecture, FSM mental model, and system flow diagrams
 
 ### [Mental Model](./mental-model.md)
-Why BeHeard is NOT a chatbot - Process Guardian role explained
+Why Meet Without Fear is NOT a chatbot - Process Guardian role explained
 
 ### Turn Lifecycle (coming soon)
 Complete diagram of user turn processing

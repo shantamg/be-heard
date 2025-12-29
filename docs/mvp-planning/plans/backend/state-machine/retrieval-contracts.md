@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Retrieval Contracts
 
-**This is the most critical document for maintaining trust in BeHeard.**
+**This is the most critical document for maintaining trust in Meet Without Fear.**
 
 Every stage has a hard retrieval contract that defines exactly what data can and cannot be accessed. These are not guidelines - they are enforced constraints.
 

@@ -66,7 +66,7 @@ Create `backend/src/services/needs.ts`:
 
 ```typescript
 import { prisma } from '../lib/prisma';
-import { NeedCategory } from '@be-heard/shared';
+import { NeedCategory } from '@meet-without-fear/shared';
 import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic();

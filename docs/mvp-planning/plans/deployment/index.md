@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Deployment Architecture
 
-BeHeard deployment configuration for Render.com infrastructure.
+Meet Without Fear deployment configuration for Render.com infrastructure.
 
 ## Documentation
 

@@ -1,6 +1,6 @@
 # Source Material
 
-Raw input documents for BeHeard MVP planning.
+Raw input documents for Meet Without Fear MVP planning.
 
 ## Documents
 

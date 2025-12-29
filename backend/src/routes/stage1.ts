@@ -1,7 +1,7 @@
 /**
  * Stage 1 Routes
  *
- * Routes for the Witness stage of the BeHeard process.
+ * Routes for the Witness stage of the Meet Without Fear process.
  * - POST /sessions/:id/messages - Send message and get AI response
  * - POST /sessions/:id/feel-heard - Confirm user feels heard
  * - GET /sessions/:id/messages - Get conversation history

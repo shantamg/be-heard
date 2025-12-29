@@ -5,9 +5,9 @@ sidebar_position: 2
 
 # Mental Model: Process Guardian, Not Chatbot
 
-This document explains why BeHeard requires a fundamentally different architecture than typical LLM applications.
+This document explains why Meet Without Fear requires a fundamentally different architecture than typical LLM applications.
 
-## What BeHeard Is NOT
+## What Meet Without Fear Is NOT
 
 ### Not a Conversational Chatbot
 
@@ -15,7 +15,7 @@ This document explains why BeHeard requires a fundamentally different architectu
 WRONG: User → AI → Response → History → Recall
 ```
 
-Chatbots maintain conversation history and use it freely for context. BeHeard cannot do this because:
+Chatbots maintain conversation history and use it freely for context. Meet Without Fear cannot do this because:
 
 - Partner A's venting must never leak to Partner B
 - Consent is required before any sharing
@@ -27,7 +27,7 @@ Chatbots maintain conversation history and use it freely for context. BeHeard ca
 WRONG: User → AI with empathy → Therapeutic response
 ```
 
-AI therapists guide individual healing. BeHeard facilitates mutual understanding between two people with strict privacy boundaries.
+AI therapists guide individual healing. Meet Without Fear facilitates mutual understanding between two people with strict privacy boundaries.
 
 ### Not a Simple RAG System
 
@@ -35,9 +35,9 @@ AI therapists guide individual healing. BeHeard facilitates mutual understanding
 WRONG: Query → Vector search → Retrieved context → Response
 ```
 
-RAG systems retrieve based on similarity. BeHeard cannot rely on similarity for trust-affecting decisions.
+RAG systems retrieve based on similarity. Meet Without Fear cannot rely on similarity for trust-affecting decisions.
 
-## What BeHeard IS
+## What Meet Without Fear IS
 
 ### A Stateful Stage-Gated Facilitation Engine
 
@@ -54,7 +54,7 @@ The AI acts as a **Process Guardian** that:
 
 ## Memory is NOT Conversation History
 
-### Chatbot Memory Model (Wrong for BeHeard)
+### Chatbot Memory Model (Wrong for Meet Without Fear)
 
 ```mermaid
 flowchart LR
@@ -65,7 +65,7 @@ flowchart LR
     EMBEDDING --> RECALL[Free Recall]
 ```
 
-### BeHeard Memory Model (Correct)
+### Meet Without Fear Memory Model (Correct)
 
 ```mermaid
 flowchart TB
@@ -95,7 +95,7 @@ flowchart TB
     B_NEEDS -->|"Explicit consent"| CONSENTED
 ```
 
-Memory in BeHeard is:
+Memory in Meet Without Fear is:
 
 | Property | Description |
 |----------|-------------|
@@ -125,7 +125,7 @@ Memory in BeHeard is:
 
 ## The Process Guardian Role
 
-The AI in BeHeard is not a participant in the conflict. It is a Process Guardian that:
+The AI in Meet Without Fear is not a participant in the conflict. It is a Process Guardian that:
 
 ### 1. Witnesses Without Judgment
 
@@ -285,7 +285,7 @@ async function regenerateSynthesisIfNeeded(sessionId: string, userId: string, st
 
 ## Summary
 
-| Chatbot Approach | BeHeard Approach |
+| Chatbot Approach | Meet Without Fear Approach |
 |------------------|------------------|
 | Free conversation history | Typed, scoped, gated memory |
 | Vector search for recall | SQL for trust, vectors for support |

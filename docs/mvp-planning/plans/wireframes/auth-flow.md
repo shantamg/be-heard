@@ -26,7 +26,7 @@ flowchart TD
 ```mermaid
 flowchart TB
     subgraph Welcome[Welcome Screen]
-        Brand[BeHeard logo + tagline]
+        Brand[Meet Without Fear logo + tagline]
         CTA[Continue]
         Secondary[Already have an account? Sign in]
         Legal[Terms / Privacy links]

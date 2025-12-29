@@ -1,6 +1,6 @@
 # Overview
 
-High-level documentation for the BeHeard AI-Facilitated Conflict Resolution System.
+High-level documentation for the Meet Without Fear AI-Facilitated Conflict Resolution System.
 
 ## Documents
 
@@ -13,7 +13,7 @@ High-level documentation for the BeHeard AI-Facilitated Conflict Resolution Syst
 
 ## At a Glance
 
-BeHeard acts as an **External Prefrontal Cortex** for people in conflict. Instead of users communicating directly (which escalates tension), they interact with an AI that:
+Meet Without Fear acts as an **External Prefrontal Cortex** for people in conflict. Instead of users communicating directly (which escalates tension), they interact with an AI that:
 
 1. **Maintains regulation** - Tracks emotional intensity and enforces cooling periods
 2. **Preserves memory** - Keeps accurate records without distortion
@@ -26,7 +26,7 @@ flowchart LR
         A[User A] <-->|Direct Conflict| B[User B]
     end
 
-    subgraph BeHeard
+    subgraph Meet Without Fear
         C[User A] --> AI[AI Facilitator]
         AI --> D[User B]
         D --> AI

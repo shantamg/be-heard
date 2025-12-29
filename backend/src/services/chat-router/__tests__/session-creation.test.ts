@@ -4,7 +4,7 @@
  * Tests for the session creation intent handler.
  */
 
-import { ChatIntent, SessionCreationState, SessionStatus, StageStatus, Stage } from '@be-heard/shared';
+import { ChatIntent, SessionCreationState, SessionStatus, StageStatus, Stage } from '@meet-without-fear/shared';
 import { IntentHandlerContext, IntentHandlerResult, createStateStore } from '../types';
 import { Request } from 'express';
 
@@ -378,7 +378,7 @@ describe('Session Creation Handler', () => {
         },
         data: {
           invitationId: 'inv-1',
-          invitationUrl: 'https://beheard.app/invite/inv-1',
+          invitationUrl: 'https://meetwithoutfear.app/invite/inv-1',
         },
       };
 

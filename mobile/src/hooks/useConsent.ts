@@ -1,5 +1,5 @@
 /**
- * Consent Hooks for BeHeard Mobile
+ * Consent Hooks for Meet Without Fear Mobile
  *
  * React Query hooks for consent management operations.
  * These hooks support the Consensual Bridge mechanism where users
@@ -17,7 +17,7 @@ import { get, post, ApiClientError } from '../lib/api';
 import {
   ConsentDecision,
   ConsentContentType,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 import { stageKeys } from './useStages';
 
 // ============================================================================

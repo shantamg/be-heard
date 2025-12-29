@@ -1,8 +1,8 @@
 {
-  "name": "be-heard-monorepo",
+  "name": "meet-without-fear-monorepo",
   "version": "0.0.1",
   "private": true,
-  "description": "BeHeard MVP - Therapeutic Listening Application",
+  "description": "Meet Without Fear - AI-Facilitated Conflict Resolution",
   "workspaces": [
     "mobile",
     "backend",

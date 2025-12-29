@@ -9,7 +9,7 @@ Authentication via Clerk with backend user provisioning and Ably token managemen
 
 ## Overview
 
-BeHeard uses **Clerk** for authentication and token issuance. Expo app integrates Clerk for signup/login/social; backend uses Clerk middleware to validate tokens. No custom password or refresh-token handling in the backend.
+Meet Without Fear uses **Clerk** for authentication and token issuance. Expo app integrates Clerk for signup/login/social; backend uses Clerk middleware to validate tokens. No custom password or refresh-token handling in the backend.
 
 ### Clerk-based flow (MVP)
 1) **Mobile (Expo)**: Wrap the app root with `<ClerkProvider publishableKey={...}>`. Use Clerk hooks (`useAuth`, `useUser`) to sign in/up and obtain session tokens:
@@ -146,8 +146,8 @@ Token is scoped to user's active sessions only:
 
 ```json
 {
-  "beheard:session:sess_abc123": ["subscribe", "publish"],
-  "beheard:session:sess_abc123:presence": ["presence"]
+  "meetwithoutfear:session:sess_abc123": ["subscribe", "publish"],
+  "meetwithoutfear:session:sess_abc123:presence": ["presence"]
 }
 ```
 

@@ -95,7 +95,7 @@ async function generateWithAI(
   action: string,
   context: ResponseContext
 ): Promise<string> {
-  const systemPrompt = `You are a helpful assistant for BeHeard, a conflict resolution app.
+  const systemPrompt = `You are a helpful assistant for Meet Without Fear, a conflict resolution app.
 
 Generate a natural, conversational response based on the action and context provided.
 

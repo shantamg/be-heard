@@ -1,5 +1,5 @@
 /**
- * Toast Component for BeHeard Mobile
+ * Toast Component for Meet Without Fear Mobile
  *
  * Animated in-app notification banner that slides down from top.
  */

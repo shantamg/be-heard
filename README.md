@@ -1,11 +1,11 @@
-# BeHeard
+# Meet Without Fear
 
 A guided process that helps two people understand each other better and find common ground.
 
 ## Project Structure
 
 ```
-be-heard/
+meet-without-fear/
 ├── backend/       # Express API with Prisma ORM
 ├── mobile/        # Expo React Native app
 ├── shared/        # Shared types and DTOs
@@ -35,7 +35,7 @@ You'll need accounts for these services (all have generous free tiers):
 
 ```bash
 git clone <repo-url>
-cd be-heard
+cd meet-without-fear
 npm install
 ```
 
@@ -51,8 +51,8 @@ Edit `backend/.env` with your keys:
 
 ```env
 # Database (from devenv)
-DATABASE_URL=postgresql://be_heard_user:be_heard_password@localhost:5432/be_heard
-DIRECT_URL=postgresql://be_heard_user:be_heard_password@localhost:5432/be_heard
+DATABASE_URL=postgresql://mwf_user:mwf_password@localhost:5432/meet_without_fear
+DIRECT_URL=postgresql://mwf_user:mwf_password@localhost:5432/meet_without_fear
 
 # Clerk - from https://dashboard.clerk.com → API Keys
 CLERK_SECRET_KEY=sk_test_...

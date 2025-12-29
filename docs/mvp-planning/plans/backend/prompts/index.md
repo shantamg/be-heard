@@ -5,11 +5,11 @@ sidebar_position: 1
 
 # AI Prompt Templates
 
-Prompt templates for BeHeard AI interactions. Each prompt is designed for specific stage contexts and follows strict retrieval contracts.
+Prompt templates for Meet Without Fear AI interactions. Each prompt is designed for specific stage contexts and follows strict retrieval contracts.
 
 ## Model Stratification
 
-BeHeard uses Claude models via AWS Bedrock:
+Meet Without Fear uses Claude models via AWS Bedrock:
 
 | Task | Model | Rationale |
 |------|-------|-----------|

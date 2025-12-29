@@ -9,7 +9,7 @@ import {
   PartnerStatusBadge,
   InlineTypingIndicator,
 } from '../PartnerStatus';
-import { ConnectionStatus } from '@be-heard/shared';
+import { ConnectionStatus } from '@meet-without-fear/shared';
 
 describe('PartnerStatus', () => {
   describe('rendering', () => {

@@ -5,7 +5,7 @@ sidebar_position: 3
 
 # Environment Variables
 
-All required environment variables for BeHeard services.
+All required environment variables for Meet Without Fear services.
 
 ## Backend API
 
@@ -40,7 +40,7 @@ All required environment variables for BeHeard services.
 |----------|-------------|---------|
 | `JWT_ACCESS_EXPIRY` | Access token TTL | `15m` |
 | `JWT_REFRESH_EXPIRY` | Refresh token TTL | `30d` |
-| `JWT_ISSUER` | Token issuer claim | `beheard` |
+| `JWT_ISSUER` | Token issuer claim | `meetwithoutfear` |
 
 ## AWS Bedrock Configuration
 
@@ -80,7 +80,7 @@ postgresql://USER:PASSWORD@HOST:PORT/DATABASE?sslmode=require
 ```bash
 NODE_ENV=development
 PORT=3000
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/beheard_dev
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/meetwithoutfear_dev
 
 JWT_SECRET=dev-secret-not-for-production
 JWT_REFRESH_SECRET=dev-refresh-secret

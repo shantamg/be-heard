@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>BeHeard - Quick Preview</title>
+    <title>Meet Without Fear - Quick Preview</title>
     <link rel="stylesheet" href="styles/shared.css">
     <style>
         /* Dashboard styles for intro */
@@ -320,7 +320,7 @@
                 All Demos
             </a>
             <div class="header-top">
-                <div class="header-logo" id="headerLogo">BeHeard</div>
+                <div class="header-logo" id="headerLogo">Meet Without Fear</div>
                 <div class="header-stage" id="headerStage">Quick Preview</div>
             </div>
             <div class="stage-progress" id="stageProgress">
@@ -515,7 +515,7 @@
         function updateHeader() {
             // Update logo and stage text based on current state
             if (State.currentStage === -1) {
-                document.getElementById('headerLogo').textContent = 'BeHeard';
+                document.getElementById('headerLogo').textContent = 'Meet Without Fear';
                 document.getElementById('headerStage').textContent = 'Home';
             } else {
                 document.getElementById('headerLogo').textContent = 'Session with Jordan';
@@ -628,7 +628,7 @@
             content.innerHTML = `
                 <div class="context-card">
                     <div class="context-label">About this process</div>
-                    <div class="context-text">BeHeard guides you through 5 stages to help you and Jordan understand each other and find resolution together.</div>
+                    <div class="context-text">Meet Without Fear guides you through 5 stages to help you and Jordan understand each other and find resolution together.</div>
                 </div>
 
                 <div class="context-card">
@@ -1075,7 +1075,7 @@
             setTimeout(() => {
                 addAgreement(data.agreement);
                 setTimeout(() => {
-                    showStageCompletion("Resolution Complete", "You and Jordan have completed the BeHeard process and reached an agreement. Remember: this is an experiment. You will check in together in two weeks.", "Finish Demo", true);
+                    showStageCompletion("Resolution Complete", "You and Jordan have completed the Meet Without Fear process and reached an agreement. Remember: this is an experiment. You will check in together in two weeks.", "Finish Demo", true);
                 }, 1500);
             }, 1000);
         }

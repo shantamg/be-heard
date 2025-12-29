@@ -52,7 +52,7 @@ export async function publishSessionEvent(
   data: Record<string, unknown>,
   excludeUserId?: string
 ) {
-  const channel = ably.channels.get(`beheard:session:${sessionId}`);
+  const channel = ably.channels.get(`meetwithoutfear:session:${sessionId}`);
   await channel.publish(event, data);
 }
 
@@ -63,7 +63,7 @@ export async function notifyPartner(
   data: Record<string, unknown>
 ) {
   // Check if partner is online via presence
-  const presenceChannel = ably.channels.get(`beheard:session:${sessionId}:presence`);
+  const presenceChannel = ably.channels.get(`meetwithoutfear:session:${sessionId}:presence`);
   const members = await presenceChannel.presence.get();
   const partnerPresent = members.some(m => m.clientId === partnerId);
 
@@ -113,7 +113,7 @@ export async function sendPushNotification(
     return;
   }
 
-  const message = PUSH_MESSAGES[event] || { title: 'BeHeard', body: 'You have an update' };
+  const message = PUSH_MESSAGES[event] || { title: 'Meet Without Fear', body: 'You have an update' };
 
   await expo.sendPushNotificationsAsync([{
     to: user.pushToken,

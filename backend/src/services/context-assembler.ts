@@ -396,7 +396,7 @@ export function formatContextForPrompt(bundle: ContextBundle): string {
   if (bundle.conversationContext.recentTurns.length > 0) {
     parts.push('RECENT CONVERSATION:');
     for (const turn of bundle.conversationContext.recentTurns) {
-      const role = turn.role === 'user' ? bundle.userName : 'BeHeard';
+      const role = turn.role === 'user' ? bundle.userName : 'Meet Without Fear';
       parts.push(`${role}: "${turn.content}"`);
     }
     parts.push('');

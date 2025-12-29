@@ -480,10 +480,10 @@ jest.mock(
 
 // Mock expo-linking
 jest.mock('expo-linking', () => ({
-  createURL: jest.fn((path) => `beheard://${path}`),
+  createURL: jest.fn((path) => `meetwithoutfear://${path}`),
   parse: jest.fn((url) => {
     try {
-      const parsed = new URL(url.replace('beheard://', 'https://beheard.app/'));
+      const parsed = new URL(url.replace('meetwithoutfear://', 'https://meetwithoutfear.app/'));
       return {
         path: parsed.pathname.slice(1),
         queryParams: Object.fromEntries(parsed.searchParams),

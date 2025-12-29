@@ -1,7 +1,7 @@
 /**
  * useStages Hook Tests
  *
- * Tests for stage-specific API hooks covering all 5 stages of the BeHeard process.
+ * Tests for stage-specific API hooks covering all 5 stages of the Meet Without Fear process.
  */
 
 import { renderHook, waitFor, act } from '@testing-library/react-native';
@@ -33,7 +33,7 @@ import {
   useResolveSession,
   stageKeys,
 } from '../useStages';
-import { Stage, StageStatus, NeedCategory, AgreementType, AgreementStatus, StrategyPhase } from '@be-heard/shared';
+import { Stage, StageStatus, NeedCategory, AgreementType, AgreementStatus, StrategyPhase } from '@meet-without-fear/shared';
 
 // Import mocked functions
 import * as api from '../../lib/api';

@@ -18,7 +18,7 @@ import {
   useDeclineInvitation,
   sessionKeys,
 } from '../useSessions';
-import { SessionStatus } from '@be-heard/shared';
+import { SessionStatus } from '@meet-without-fear/shared';
 
 // Import mocked functions
 import * as api from '../../lib/api';

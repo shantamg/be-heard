@@ -21,8 +21,8 @@ import {
   Platform,
   ListRenderItem,
 } from 'react-native';
-import type { MessageDTO } from '@be-heard/shared';
-import { MessageRole, Stage, StageStatus } from '@be-heard/shared';
+import type { MessageDTO } from '@meet-without-fear/shared';
+import { MessageRole, Stage, StageStatus } from '@meet-without-fear/shared';
 import { SimpleChatHeader } from './SimpleChatHeader';
 import { ChatBubble, ChatBubbleMessage, MessageDeliveryStatus } from './ChatBubble';
 import { TypingIndicator } from './TypingIndicator';
@@ -125,7 +125,7 @@ interface UniversalChatProps {
   isLoading?: boolean;
   /** Whether input is disabled */
   disabled?: boolean;
-  /** Person's name for header (defaults to "BeHeard") */
+  /** Person's name for header (defaults to "Meet Without Fear") */
   personName?: string;
   /** Status text for header (e.g., "Listening", "Stage 1") */
   headerStatus?: string;
@@ -160,7 +160,7 @@ export function UniversalChat({
   stageContext,
   isLoading = false,
   disabled = false,
-  personName = 'BeHeard',
+  personName = 'Meet Without Fear',
   headerStatus,
   emotionValue = 5,
   onEmotionChange,

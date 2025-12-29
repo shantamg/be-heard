@@ -1,5 +1,5 @@
 /**
- * Message Hooks for BeHeard Mobile
+ * Message Hooks for Meet Without Fear Mobile
  *
  * React Query hooks for chat messages and emotional barometer.
  */
@@ -26,7 +26,7 @@ import {
   CompleteExerciseRequest,
   CompleteExerciseResponse,
   Stage,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 import { sessionKeys } from './useSessions';
 import { stageKeys } from './useStages';
 

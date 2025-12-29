@@ -6,7 +6,7 @@
 
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Stage, STAGE_NAMES } from '@be-heard/shared';
+import { Stage, STAGE_NAMES } from '@meet-without-fear/shared';
 import { colors } from '@/theme';
 
 // ============================================================================

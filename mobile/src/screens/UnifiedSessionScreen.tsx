@@ -9,7 +9,7 @@
 import { useCallback, useMemo } from 'react';
 import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stage, MessageRole, StrategyPhase } from '@be-heard/shared';
+import { Stage, MessageRole, StrategyPhase } from '@meet-without-fear/shared';
 
 import { ChatInterface, ChatMessage } from '../components/ChatInterface';
 import { SessionChatHeader } from '../components/SessionChatHeader';

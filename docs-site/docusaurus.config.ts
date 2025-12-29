@@ -3,15 +3,15 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'BeHeard MVP Planning',
-  tagline: 'BeHeard MVP Planning Documentation',
+  title: 'Meet Without Fear MVP Planning',
+  tagline: 'Meet Without Fear MVP Planning Documentation',
   favicon: 'img/favicon.ico',
 
   future: {
     v4: true,
   },
 
-  url: 'https://be-heard-planning.vercel.app',
+  url: 'https://meet-without-fear-planning.vercel.app',
   baseUrl: '/',
 
   onBrokenLinks: 'warn',
@@ -59,7 +59,7 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'BeHeard MVP Planning',
+      title: 'Meet Without Fear MVP Planning',
       items: [
         {
           type: 'docSidebar',
@@ -76,7 +76,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
-      copyright: `BeHeard MVP Planning Documentation`,
+      copyright: `Meet Without Fear MVP Planning Documentation`,
     },
     prism: {
       theme: prismThemes.github,

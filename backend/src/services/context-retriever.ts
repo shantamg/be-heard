@@ -1,0 +1,576 @@
+/**
+ * Universal Context Retriever
+ *
+ * This service runs on EVERY message to ensure the AI always has
+ * awareness of relevant history. It:
+ *
+ * 1. Analyzes the user's message for references to past content
+ * 2. Searches embeddings across all accessible content
+ * 3. Returns relevant context snippets to inject into prompts
+ *
+ * This layer runs REGARDLESS of stage, session, or intent.
+ * It's the "memory backbone" that ensures nothing is forgotten.
+ */
+
+import { prisma } from '../lib/prisma';
+import { getEmbedding, getHaikuJson } from '../lib/bedrock';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface RetrievedContext {
+  /** Messages from current conversation (full history, not limited) */
+  conversationHistory: ConversationMessage[];
+
+  /** Semantically relevant messages from other sessions */
+  relevantFromOtherSessions: RelevantMessage[];
+
+  /** Semantically relevant messages from current session's history */
+  relevantFromCurrentSession: RelevantMessage[];
+
+  /** Pre-session messages not yet associated */
+  preSessionMessages: ConversationMessage[];
+
+  /** Detected references to past content */
+  detectedReferences: DetectedReference[];
+
+  /** Summary of what was retrieved */
+  retrievalSummary: string;
+}
+
+export interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: string;
+  sessionId?: string;
+  partnerName?: string;
+}
+
+export interface RelevantMessage {
+  content: string;
+  sessionId: string;
+  partnerName: string;
+  similarity: number;
+  timestamp: string;
+  role: 'user' | 'assistant';
+}
+
+export interface DetectedReference {
+  type: 'person' | 'event' | 'agreement' | 'feeling' | 'time';
+  text: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface RetrievalOptions {
+  /** User ID */
+  userId: string;
+
+  /** Current message being processed */
+  currentMessage: string;
+
+  /** Current session ID (if in a session) */
+  currentSessionId?: string;
+
+  /** Maximum messages to retrieve from other sessions */
+  maxCrossSessionMessages?: number;
+
+  /** Minimum similarity threshold for retrieval */
+  similarityThreshold?: number;
+
+  /** Whether to include pre-session messages */
+  includePreSession?: boolean;
+}
+
+// ============================================================================
+// Reference Detection
+// ============================================================================
+
+interface ReferenceDetectionResult {
+  references: DetectedReference[];
+  needsRetrieval: boolean;
+  searchQueries: string[];
+}
+
+/**
+ * Detect references to past content in the user's message.
+ * Uses Haiku for fast detection.
+ */
+async function detectReferences(message: string): Promise<ReferenceDetectionResult> {
+  const prompt = `Analyze this message for references to past events, people, agreements, or time periods.
+
+Message: "${message}"
+
+Look for:
+- References to specific people (names, relationships like "my mom", "my partner")
+- References to past events ("last time", "when we talked", "remember when")
+- References to agreements or commitments ("we agreed", "you said", "I promised")
+- References to past feelings ("I felt", "that time I was")
+- Time references ("yesterday", "last week", "before")
+
+Respond with JSON:
+{
+  "references": [
+    { "type": "person|event|agreement|feeling|time", "text": "the reference text", "confidence": "high|medium|low" }
+  ],
+  "needsRetrieval": true/false (true if references suggest looking up past content),
+  "searchQueries": ["query 1", "query 2"] (semantic search queries to find relevant content)
+}
+
+If no references, return empty arrays and needsRetrieval: false.`;
+
+  const result = await getHaikuJson<ReferenceDetectionResult>({
+    systemPrompt: 'You detect references to past content in messages. Output JSON only.',
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 512,
+  });
+
+  return result || { references: [], needsRetrieval: false, searchQueries: [] };
+}
+
+// ============================================================================
+// Semantic Search
+// ============================================================================
+
+/**
+ * Search for semantically similar messages across all user's sessions.
+ */
+async function searchAcrossSessions(
+  userId: string,
+  queryText: string,
+  excludeSessionId?: string,
+  limit: number = 5,
+  threshold: number = 0.5
+): Promise<RelevantMessage[]> {
+  const queryEmbedding = await getEmbedding(queryText);
+  if (!queryEmbedding) {
+    return [];
+  }
+
+  const vectorSql = `[${queryEmbedding.join(',')}]`;
+
+  // Search messages across all user's sessions
+  // Build query based on whether we need to exclude a session
+  type MessageResult = {
+    id: string;
+    session_id: string;
+    content: string;
+    role: string;
+    timestamp: Date;
+    partner_name: string;
+    distance: number;
+  };
+
+  let results: MessageResult[];
+
+  if (excludeSessionId) {
+    results = await prisma.$queryRaw<MessageResult[]>`
+      SELECT
+        m.id,
+        m."sessionId" as session_id,
+        m.content,
+        m.role,
+        m.timestamp,
+        COALESCE(partner_user.name, partner_user."firstName", partner_member.nickname, my_member.nickname, 'Unknown') as partner_name,
+        m.embedding <=> ${vectorSql}::vector as distance
+      FROM "Message" m
+      JOIN "Session" s ON m."sessionId" = s.id
+      JOIN "Relationship" r ON s."relationshipId" = r.id
+      JOIN "RelationshipMember" my_member ON r.id = my_member."relationshipId" AND my_member."userId" = ${userId}
+      LEFT JOIN "RelationshipMember" partner_member ON r.id = partner_member."relationshipId" AND partner_member."userId" != ${userId}
+      LEFT JOIN "User" partner_user ON partner_member."userId" = partner_user.id
+      WHERE m.embedding IS NOT NULL
+        AND (m."senderId" = ${userId} OR m.role = 'AI')
+        AND m."sessionId" != ${excludeSessionId}
+      ORDER BY distance ASC
+      LIMIT ${limit * 2}
+    `;
+  } else {
+    results = await prisma.$queryRaw<MessageResult[]>`
+      SELECT
+        m.id,
+        m."sessionId" as session_id,
+        m.content,
+        m.role,
+        m.timestamp,
+        COALESCE(partner_user.name, partner_user."firstName", partner_member.nickname, my_member.nickname, 'Unknown') as partner_name,
+        m.embedding <=> ${vectorSql}::vector as distance
+      FROM "Message" m
+      JOIN "Session" s ON m."sessionId" = s.id
+      JOIN "Relationship" r ON s."relationshipId" = r.id
+      JOIN "RelationshipMember" my_member ON r.id = my_member."relationshipId" AND my_member."userId" = ${userId}
+      LEFT JOIN "RelationshipMember" partner_member ON r.id = partner_member."relationshipId" AND partner_member."userId" != ${userId}
+      LEFT JOIN "User" partner_user ON partner_member."userId" = partner_user.id
+      WHERE m.embedding IS NOT NULL
+        AND (m."senderId" = ${userId} OR m.role = 'AI')
+      ORDER BY distance ASC
+      LIMIT ${limit * 2}
+    `;
+  }
+
+  // Convert distance to similarity and filter
+  return results
+    .map((r) => ({
+      content: r.content,
+      sessionId: r.session_id,
+      partnerName: r.partner_name,
+      similarity: 1 - r.distance / 2,
+      timestamp: r.timestamp.toISOString(),
+      role: r.role === 'USER' ? 'user' as const : 'assistant' as const,
+    }))
+    .filter((r) => r.similarity >= threshold)
+    .slice(0, limit);
+}
+
+/**
+ * Search within a specific session.
+ */
+async function searchWithinSession(
+  sessionId: string,
+  queryText: string,
+  limit: number = 5,
+  threshold: number = 0.5
+): Promise<RelevantMessage[]> {
+  const queryEmbedding = await getEmbedding(queryText);
+  if (!queryEmbedding) {
+    return [];
+  }
+
+  const vectorSql = `[${queryEmbedding.join(',')}]`;
+
+  const results = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      content: string;
+      role: string;
+      timestamp: Date;
+      distance: number;
+    }>
+  >`
+    SELECT
+      m.id,
+      m.content,
+      m.role,
+      m.timestamp,
+      m.embedding <=> ${vectorSql}::vector as distance
+    FROM "Message" m
+    WHERE m."sessionId" = ${sessionId}
+      AND m.embedding IS NOT NULL
+    ORDER BY distance ASC
+    LIMIT ${limit * 2}
+  `;
+
+  return results
+    .map((r) => ({
+      content: r.content,
+      sessionId,
+      partnerName: '', // Will be filled by caller if needed
+      similarity: 1 - r.distance / 2,
+      timestamp: r.timestamp.toISOString(),
+      role: r.role === 'USER' ? 'user' as const : 'assistant' as const,
+    }))
+    .filter((r) => r.similarity >= threshold)
+    .slice(0, limit);
+}
+
+// ============================================================================
+// Conversation History
+// ============================================================================
+
+/**
+ * Get full conversation history for current session.
+ * No arbitrary limits - we trust the model's context window.
+ */
+async function getSessionHistory(
+  sessionId: string,
+  userId: string
+): Promise<ConversationMessage[]> {
+  const messages = await prisma.message.findMany({
+    where: {
+      sessionId,
+      OR: [{ senderId: userId }, { role: 'AI' }],
+    },
+    orderBy: { timestamp: 'asc' },
+    select: {
+      content: true,
+      role: true,
+      timestamp: true,
+    },
+  });
+
+  return messages.map((m) => ({
+    role: m.role === 'USER' ? 'user' as const : 'assistant' as const,
+    content: m.content,
+    timestamp: m.timestamp.toISOString(),
+  }));
+}
+
+/**
+ * Get unassociated pre-session messages for the user.
+ */
+async function getPreSessionMessages(userId: string): Promise<ConversationMessage[]> {
+  const messages = await prisma.preSessionMessage.findMany({
+    where: {
+      userId,
+      associatedSessionId: null,
+      expiresAt: { gt: new Date() },
+    },
+    orderBy: { timestamp: 'asc' },
+    select: {
+      content: true,
+      role: true,
+      timestamp: true,
+    },
+  });
+
+  return messages.map((m) => ({
+    role: m.role === 'USER' ? 'user' as const : 'assistant' as const,
+    content: m.content,
+    timestamp: m.timestamp.toISOString(),
+  }));
+}
+
+/**
+ * Search pre-session messages by semantic similarity.
+ */
+async function searchPreSessionMessages(
+  userId: string,
+  queryText: string,
+  limit: number = 5,
+  threshold: number = 0.5
+): Promise<RelevantMessage[]> {
+  const queryEmbedding = await getEmbedding(queryText);
+  if (!queryEmbedding) {
+    return [];
+  }
+
+  const vectorSql = `[${queryEmbedding.join(',')}]`;
+
+  const results = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      content: string;
+      role: string;
+      timestamp: Date;
+      distance: number;
+    }>
+  >`
+    SELECT
+      id,
+      content,
+      role,
+      timestamp,
+      embedding <=> ${vectorSql}::vector as distance
+    FROM "PreSessionMessage"
+    WHERE "userId" = ${userId}
+      AND embedding IS NOT NULL
+      AND "associatedSessionId" IS NULL
+      AND "expiresAt" > NOW()
+    ORDER BY distance ASC
+    LIMIT ${limit}
+  `;
+
+  return results
+    .map((r) => ({
+      content: r.content,
+      sessionId: 'pre-session',
+      partnerName: 'Pre-session',
+      similarity: 1 - r.distance / 2,
+      timestamp: r.timestamp.toISOString(),
+      role: r.role === 'USER' ? 'user' as const : 'assistant' as const,
+    }))
+    .filter((r) => r.similarity >= threshold);
+}
+
+// ============================================================================
+// Main Retrieval Function
+// ============================================================================
+
+/**
+ * Retrieve all relevant context for a message.
+ * This is the main entry point - call this for EVERY message.
+ */
+export async function retrieveContext(options: RetrievalOptions): Promise<RetrievedContext> {
+  const {
+    userId,
+    currentMessage,
+    currentSessionId,
+    maxCrossSessionMessages = 10,
+    similarityThreshold = 0.5,
+    includePreSession = true,
+  } = options;
+
+  const startTime = Date.now();
+
+  // Run detection and basic retrieval in parallel
+  const [
+    referenceDetection,
+    conversationHistory,
+    preSessionMessages,
+  ] = await Promise.all([
+    detectReferences(currentMessage),
+    currentSessionId ? getSessionHistory(currentSessionId, userId) : Promise.resolve([]),
+    includePreSession ? getPreSessionMessages(userId) : Promise.resolve([]),
+  ]);
+
+  // If we detected references that need retrieval, do semantic search
+  let relevantFromOtherSessions: RelevantMessage[] = [];
+  let relevantFromCurrentSession: RelevantMessage[] = [];
+
+  if (referenceDetection.needsRetrieval && referenceDetection.searchQueries.length > 0) {
+    // Search using the generated queries
+    const searchPromises = referenceDetection.searchQueries.map(async (query) => {
+      const [crossSession, withinSession] = await Promise.all([
+        searchAcrossSessions(userId, query, currentSessionId, maxCrossSessionMessages, similarityThreshold),
+        currentSessionId
+          ? searchWithinSession(currentSessionId, query, 5, similarityThreshold)
+          : Promise.resolve([]),
+      ]);
+      return { crossSession, withinSession };
+    });
+
+    const searchResults = await Promise.all(searchPromises);
+
+    // Deduplicate and merge results
+    const seenCross = new Set<string>();
+    const seenWithin = new Set<string>();
+
+    for (const result of searchResults) {
+      for (const msg of result.crossSession) {
+        const key = `${msg.sessionId}:${msg.content.slice(0, 50)}`;
+        if (!seenCross.has(key)) {
+          seenCross.add(key);
+          relevantFromOtherSessions.push(msg);
+        }
+      }
+      for (const msg of result.withinSession) {
+        const key = msg.content.slice(0, 50);
+        if (!seenWithin.has(key)) {
+          seenWithin.add(key);
+          relevantFromCurrentSession.push(msg);
+        }
+      }
+    }
+
+    // Sort by similarity and limit
+    relevantFromOtherSessions = relevantFromOtherSessions
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, maxCrossSessionMessages);
+
+    relevantFromCurrentSession = relevantFromCurrentSession
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 5);
+  }
+
+  // Build retrieval summary
+  const parts: string[] = [];
+  if (conversationHistory.length > 0) {
+    parts.push(`${conversationHistory.length} messages in current conversation`);
+  }
+  if (preSessionMessages.length > 0) {
+    parts.push(`${preSessionMessages.length} pre-session messages`);
+  }
+  if (relevantFromOtherSessions.length > 0) {
+    parts.push(`${relevantFromOtherSessions.length} relevant from other sessions`);
+  }
+  if (relevantFromCurrentSession.length > 0) {
+    parts.push(`${relevantFromCurrentSession.length} relevant from earlier in session`);
+  }
+  if (referenceDetection.references.length > 0) {
+    parts.push(`${referenceDetection.references.length} references detected`);
+  }
+
+  const duration = Date.now() - startTime;
+  console.log(`[ContextRetriever] Retrieved in ${duration}ms: ${parts.join(', ') || 'no additional context'}`);
+
+  return {
+    conversationHistory,
+    relevantFromOtherSessions,
+    relevantFromCurrentSession,
+    preSessionMessages,
+    detectedReferences: referenceDetection.references,
+    retrievalSummary: parts.join('; ') || 'No additional context retrieved',
+  };
+}
+
+// ============================================================================
+// Context Formatting
+// ============================================================================
+
+/**
+ * Format retrieved context for injection into prompts.
+ */
+export function formatRetrievedContext(context: RetrievedContext): string {
+  const sections: string[] = [];
+
+  // Pre-session messages (if any and not in a session)
+  if (context.preSessionMessages.length > 0) {
+    sections.push('=== Earlier in this conversation ===');
+    for (const msg of context.preSessionMessages.slice(-10)) {
+      sections.push(`${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`);
+    }
+  }
+
+  // Relevant messages from other sessions
+  if (context.relevantFromOtherSessions.length > 0) {
+    sections.push('\n=== Related content from other sessions ===');
+    for (const msg of context.relevantFromOtherSessions) {
+      const when = new Date(msg.timestamp).toLocaleDateString();
+      sections.push(`[Session with ${msg.partnerName}, ${when}]`);
+      sections.push(`${msg.role === 'user' ? 'User' : 'AI'}: ${msg.content}`);
+    }
+  }
+
+  // Relevant from current session (older messages)
+  if (context.relevantFromCurrentSession.length > 0) {
+    sections.push('\n=== Related content from earlier ===');
+    for (const msg of context.relevantFromCurrentSession) {
+      sections.push(`${msg.role === 'user' ? 'User' : 'AI'}: ${msg.content}`);
+    }
+  }
+
+  // Detected references (for AI awareness)
+  if (context.detectedReferences.length > 0) {
+    sections.push('\n=== Detected references ===');
+    for (const ref of context.detectedReferences) {
+      sections.push(`- ${ref.type}: "${ref.text}" (${ref.confidence} confidence)`);
+    }
+  }
+
+  return sections.join('\n');
+}
+
+/**
+ * Build messages array with full context for AI.
+ */
+export function buildMessagesWithFullContext(
+  context: RetrievedContext,
+  currentMessage: string
+): Array<{ role: 'user' | 'assistant'; content: string }> {
+  const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+
+  // Add conversation history (full, not limited)
+  for (const msg of context.conversationHistory) {
+    messages.push({ role: msg.role, content: msg.content });
+  }
+
+  // If we have relevant context from retrieval, inject it
+  const retrievedContext = formatRetrievedContext({
+    ...context,
+    conversationHistory: [], // Don't duplicate history
+    preSessionMessages: context.conversationHistory.length === 0 ? context.preSessionMessages : [],
+  });
+
+  // Add current message with retrieved context
+  if (retrievedContext.trim()) {
+    messages.push({
+      role: 'user',
+      content: `[Retrieved context:\n${retrievedContext}]\n\n${currentMessage}`,
+    });
+  } else {
+    messages.push({ role: 'user', content: currentMessage });
+  }
+
+  return messages;
+}
+

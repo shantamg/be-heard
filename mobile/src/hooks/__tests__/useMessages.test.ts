@@ -16,7 +16,7 @@ import {
   useOptimisticMessage,
   messageKeys,
 } from '../useMessages';
-import { MessageRole, Stage, EmotionalSupportType } from '@be-heard/shared';
+import { MessageRole, Stage, EmotionalSupportType } from '@meet-without-fear/shared';
 
 // Import mocked functions
 import * as api from '../../lib/api';

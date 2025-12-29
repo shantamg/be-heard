@@ -142,7 +142,7 @@ export default function ProfileScreen() {
         </View>
 
         {/* App version */}
-        <Text style={styles.version}>BeHeard v0.0.1</Text>
+        <Text style={styles.version}>Meet Without Fear v0.0.1</Text>
       </ScrollView>
     </SafeAreaView>
   );

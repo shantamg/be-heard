@@ -2,13 +2,13 @@
  * Stage 0 Controller - Curiosity Compact Signing
  *
  * Handles the compact signing process where both parties agree to
- * engage in the BeHeard conflict resolution process.
+ * engage in the Meet Without Fear conflict resolution process.
  */
 
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { notifyPartner } from '../services/realtime';
-import { ApiResponse, ErrorCode, signCompactRequestSchema } from '@be-heard/shared';
+import { ApiResponse, ErrorCode, signCompactRequestSchema } from '@meet-without-fear/shared';
 import { successResponse, errorResponse } from '../utils/response';
 import { getPartnerUserId } from '../utils/session';
 

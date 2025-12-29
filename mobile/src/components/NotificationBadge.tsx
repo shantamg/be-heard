@@ -1,5 +1,5 @@
 /**
- * NotificationBadge Component for BeHeard Mobile
+ * NotificationBadge Component for Meet Without Fear Mobile
  *
  * A small badge that displays the unread notification count.
  * Positioned as an overlay on the bell icon in the header.

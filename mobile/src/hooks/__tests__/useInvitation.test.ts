@@ -14,7 +14,7 @@ import * as Linking from 'expo-linking';
 
 // Import mocked API
 import { get, ApiClientError } from '@/src/lib/api';
-import { ErrorCode } from '@be-heard/shared';
+import { ErrorCode } from '@meet-without-fear/shared';
 
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -25,11 +25,11 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 
 // Mock expo-linking
 jest.mock('expo-linking', () => ({
-  createURL: jest.fn((path) => `beheard://${path}`),
+  createURL: jest.fn((path) => `meetwithoutfear://${path}`),
   parse: jest.fn((url) => {
-    // Handle beheard:// scheme
-    if (url.startsWith('beheard://')) {
-      const path = url.replace('beheard://', '');
+    // Handle meetwithoutfear:// scheme
+    if (url.startsWith('meetwithoutfear://')) {
+      const path = url.replace('meetwithoutfear://', '');
       return { path, queryParams: {} };
     }
     // Handle https:// scheme
@@ -70,7 +70,7 @@ describe('useInvitationLink', () => {
   });
 
   it('extracts invitation ID from initial URL', async () => {
-    mockGetInitialURL.mockResolvedValue('beheard://invitation/abc123');
+    mockGetInitialURL.mockResolvedValue('meetwithoutfear://invitation/abc123');
 
     const { result } = renderHook(() => useInvitationLink());
 
@@ -82,7 +82,7 @@ describe('useInvitationLink', () => {
   });
 
   it('handles https URL format', async () => {
-    mockGetInitialURL.mockResolvedValue('https://beheard.app/invitation/xyz789');
+    mockGetInitialURL.mockResolvedValue('https://meetwithoutfear.app/invitation/xyz789');
 
     const { result } = renderHook(() => useInvitationLink());
 
@@ -119,7 +119,7 @@ describe('useInvitationLink', () => {
 
     // Simulate receiving a URL event
     await act(async () => {
-      urlHandler({ url: 'beheard://invitation/event123' });
+      urlHandler({ url: 'meetwithoutfear://invitation/event123' });
     });
 
     await waitFor(() => {
@@ -244,13 +244,13 @@ describe('clearPendingInvitation', () => {
 describe('createInvitationLink', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockCreateURL.mockImplementation((path) => `beheard://${path}`);
+    mockCreateURL.mockImplementation((path) => `meetwithoutfear://${path}`);
   });
 
   it('creates invitation link with ID', () => {
     const link = createInvitationLink('my-invitation-123');
 
-    expect(link).toBe('beheard://invitation/my-invitation-123');
+    expect(link).toBe('meetwithoutfear://invitation/my-invitation-123');
     expect(mockCreateURL).toHaveBeenCalledWith('invitation/my-invitation-123');
   });
 });
@@ -265,7 +265,7 @@ describe('invitation flow integration', () => {
 
   it('preserves invitation through auth flow', async () => {
     // 1. User opens app with invitation link
-    mockGetInitialURL.mockResolvedValue('beheard://invitation/auth-flow-test');
+    mockGetInitialURL.mockResolvedValue('meetwithoutfear://invitation/auth-flow-test');
 
     const { result: linkResult } = renderHook(() => useInvitationLink());
 

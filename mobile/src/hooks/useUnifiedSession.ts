@@ -6,7 +6,7 @@
  */
 
 import { useMemo, useCallback, useReducer, useEffect, useRef } from 'react';
-import { Stage, MessageRole, StrategyPhase } from '@be-heard/shared';
+import { Stage, MessageRole, StrategyPhase } from '@meet-without-fear/shared';
 
 import { useSession } from './useSessions';
 import {

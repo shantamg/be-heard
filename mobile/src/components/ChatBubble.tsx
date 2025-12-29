@@ -1,5 +1,5 @@
 import { View, Text } from 'react-native';
-import { MessageRole } from '@be-heard/shared';
+import { MessageRole } from '@meet-without-fear/shared';
 import { createStyles } from '../theme/styled';
 import { colors } from '../theme';
 
@@ -7,7 +7,7 @@ import { colors } from '../theme';
 // Types
 // ============================================================================
 
-export type MessageDeliveryStatus = 'sending' | 'sent' | 'delivered' | 'read';
+export type MessageDeliveryStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'error';
 
 export interface ChatBubbleMessage {
   id: string;
@@ -48,6 +48,8 @@ export function ChatBubble({ message, showTimestamp = false }: ChatBubbleProps) 
         return 'Delivered';
       case 'read':
         return 'Read';
+      case 'error':
+        return 'Failed to send';
     }
   };
 
@@ -95,6 +97,7 @@ export function ChatBubble({ message, showTimestamp = false }: ChatBubbleProps) 
               styles.statusText,
               message.status === 'sending' && styles.statusSending,
               message.status === 'read' && styles.statusRead,
+              message.status === 'error' && styles.statusError,
             ]}
           >
             {getStatusText(message.status)}
@@ -196,5 +199,8 @@ const useStyles = () =>
     },
     statusRead: {
       color: colors.accent,
+    },
+    statusError: {
+      color: colors.error,
     },
   }));

@@ -118,11 +118,11 @@ export interface SessionEventData {
 
 export const REALTIME_CHANNELS = {
   /** Main session channel for events */
-  session: (sessionId: string) => `beheard:session:${sessionId}`,
+  session: (sessionId: string) => `meetwithoutfear:session:${sessionId}`,
   /** Presence channel for a session */
-  presence: (sessionId: string) => `beheard:session:${sessionId}`,
+  presence: (sessionId: string) => `meetwithoutfear:session:${sessionId}`,
   /** User's private channel */
-  user: (userId: string) => `beheard:user:${userId}`,
+  user: (userId: string) => `meetwithoutfear:user:${userId}`,
 } as const;
 
 // ============================================================================

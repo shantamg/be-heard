@@ -14,7 +14,7 @@ import {
   TouchableOpacity,
   ViewStyle,
 } from 'react-native';
-import { ConnectionStatus } from '@be-heard/shared';
+import { ConnectionStatus } from '@meet-without-fear/shared';
 import { createStyles } from '../theme/styled';
 import { colors } from '../theme';
 
@@ -227,7 +227,7 @@ export function SessionChatHeader({
     }
   };
 
-  const displayName = partnerName || 'BeHeard';
+  const displayName = partnerName || 'Meet Without Fear';
 
   const content = (
     <View style={[styles.container, style]} testID={testID}>

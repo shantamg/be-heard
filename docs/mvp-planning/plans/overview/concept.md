@@ -12,9 +12,9 @@ Conflict escalates because humans try to solve problems while under **physiologi
 
 ## The Solution
 
-BeHeard acts as an **External Prefrontal Cortex** that:
+Meet Without Fear acts as an **External Prefrontal Cortex** that:
 
-| Function | How BeHeard Provides It |
+| Function | How Meet Without Fear Provides It |
 |----------|---------------------------|
 | Regulation | Emotional Barometer monitors intensity; enforces cooling periods |
 | Memory | Accurate, attributed records of what each person shared |

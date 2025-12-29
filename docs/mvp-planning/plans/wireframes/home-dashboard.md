@@ -1,6 +1,6 @@
 # Home Dashboard
 
-The primary landing screen when users open BeHeard. Surfaces the most important action and provides access to all relationships and inner work.
+The primary landing screen when users open Meet Without Fear. Surfaces the most important action and provides access to all relationships and inner work.
 
 ## Layout Structure
 
@@ -39,7 +39,7 @@ flowchart TD
 flowchart TD
     subgraph Desktop[Desktop 1200px plus]
         subgraph TopBar[Header Bar]
-            DLogo[BeHeard Logo]
+            DLogo[Meet Without Fear Logo]
             DSpacer[Spacer]
             DNew[Plus New]
             DMenu[User Menu]

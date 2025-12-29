@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Testing Strategy
 
-Testing approach for BeHeard backend.
+Testing approach for Meet Without Fear backend.
 
 ## Documentation
 
@@ -59,7 +59,7 @@ Use a separate test database:
 
 ```bash
 # .env.test
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/beheard_test
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/meetwithoutfear_test
 ```
 
 ### Reset Between Tests

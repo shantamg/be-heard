@@ -173,7 +173,7 @@ jest.mock('@/src/hooks/useSessions', () => ({
 }));
 
 // Mock shared types
-jest.mock('@be-heard/shared', () => ({
+jest.mock('@meet-without-fear/shared', () => ({
   SessionStatus: { ACTIVE: 'ACTIVE' },
   Stage: { WITNESS: 'WITNESS' },
   StageStatus: { IN_PROGRESS: 'IN_PROGRESS' },

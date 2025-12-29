@@ -26,7 +26,7 @@ import {
   AgreementType as SharedAgreementType,
   AgreementStatus as SharedAgreementStatus,
   GlobalLibrarySource as SharedGlobalLibrarySource,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 
 /**
  * Prisma Schema Tests

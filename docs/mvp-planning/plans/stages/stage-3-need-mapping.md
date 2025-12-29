@@ -113,7 +113,7 @@ The AI transforms accusatory language:
 flowchart TB
     subgraph Screen[Need Mapping Screen]
         subgraph Header[Header]
-            Logo[BeHeard]
+            Logo[Meet Without Fear]
             Stage[Stage 3: Need Mapping]
             Status[Finding common ground]
         end

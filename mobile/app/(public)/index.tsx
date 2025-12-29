@@ -19,12 +19,12 @@ export default function WelcomeScreen() {
 
   const handleTerms = () => {
     // Placeholder URL - replace with actual terms page
-    Linking.openURL('https://beheard.app/terms');
+    Linking.openURL('https://meetwithoutfear.app/terms');
   };
 
   const handlePrivacy = () => {
     // Placeholder URL - replace with actual privacy page
-    Linking.openURL('https://beheard.app/privacy');
+    Linking.openURL('https://meetwithoutfear.app/privacy');
   };
 
   return (
@@ -32,7 +32,7 @@ export default function WelcomeScreen() {
       <View style={styles.content}>
         {/* Branding Section */}
         <View style={styles.brandingSection}>
-          <Text style={styles.logo}>BeHeard</Text>
+          <Text style={styles.logo}>Meet Without Fear</Text>
           <Text style={styles.tagline}>Work through conflict together</Text>
         </View>
 

@@ -17,7 +17,7 @@ import {
   validateEmpathyRequestSchema,
   ApiResponse,
   ErrorCode,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 import { notifyPartner } from '../services/realtime';
 import { successResponse, errorResponse } from '../utils/response';
 

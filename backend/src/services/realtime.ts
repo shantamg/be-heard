@@ -5,7 +5,7 @@ import {
   SessionEventData,
   PresenceStatus,
   REALTIME_CHANNELS,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 
 /**
  * Session events for real-time communication between partners.

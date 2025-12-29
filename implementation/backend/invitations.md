@@ -19,7 +19,7 @@
    ```bash
    # backend/.env
    RESEND_API_KEY="re_..."
-   FROM_EMAIL="noreply@beheard.app"
+   FROM_EMAIL="noreply@meetwithoutfear.app"
    ```
 
 2. **SMS (Twilio) - Optional for MVP:**
@@ -146,9 +146,9 @@ export async function sendInvitationEmail(
   await resend.emails.send({
     from: process.env.FROM_EMAIL!,
     to,
-    subject: `${inviterName} invited you to BeHeard`,
+    subject: `${inviterName} invited you to Meet Without Fear`,
     html: `
-      <h1>You've been invited to BeHeard</h1>
+      <h1>You've been invited to Meet Without Fear</h1>
       <p>${inviterName} wants to work through something together.</p>
       <a href="${invitationUrl}" style="
         background: #4F46E5;

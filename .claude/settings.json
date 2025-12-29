@@ -31,7 +31,7 @@
       "Bash(which:*)",
       "Bash(pwd)",
       "Bash(ls:*)",
-      "Bash(/Users/shantam/Software/be-heard/claude-flow:*)"
+      "Bash(/Users/shantam/Software/meet-without-fear/claude-flow:*)"
     ],
     "deny": [
       "Bash(rm -rf /)"
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat | jq -r '.tool_input.command // empty' | tr '\\n' '\\0' | xargs -0 -I {} /Users/shantam/Software/be-heard/claude-flow hooks pre-command --command '{}' --validate-safety true --prepare-resources true"
+            "command": "cat | jq -r '.tool_input.command // empty' | tr '\\n' '\\0' | xargs -0 -I {} /Users/shantam/Software/meet-without-fear/claude-flow hooks pre-command --command '{}' --validate-safety true --prepare-resources true"
           }
         ]
       },
@@ -53,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat | jq -r '.tool_input.file_path // .tool_input.path // empty' | tr '\\n' '\\0' | xargs -0 -I {} /Users/shantam/Software/be-heard/claude-flow hooks pre-edit --file '{}' --auto-assign-agents true --load-context true"
+            "command": "cat | jq -r '.tool_input.file_path // .tool_input.path // empty' | tr '\\n' '\\0' | xargs -0 -I {} /Users/shantam/Software/meet-without-fear/claude-flow hooks pre-edit --file '{}' --auto-assign-agents true --load-context true"
           }
         ]
       }
@@ -64,7 +64,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat | jq -r '.tool_input.command // empty' | tr '\\n' '\\0' | xargs -0 -I {} /Users/shantam/Software/be-heard/claude-flow hooks post-command --command '{}' --track-metrics true --store-results true"
+            "command": "cat | jq -r '.tool_input.command // empty' | tr '\\n' '\\0' | xargs -0 -I {} /Users/shantam/Software/meet-without-fear/claude-flow hooks post-command --command '{}' --track-metrics true --store-results true"
           }
         ]
       },
@@ -73,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat | jq -r '.tool_input.file_path // .tool_input.path // empty' | tr '\\n' '\\0' | xargs -0 -I {} /Users/shantam/Software/be-heard/claude-flow hooks post-edit --file '{}' --format true --update-memory true"
+            "command": "cat | jq -r '.tool_input.file_path // .tool_input.path // empty' | tr '\\n' '\\0' | xargs -0 -I {} /Users/shantam/Software/meet-without-fear/claude-flow hooks post-edit --file '{}' --format true --update-memory true"
           }
         ]
       }
@@ -103,7 +103,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/shantam/Software/be-heard/claude-flow hooks session-end --generate-summary true --persist-state true --export-metrics true"
+            "command": "/Users/shantam/Software/meet-without-fear/claude-flow hooks session-end --generate-summary true --persist-state true --export-metrics true"
           }
         ]
       }

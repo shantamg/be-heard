@@ -334,4 +334,7 @@ export interface GetChatContextResponse {
 
   /** Current step in pending creation (if any) */
   pendingCreationStep?: 'GATHERING_PERSON' | 'GATHERING_CONTACT' | 'CONFIRMING' | 'COMPLETE';
+
+  /** AI-generated welcome message based on user's recent activity */
+  welcomeMessage?: string;
 }

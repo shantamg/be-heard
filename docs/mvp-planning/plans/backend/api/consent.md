@@ -201,7 +201,7 @@ interface RevokeConsentResponse {
 
 ## Stale Data Handling
 
-When consent is revoked, derived objects (CommonGround, Agreements) may reference now-inaccessible content. BeHeard uses a **check-on-read** pattern, not background recomputation.
+When consent is revoked, derived objects (CommonGround, Agreements) may reference now-inaccessible content. Meet Without Fear uses a **check-on-read** pattern, not background recomputation.
 
 ### Why Check-on-Read (Not Background Jobs)
 
@@ -210,7 +210,7 @@ When consent is revoked, derived objects (CommonGround, Agreements) may referenc
 | **Background recomputation** | Data always fresh | Complex job infrastructure, race conditions, delayed consistency |
 | **Check-on-read** | Simple, immediate, deterministic | Slight read-time overhead |
 
-For BeHeard, **deterministic retrieval** is critical (per [Retrieval Contracts](../state-machine/retrieval-contracts.md)). Check-on-read guarantees:
+For Meet Without Fear, **deterministic retrieval** is critical (per [Retrieval Contracts](../state-machine/retrieval-contracts.md)). Check-on-read guarantees:
 - Every read reflects current consent state
 - No stale data window between revocation and job completion
 - Simpler debugging and audit

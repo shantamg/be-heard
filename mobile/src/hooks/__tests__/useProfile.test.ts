@@ -26,6 +26,7 @@ jest.mock('../../lib/api', () => ({
   get: jest.fn(),
   post: jest.fn(),
   patch: jest.fn(),
+  del: jest.fn(),
   ApiClientError: class ApiClientError extends Error {
     code: string;
     status: number;
@@ -43,6 +44,7 @@ jest.mock('../../lib/api', () => ({
 const mockGet = api.get as jest.MockedFunction<typeof api.get>;
 const mockPost = api.post as jest.MockedFunction<typeof api.post>;
 const mockPatch = api.patch as jest.MockedFunction<typeof api.patch>;
+const mockDel = (api as any).del as jest.MockedFunction<typeof api.get>;
 
 // Create a wrapper with QueryClient
 function createWrapper(): React.FC<{ children: React.ReactNode }> {
@@ -95,7 +97,7 @@ describe('useProfile', () => {
 
       expect(result.current.data?.user.id).toBe('user-123');
       expect(result.current.data?.user.email).toBe('user@example.com');
-      expect(mockGet).toHaveBeenCalledWith('/me');
+      expect(mockGet).toHaveBeenCalledWith('/auth/me');
     });
 
     it('handles unauthorized error without retry', async () => {
@@ -133,7 +135,7 @@ describe('useProfile', () => {
         await mutationPromise;
       });
 
-      expect(mockPatch).toHaveBeenCalledWith('/me', { name: 'Updated Name' });
+      expect(mockPatch).toHaveBeenCalledWith('/auth/me', { name: 'Updated Name' });
       const mutationResult = await mutationPromise;
       expect(mutationResult.user.name).toBe('Updated Name');
     });
@@ -156,7 +158,7 @@ describe('useProfile', () => {
         });
       });
 
-      expect(mockPatch).toHaveBeenCalledWith('/me', {
+      expect(mockPatch).toHaveBeenCalledWith('/auth/me', {
         name: 'New Name',
       });
     });
@@ -206,7 +208,7 @@ describe('useProfile', () => {
         await mutationPromise;
       });
 
-      expect(mockPost).toHaveBeenCalledWith('/me/push-token', {
+      expect(mockPost).toHaveBeenCalledWith('/auth/push-token', {
         pushToken: 'ExponentPushToken[xxx]',
         platform: 'ios',
       });
@@ -231,7 +233,7 @@ describe('useProfile', () => {
         });
       });
 
-      expect(mockPost).toHaveBeenCalledWith('/me/push-token', {
+      expect(mockPost).toHaveBeenCalledWith('/auth/push-token', {
         pushToken: 'FCM-token-xxx',
         platform: 'android',
       });
@@ -240,7 +242,8 @@ describe('useProfile', () => {
 
   describe('useUnregisterPushToken hook', () => {
     it('unregisters push token successfully', async () => {
-      mockPost.mockResolvedValueOnce({ unregistered: true });
+      // Backend uses DELETE and returns { registered: false }
+      mockDel.mockResolvedValueOnce({ registered: false });
 
       const { result } = renderHook(() => useUnregisterPushToken(), {
         wrapper: createWrapper(),
@@ -251,7 +254,7 @@ describe('useProfile', () => {
         await mutationPromise;
       });
 
-      expect(mockPost).toHaveBeenCalledWith('/me/push-token/unregister');
+      expect(mockDel).toHaveBeenCalledWith('/auth/push-token');
       const mutationResult = await mutationPromise;
       expect(mutationResult.unregistered).toBe(true);
     });
@@ -281,7 +284,7 @@ describe('useProfile', () => {
       });
 
       expect(result.current.data?.tokenRequest.keyName).toBe('test-key');
-      expect(mockGet).toHaveBeenCalledWith('/me/ably-token');
+      expect(mockGet).toHaveBeenCalledWith('/auth/ably-token');
     });
   });
 

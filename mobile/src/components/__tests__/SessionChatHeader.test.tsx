@@ -8,15 +8,15 @@
 import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
 import { SessionChatHeader } from '../SessionChatHeader';
-import { ConnectionStatus } from '@be-heard/shared';
+import { ConnectionStatus } from '@meet-without-fear/shared';
 
 describe('SessionChatHeader', () => {
   describe('rendering', () => {
-    it('renders with default name (BeHeard) when no partner name provided', () => {
+    it('renders with default name (Meet Without Fear) when no partner name provided', () => {
       const { getByTestId } = render(<SessionChatHeader />);
 
       expect(getByTestId('session-chat-header-partner-name')).toHaveTextContent(
-        'BeHeard'
+        'Meet Without Fear'
       );
     });
 

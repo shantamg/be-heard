@@ -5,11 +5,11 @@ sidebar_position: 4
 
 # Push Notifications
 
-Expo Push Notification setup for BeHeard mobile apps.
+Expo Push Notification setup for Meet Without Fear mobile apps.
 
 ## Overview
 
-BeHeard uses [Expo Push Notifications](https://docs.expo.dev/push-notifications/overview/) for notifying users when:
+Meet Without Fear uses [Expo Push Notifications](https://docs.expo.dev/push-notifications/overview/) for notifying users when:
 - Partner signs the Curiosity Compact
 - Partner completes a stage
 - Partner shares content (empathy attempt, needs)
@@ -235,7 +235,7 @@ const NOTIFICATION_MESSAGES: Record<string, (data: any) => { title: string; body
 
 export function getNotificationMessage(event: string, data: any) {
   const getMessage = NOTIFICATION_MESSAGES[event];
-  return getMessage ? getMessage(data) : { title: 'BeHeard', body: 'You have an update' };
+  return getMessage ? getMessage(data) : { title: 'Meet Without Fear', body: 'You have an update' };
 }
 ```
 
@@ -253,7 +253,7 @@ async function notifyPartner(
   data: any
 ) {
   const presenceChannel = ably.channels.get(
-    `beheard:session:${sessionId}:presence`
+    `meetwithoutfear:session:${sessionId}:presence`
   );
 
   const members = await presenceChannel.presence.get();
@@ -261,7 +261,7 @@ async function notifyPartner(
 
   if (partnerOnline) {
     // Partner online - use Ably
-    const channel = ably.channels.get(`beheard:session:${sessionId}`);
+    const channel = ably.channels.get(`meetwithoutfear:session:${sessionId}`);
     await channel.publish(event, data);
   } else {
     // Partner offline - send push

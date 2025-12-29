@@ -5,11 +5,11 @@ sidebar_position: 6
 
 # Backend Architecture
 
-Technical documentation for the BeHeard backend - a **stateful, stage-gated, privacy-partitioned facilitation engine**.
+Technical documentation for the Meet Without Fear backend - a **stateful, stage-gated, privacy-partitioned facilitation engine**.
 
 ## Core Principle
 
-> BeHeard is NOT a chatbot. It is a Process Guardian that enforces stage-scoped memory contracts.
+> Meet Without Fear is NOT a chatbot. It is a Process Guardian that enforces stage-scoped memory contracts.
 
 ## Non-Negotiable Architectural Rules
 
@@ -67,7 +67,7 @@ Row-level security policies, access control, consent enforcement
 Unit, integration, and E2E testing strategy
 
 ### [Glossary](./glossary.md)
-Canonical definitions for all BeHeard backend terminology
+Canonical definitions for all Meet Without Fear backend terminology
 
 ## Key Design Principles
 

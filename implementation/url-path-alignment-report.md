@@ -26,7 +26,7 @@ Successfully aligned 3 URL path mismatches between mobile hooks and backend rout
 
 **Resolution:**
 - **Mobile (NEW):** `POST /sessions/:id/exercises/complete`
-- **File:** `/Users/shantam/Software/be-heard/mobile/src/hooks/useMessages.ts`
+- **File:** `/Users/shantam/Software/meet-without-fear/mobile/src/hooks/useMessages.ts`
 - **Line:** 285
 
 **Rationale:**
@@ -47,7 +47,7 @@ Successfully aligned 3 URL path mismatches between mobile hooks and backend rout
 
 **Resolution:**
 - **Mobile (NEW):** `GET /sessions/:id/compact/status`
-- **File:** `/Users/shantam/Software/be-heard/mobile/src/hooks/useStages.ts`
+- **File:** `/Users/shantam/Software/meet-without-fear/mobile/src/hooks/useStages.ts`
 - **Line:** 142
 
 **Rationale:**
@@ -68,7 +68,7 @@ Successfully aligned 3 URL path mismatches between mobile hooks and backend rout
 
 **Resolution:**
 - **Mobile (NEW):** `GET /sessions/:id/strategies/overlap`
-- **File:** `/Users/shantam/Software/be-heard/mobile/src/hooks/useStages.ts`
+- **File:** `/Users/shantam/Software/meet-without-fear/mobile/src/hooks/useStages.ts`
 - **Line:** 675
 
 **Rationale:**

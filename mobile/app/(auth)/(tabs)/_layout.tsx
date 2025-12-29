@@ -58,7 +58,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }: { color: string; size: number }) => (
             <MessageCircle color={color} size={size} />
           ),
-          headerTitle: 'BeHeard',
+          headerTitle: 'Meet Without Fear',
           headerRight: () => <NotificationButton />,
         }}
       />

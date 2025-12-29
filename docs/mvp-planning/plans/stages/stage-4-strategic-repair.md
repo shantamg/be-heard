@@ -135,7 +135,7 @@ flowchart TD
 flowchart TB
     subgraph Screen[Strategic Repair Screen]
         subgraph Header[Header]
-            Logo[BeHeard]
+            Logo[Meet Without Fear]
             Stage[Stage 4: Strategic Repair]
             Status[Building your path forward]
         end
@@ -167,7 +167,7 @@ flowchart TB
 flowchart TB
     subgraph Screen[Rank Your Top Choices]
         subgraph Header[Header]
-            Logo[BeHeard]
+            Logo[Meet Without Fear]
             Stage[Stage 4: Strategic Repair]
             Status[Private ranking]
         end
@@ -194,7 +194,7 @@ flowchart TB
 flowchart TB
     subgraph Screen[Your Shared Priorities]
         subgraph Header[Header]
-            Logo[BeHeard]
+            Logo[Meet Without Fear]
             Stage[Stage 4: Strategic Repair]
             Status[Common ground found]
         end

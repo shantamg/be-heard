@@ -11,7 +11,7 @@ import {
   SessionStatus,
   Stage,
   StageStatus,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 
 // Type for session with includes (from Prisma)
 type SessionWithIncludes = {

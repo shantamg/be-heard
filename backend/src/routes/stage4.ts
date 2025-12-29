@@ -1,7 +1,7 @@
 /**
  * Stage 4 Routes
  *
- * Routes for the Strategic Repair stage of the BeHeard process.
+ * Routes for the Strategic Repair stage of the Meet Without Fear process.
  * - GET /sessions/:id/strategies - Get anonymous strategy pool
  * - POST /sessions/:id/strategies - Propose a strategy
  * - POST /sessions/:id/strategies/rank - Submit ranking

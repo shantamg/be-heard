@@ -7,8 +7,8 @@
 
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import type { SessionSummaryDTO } from '@be-heard/shared';
-import { STAGE_NAMES, SessionStatus, StageStatus } from '@be-heard/shared';
+import type { SessionSummaryDTO } from '@meet-without-fear/shared';
+import { STAGE_NAMES, SessionStatus, StageStatus } from '@meet-without-fear/shared';
 import { colors } from '@/theme';
 
 // ============================================================================

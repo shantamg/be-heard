@@ -20,7 +20,7 @@ import {
   AgreementType,
   ApiResponse,
   ErrorCode,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 import { notifyPartner, publishSessionEvent } from '../services/realtime';
 import { successResponse, errorResponse } from '../utils/response';
 import { getPartnerUserId } from '../utils/session';

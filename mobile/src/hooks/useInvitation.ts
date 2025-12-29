@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import * as Linking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { get, ApiClientError } from '@/src/lib/api';
-import { ErrorCode } from '@be-heard/shared';
+import { ErrorCode } from '@meet-without-fear/shared';
 
 const PENDING_INVITATION_KEY = 'pending_invitation';
 
@@ -54,10 +54,10 @@ function parseInvitationFromUrl(url: string): string | null {
     const { path, queryParams } = Linking.parse(url);
 
     // Handle various URL formats:
-    // - beheard://invitation/abc123
-    // - beheard://invitation?id=abc123
-    // - https://beheard.app/invitation/abc123
-    // - https://beheard.app/invitation?id=abc123
+    // - meetwithoutfear://invitation/abc123
+    // - meetwithoutfear://invitation?id=abc123
+    // - https://meetwithoutfear.app/invitation/abc123
+    // - https://meetwithoutfear.app/invitation?id=abc123
 
     if (path?.startsWith('invitation/')) {
       // Path format: invitation/abc123

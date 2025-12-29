@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Security Architecture
 
-Security implementation for BeHeard, focusing on privacy isolation and consent enforcement.
+Security implementation for Meet Without Fear, focusing on privacy isolation and consent enforcement.
 
 ## Documentation
 

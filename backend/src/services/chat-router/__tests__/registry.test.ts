@@ -4,7 +4,7 @@
  * Tests for the chat router handler registry system.
  */
 
-import { ChatIntent } from '@be-heard/shared';
+import { ChatIntent } from '@meet-without-fear/shared';
 import { IntentHandler, IntentDetectionPlugin } from '../types';
 
 // Create a fresh registry for each test (don't use singleton)

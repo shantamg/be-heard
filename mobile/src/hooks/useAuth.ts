@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { useAuth as useClerkAuth, useUser as useClerkUser } from '@clerk/clerk-expo';
 import { apiClient } from '../lib/api';
-import type { ApiResponse, GetMeResponse, UserDTO } from '@be-heard/shared';
+import type { ApiResponse, GetMeResponse, UserDTO } from '@meet-without-fear/shared';
 
 /**
  * User type from backend

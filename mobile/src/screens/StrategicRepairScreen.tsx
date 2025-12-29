@@ -43,7 +43,7 @@ import {
   useCreateAgreement,
 } from '../hooks/useStages';
 import { useSession } from '../hooks/useSessions';
-import { StrategyPhase, AgreementType } from '@be-heard/shared';
+import { StrategyPhase, AgreementType } from '@meet-without-fear/shared';
 import { colors } from '@/theme';
 
 // ============================================================================

@@ -5,7 +5,7 @@ sidebar_position: 2
 
 # Render Configuration
 
-Render.com service definitions for BeHeard.
+Render.com service definitions for Meet Without Fear.
 
 ## render.yaml
 
@@ -13,7 +13,7 @@ Render.com service definitions for BeHeard.
 services:
   # Backend API
   - type: web
-    name: beheard-api
+    name: meetwithoutfear-api
     runtime: node
     region: oregon
     plan: starter
@@ -25,11 +25,11 @@ services:
         value: production
       - key: DATABASE_URL
         fromDatabase:
-          name: beheard-db
+          name: meetwithoutfear-db
           property: connectionString
       - key: REDIS_URL
         fromService:
-          name: beheard-redis
+          name: meetwithoutfear-redis
           type: redis
           property: connectionString
       - key: JWT_SECRET
@@ -50,7 +50,7 @@ services:
 
 databases:
   # PostgreSQL with pgvector
-  - name: beheard-db
+  - name: meetwithoutfear-db
     plan: starter
     region: oregon
     postgresMajorVersion: 15
@@ -172,7 +172,7 @@ Render auto-scales within plan limits. For manual scaling:
 # render.yaml
 services:
   - type: web
-    name: beheard-api
+    name: meetwithoutfear-api
     scaling:
       minInstances: 1
       maxInstances: 3

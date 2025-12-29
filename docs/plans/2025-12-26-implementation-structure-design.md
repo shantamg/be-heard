@@ -4,7 +4,7 @@ Date: 2025-12-26
 
 ## Overview
 
-This document captures the design decisions for transitioning from planning to building the BeHeard app. It establishes development practices, implementation plan structure, and parallel execution strategy using Claude Flow.
+This document captures the design decisions for transitioning from planning to building the Meet Without Fear app. It establishes development practices, implementation plan structure, and parallel execution strategy using Claude Flow.
 
 ## Decisions Made
 

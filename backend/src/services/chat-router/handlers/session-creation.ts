@@ -5,7 +5,7 @@
  * Allows users to start sessions by naturally mentioning a person.
  */
 
-import { ChatIntent, SessionCreationState, SessionSummaryDTO } from '@be-heard/shared';
+import { ChatIntent, SessionCreationState, SessionSummaryDTO } from '@meet-without-fear/shared';
 import { prisma } from '../../../lib/prisma';
 import { mapSessionToSummary } from '../../../utils/session';
 import {
@@ -16,6 +16,7 @@ import {
 } from '../types';
 import { generateConversationalResponse } from '../response-generator';
 import { embedSessionVessel, embedMessages } from '../../embedding';
+import { convertPreSessionToSessionMessages } from '../../witnessing';
 
 // State store for multi-turn session creation
 const creationState = createStateStore<SessionCreationState>();
@@ -280,6 +281,18 @@ async function createSession(
       console.log('[SessionCreation] No conversation history to save');
     }
 
+    // Also pull in any pre-session messages from witnessing mode
+    // These are messages the user sent before starting the session creation flow
+    try {
+      const preSessionCount = await convertPreSessionToSessionMessages(userId, session.id);
+      if (preSessionCount > 0) {
+        console.log('[SessionCreation] Converted pre-session messages:', preSessionCount);
+      }
+    } catch (err) {
+      console.warn('[SessionCreation] Failed to convert pre-session messages:', err);
+      // Non-fatal - continue with session creation
+    }
+
     // Generate embeddings for the session and messages (non-blocking)
     const vesselToEmbed = session.userVessels.find((v) => v.userId === userId);
     if (vesselToEmbed) {
@@ -298,7 +311,7 @@ async function createSession(
     creationState.delete(userId);
 
     const summary = mapSessionToSummary(session, userId);
-    const invitationUrl = `${process.env.APP_URL || 'https://beheard.app'}/invite/${invitation.id}`;
+    const invitationUrl = `${process.env.APP_URL || 'https://meetwithoutfear.app'}/invite/${invitation.id}`;
 
     const message = await generateConversationalResponse({
       action: 'session_created',

@@ -5,14 +5,14 @@ sidebar_position: 7
 
 # Glossary
 
-Canonical definitions for BeHeard backend terminology. Use these terms consistently across all documentation and code.
+Canonical definitions for Meet Without Fear backend terminology. Use these terms consistently across all documentation and code.
 
 ## Core Entities
 
 | Term | Definition | Example |
 |------|------------|---------|
 | **Relationship** | Long-lived container linking two users. Persists across sessions. | Alice and Bob's relationship record |
-| **Session** | One facilitation run through the BeHeard process. Has a lifecycle (Created → Resolved). | A specific conflict resolution attempt |
+| **Session** | One facilitation run through the Meet Without Fear process. Has a lifecycle (Created → Resolved). | A specific conflict resolution attempt |
 | **Stage** | FSM state within a session (0-4). Each stage has entry/exit gates. | Stage 1: The Witness |
 | **Vessel** | Data isolation boundary. Determines who can access what. | User Vessel, Shared Vessel |
 
@@ -46,7 +46,7 @@ Canonical definitions for BeHeard backend terminology. Use these terms consisten
 |------|------------|------------|
 | **Small Model** | Handles mechanics: classification, detection, retrieval planning. | Claude 3.5 Haiku |
 | **Large Model** | Handles empathetic response generation. Receives pre-assembled context. | Claude 3.5 Sonnet |
-| **Process Guardian** | The AI's role in BeHeard - enforces process, does not participate in conflict. | Conceptual |
+| **Process Guardian** | The AI's role in Meet Without Fear - enforces process, does not participate in conflict. | Conceptual |
 
 ## Technical Terms
 

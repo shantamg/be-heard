@@ -22,7 +22,7 @@ import {
   CompleteExerciseRequest as SharedCompleteExerciseRequest,
   CompleteExerciseResponse as SharedCompleteExerciseResponse,
   EmotionalSupportType,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 
 // ============================================================================
 // Types

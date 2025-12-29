@@ -5,7 +5,7 @@
  * Handlers are registered at startup and matched based on intent and priority.
  */
 
-import { ChatIntent } from '@be-heard/shared';
+import { ChatIntent } from '@meet-without-fear/shared';
 import { IntentHandler, IntentHandlerRegistry, IntentDetectionPlugin, IntentDetectionHint } from './types';
 
 class HandlerRegistry implements IntentHandlerRegistry {

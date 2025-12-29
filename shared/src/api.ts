@@ -1,5 +1,5 @@
 /**
- * API Response Types for BeHeard
+ * API Response Types for Meet Without Fear
  *
  * Standard response wrappers and error types for all API endpoints.
  */

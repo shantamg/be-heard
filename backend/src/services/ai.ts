@@ -1,7 +1,7 @@
 /**
  * AI Service
  *
- * Provides AI-powered responses for the BeHeard process.
+ * Provides AI-powered responses for the Meet Without Fear process.
  * Uses the AI Orchestrator for the full pipeline:
  * - Memory Intent → Context Assembly → Retrieval Planning → Response Generation
  *
@@ -81,7 +81,7 @@ export function resetAIClient(): void {
 function buildWitnessSystemPrompt(context: WitnessContext): string {
   const witnessOnlyMode = context.turnCount < 3 || (context.emotionalIntensity ?? 0) >= 8;
 
-  return `You are BeHeard, a Process Guardian in the Witness stage. Your job is to help ${context.userName} feel fully and deeply heard.
+  return `You are Meet Without Fear, a Process Guardian in the Witness stage. Your job is to help ${context.userName} feel fully and deeply heard.
 
 YOU HAVE TWO MODES:
 

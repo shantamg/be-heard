@@ -14,7 +14,7 @@ import {
   setTokenProvider,
   ApiClientError,
 } from '../api';
-import { ErrorCode } from '@be-heard/shared';
+import { ErrorCode } from '@meet-without-fear/shared';
 
 // Mock axios
 type MockAxiosType = {

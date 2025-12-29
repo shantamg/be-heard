@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://beheard-planning.vercel.app/sitemap.xml
+Sitemap: https://meet-without-fear-planning.vercel.app/sitemap.xml

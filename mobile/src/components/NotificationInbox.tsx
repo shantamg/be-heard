@@ -1,5 +1,5 @@
 /**
- * NotificationInbox Component for BeHeard Mobile
+ * NotificationInbox Component for Meet Without Fear Mobile
  *
  * Displays a list of notifications with support for read/unread states
  * and deep linking on tap.

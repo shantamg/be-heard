@@ -80,12 +80,12 @@ I understand that:
 flowchart TB
     subgraph Screen[Onboarding Screen]
         subgraph Header[Header]
-            Logo[BeHeard]
+            Logo[Meet Without Fear]
             Stage[Stage 0 of 4]
         end
 
         subgraph Content[Main Content]
-            Title[Welcome to BeHeard]
+            Title[Welcome to Meet Without Fear]
             Intro[Brief explanation paragraph]
             Steps[Visual stage overview]
         end

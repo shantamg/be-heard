@@ -1,5 +1,5 @@
 /**
- * Toast Context for BeHeard Mobile
+ * Toast Context for Meet Without Fear Mobile
  *
  * Provides a global toast notification system for showing in-app notifications.
  */

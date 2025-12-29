@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
-import { StrategyPhase } from '@be-heard/shared';
+import { StrategyPhase } from '@meet-without-fear/shared';
 
 // Import after mocks
 import { StrategicRepairScreen } from '../StrategicRepairScreen';

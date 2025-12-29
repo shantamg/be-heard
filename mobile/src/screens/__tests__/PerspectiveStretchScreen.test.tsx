@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
-import { Stage, StageStatus } from '@be-heard/shared';
+import { Stage, StageStatus } from '@meet-without-fear/shared';
 
 // Import after mocks
 import { PerspectiveStretchScreen } from '../PerspectiveStretchScreen';

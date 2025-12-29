@@ -20,7 +20,7 @@ import {
   SessionEvent,
 } from '../realtime';
 import * as pushService from '../push';
-import { PresenceStatus } from '@be-heard/shared';
+import { PresenceStatus } from '@meet-without-fear/shared';
 
 // Mock the push service
 jest.mock('../push', () => ({
@@ -73,14 +73,14 @@ describe('Realtime Service', () => {
   describe('getSessionChannelName', () => {
     it('returns correct channel name format', () => {
       const channelName = getSessionChannelName('test-session');
-      expect(channelName).toBe('beheard:session:test-session');
+      expect(channelName).toBe('meetwithoutfear:session:test-session');
     });
   });
 
   describe('getUserChannelName', () => {
     it('returns correct user channel name format', () => {
       const channelName = getUserChannelName('test-user');
-      expect(channelName).toBe('beheard:user:test-user');
+      expect(channelName).toBe('meetwithoutfear:user:test-user');
     });
   });
 

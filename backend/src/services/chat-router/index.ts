@@ -5,7 +5,7 @@
  * Uses Haiku for fast intent detection and routes to appropriate handlers.
  */
 
-import { ChatIntent, UnifiedChatMessage, SendUnifiedChatResponse } from '@be-heard/shared';
+import { ChatIntent, UnifiedChatMessage, SendUnifiedChatResponse } from '@meet-without-fear/shared';
 import { Request } from 'express';
 import { prisma } from '../../lib/prisma';
 import { mapSessionToSummary } from '../../utils/session';
@@ -14,6 +14,7 @@ import { detectIntent, SessionInfo, SemanticMatch } from './intent-detector';
 import { registerBuiltInHandlers, hasPendingCreation, getPendingCreation } from './handlers';
 import { IntentHandlerContext } from './types';
 import { findRelevantSessions } from '../embedding';
+import { getModelCompletion } from '../../lib/bedrock';
 
 // Export types and registry for external use
 export * from './types';
@@ -130,10 +131,18 @@ export async function processMessage(
   // Map to SessionInfo format for intent detection
   const userSessions: SessionInfo[] = userSessionsData.map((session) => {
     const partner = session.relationship.members.find((m) => m.userId !== userId);
+    const myMember = session.relationship.members.find((m) => m.userId === userId);
+    // Partner name: use partner's actual name if they've joined,
+    // otherwise use the nickname I gave them when creating the session
+    const partnerName =
+      partner?.user.firstName ||
+      partner?.user.name ||
+      partner?.nickname ||
+      myMember?.nickname ||
+      'Unknown';
     return {
       id: session.id,
-      partnerName:
-        partner?.nickname || partner?.user.firstName || partner?.user.name || 'Unknown',
+      partnerName,
       status: session.status,
       lastActivity: session.updatedAt.toISOString(),
     };
@@ -226,8 +235,8 @@ export async function processMessage(
         passThrough: result.passThrough
           ? {
               sessionId: result.passThrough.sessionId,
-              userMessage: userMessage as unknown as import('@be-heard/shared').MessageDTO,
-              aiResponse: assistantResponse as unknown as import('@be-heard/shared').MessageDTO,
+              userMessage: userMessage as unknown as import('@meet-without-fear/shared').MessageDTO,
+              aiResponse: assistantResponse as unknown as import('@meet-without-fear/shared').MessageDTO,
             }
           : undefined,
       };
@@ -281,11 +290,101 @@ export async function getChatContext(userId: string) {
   const summaries = sessions.map((s) => mapSessionToSummary(s, userId));
   const pendingCreation = getPendingCreation(userId);
 
+  // Generate personalized welcome message based on context
+  const welcomeMessage = await generateWelcomeMessage(userId, sessions);
+
   return {
     activeSessions: summaries,
     hasPendingCreation: !!pendingCreation,
     pendingCreationStep: pendingCreation?.step,
+    welcomeMessage,
   };
+}
+
+// ============================================================================
+// Welcome Message Generation
+// ============================================================================
+
+/**
+ * Generate a personalized welcome message based on user's recent activity.
+ * Uses Haiku for fast generation.
+ */
+async function generateWelcomeMessage(
+  userId: string,
+  sessions: Array<{
+    id: string;
+    status: string;
+    updatedAt: Date;
+    stageProgress: Array<{ stage: number }>;
+    relationship: {
+      members: Array<{
+        userId: string;
+        nickname: string | null;
+        user: { firstName: string | null; name: string | null };
+      }>;
+    };
+  }>
+): Promise<string | undefined> {
+  // If no sessions, return undefined (will use default message)
+  if (sessions.length === 0) {
+    return undefined;
+  }
+
+  // Get the most recent session for context
+  const recentSession = sessions[0];
+  const partner = recentSession.relationship.members.find((m) => m.userId !== userId);
+  const partnerName =
+    partner?.user.firstName || partner?.user.name || partner?.nickname || 'your partner';
+
+  // Get the current stage from stageProgress (highest stage number)
+  const currentStage = recentSession.stageProgress.length > 0
+    ? Math.max(...recentSession.stageProgress.map((sp) => sp.stage))
+    : 0;
+
+  // Format the session info for the prompt
+  const sessionContext = {
+    partnerName,
+    stage: currentStage,
+    status: recentSession.status,
+    lastActivity: recentSession.updatedAt.toISOString(),
+  };
+
+  // Build prompt for Haiku
+  const systemPrompt = `You are a warm, supportive AI assistant for Meet Without Fear, an app that helps people navigate difficult conversations.
+Generate a brief, personalized welcome message (1-2 sentences max) that acknowledges the user's recent session.
+
+Guidelines:
+- Be warm but not overly effusive
+- Reference their most recent session naturally
+- Encourage them without pressure
+- Keep it short and conversational
+- Don't use emojis
+- Don't say "Welcome back" - just reference what they were working on
+
+Examples of good messages:
+- "Last time, you were working through things with Sarah. Ready to continue when you are."
+- "You've been making progress with your conversation about John. Pick up where you left off whenever you're ready."`;
+
+  const userMessage = `Generate a welcome message for a user whose most recent session:
+- Partner name: ${sessionContext.partnerName}
+- Current stage: ${sessionContext.stage || 'just started'}
+- Status: ${sessionContext.status}
+- Last active: ${new Date(sessionContext.lastActivity).toLocaleDateString()}
+
+Just output the welcome message, nothing else.`;
+
+  try {
+    const response = await getModelCompletion('haiku', {
+      systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+      maxTokens: 100,
+    });
+
+    return response?.trim() || undefined;
+  } catch (error) {
+    console.error('[ChatRouter] Failed to generate welcome message:', error);
+    return undefined;
+  }
 }
 
 /**

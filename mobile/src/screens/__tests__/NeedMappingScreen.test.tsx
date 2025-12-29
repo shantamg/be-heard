@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { render, screen } from '@testing-library/react-native';
-import { Stage, StageStatus, NeedCategory, MessageRole, CommonGroundDTO } from '@be-heard/shared';
+import { Stage, StageStatus, NeedCategory, MessageRole, CommonGroundDTO } from '@meet-without-fear/shared';
 
 // Import after mocks
 import { NeedMappingScreen } from '../NeedMappingScreen';

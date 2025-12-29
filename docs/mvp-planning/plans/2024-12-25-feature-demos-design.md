@@ -59,7 +59,7 @@ All demos import this shared file for consistency.
 **Purpose:** Show AI explaining all 5 stages before the Compact
 
 **Flow:**
-1. AI: "Before we begin, let me walk you through how BeHeard works..."
+1. AI: "Before we begin, let me walk you through how Meet Without Fear works..."
 2. AI explains each stage with simple descriptions
 3. Ends with: "Ready to sign the Curiosity Compact?"
 

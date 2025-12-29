@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # API Specification
 
-REST API endpoints for the BeHeard backend. All endpoints use JSON request/response bodies.
+REST API endpoints for the Meet Without Fear backend. All endpoints use JSON request/response bodies.
 
 ## Base URL
 
@@ -143,8 +143,8 @@ Ably channels for real-time updates.
 
 | Channel | Purpose |
 |---------|---------|
-| `beheard:session:{id}` | Session events (stage completion, agreements) |
-| `beheard:session:{id}:presence` | Partner online/offline status |
+| `meetwithoutfear:session:{id}` | Session events (stage completion, agreements) |
+| `meetwithoutfear:session:{id}:presence` | Partner online/offline status |
 
 ### [Authentication](./auth.md)
 User registration and token management.

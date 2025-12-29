@@ -1,5 +1,5 @@
 /**
- * Profile Hooks for BeHeard Mobile
+ * Profile Hooks for Meet Without Fear Mobile
  *
  * React Query hooks for user profile and push notifications.
  */
@@ -11,7 +11,7 @@ import {
   UseQueryOptions,
   UseMutationOptions,
 } from '@tanstack/react-query';
-import { get, post, patch, ApiClientError } from '../lib/api';
+import { get, post, patch, del, ApiClientError } from '../lib/api';
 import {
   GetMeResponse,
   UpdateProfileRequest,
@@ -19,7 +19,7 @@ import {
   UpdatePushTokenRequest,
   UpdatePushTokenResponse,
   AblyTokenResponse,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 
 // ============================================================================
 // Query Keys
@@ -46,7 +46,7 @@ export function useProfile(
   return useQuery({
     queryKey: profileKeys.me(),
     queryFn: async () => {
-      return get<GetMeResponse>('/me');
+      return get<GetMeResponse>('/auth/me');
     },
     staleTime: 5 * 60_000, // 5 minutes - profile doesn't change often
     retry: (failureCount, error) => {
@@ -77,7 +77,7 @@ export function useUpdateProfile(
 
   return useMutation({
     mutationFn: async (request: UpdateProfileRequest) => {
-      return patch<UpdateProfileResponse, UpdateProfileRequest>('/me', request);
+      return patch<UpdateProfileResponse, UpdateProfileRequest>('/auth/me', request);
     },
     onSuccess: (data) => {
       // Update the cached profile
@@ -111,7 +111,7 @@ export function useUpdatePushToken(
   return useMutation({
     mutationFn: async (request: UpdatePushTokenRequest) => {
       return post<UpdatePushTokenResponse, UpdatePushTokenRequest>(
-        '/me/push-token',
+        '/auth/push-token',
         request
       );
     },
@@ -142,7 +142,9 @@ export function useUnregisterPushToken(
 
   return useMutation({
     mutationFn: async () => {
-      return post<{ unregistered: boolean }>('/me/push-token/unregister');
+      // Backend uses DELETE to unregister push token
+      const result = await del<UpdatePushTokenResponse>('/auth/push-token');
+      return { unregistered: !result.registered };
     },
     onSuccess: () => {
       // Update profile to reflect push notification status
@@ -171,7 +173,7 @@ export function useAblyToken(
   return useQuery({
     queryKey: profileKeys.ablyToken(),
     queryFn: async () => {
-      return get<AblyTokenResponse>('/me/ably-token');
+      return get<AblyTokenResponse>('/auth/ably-token');
     },
     staleTime: 50 * 60_000, // Token valid for ~1 hour, refresh early
     refetchInterval: 50 * 60_000, // Refetch before expiry

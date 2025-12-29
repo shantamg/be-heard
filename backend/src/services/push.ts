@@ -133,7 +133,7 @@ export async function sendPushNotification(
 
     // Get message template for this event type
     const message = PUSH_MESSAGES[event] || {
-      title: 'BeHeard',
+      title: 'Meet Without Fear',
       body: 'You have an update',
     };
 

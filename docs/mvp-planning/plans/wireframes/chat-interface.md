@@ -77,7 +77,7 @@ Characteristics:
 ```mermaid
 flowchart TB
     subgraph OnboardingChat[Onboarding View]
-        Header0[Welcome to BeHeard]
+        Header0[Welcome to Meet Without Fear]
 
         subgraph Content0[Compact Presentation]
             Intro[Process explanation]

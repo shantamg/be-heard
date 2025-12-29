@@ -40,6 +40,7 @@ const mockUseRouterChat = jest.fn(() => ({
   ],
   isSending: false,
   isLoading: false,
+  welcomeMessage: undefined,
   sendMessage: mockSendMessage,
   clearMessages: jest.fn(),
 }));
@@ -177,6 +178,7 @@ describe('HomeScreen', () => {
       messages: [],
       isSending: false,
       isLoading: true,
+      welcomeMessage: undefined,
       sendMessage: mockSendMessage,
       clearMessages: jest.fn(),
     });

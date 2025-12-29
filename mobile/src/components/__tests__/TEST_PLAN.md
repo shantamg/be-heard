@@ -1,6 +1,6 @@
 # Test Plan: New Chat Components
 
-This document outlines comprehensive test specifications for the new chat components being built for the BeHeard mobile application. Tests follow the established patterns from existing test files such as `ChatInterface.test.tsx`, `SessionChatHeader.test.tsx`, and `CuriosityCompact.test.tsx`.
+This document outlines comprehensive test specifications for the new chat components being built for the Meet Without Fear mobile application. Tests follow the established patterns from existing test files such as `ChatInterface.test.tsx`, `SessionChatHeader.test.tsx`, and `CuriosityCompact.test.tsx`.
 
 ---
 
@@ -26,7 +26,7 @@ interface SimpleChatHeaderProps {
 #### 1.1 Rendering
 | Test Case | Description | Expected Behavior |
 |-----------|-------------|-------------------|
-| `renders default name when no person provided` | Render without personName prop | Shows "BeHeard" as fallback name |
+| `renders default name when no person provided` | Render without personName prop | Shows "Meet Without Fear" as fallback name |
 | `renders person name when provided` | Render with personName="Alex" | Shows "Alex" |
 | `truncates long names` | Render with very long name (50+ chars) | Name is truncated with ellipsis |
 | `handles empty string name` | Render with personName="" | Shows fallback name or handles gracefully |

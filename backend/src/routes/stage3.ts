@@ -1,7 +1,7 @@
 /**
  * Stage 3 Routes
  *
- * Routes for the Need Mapping stage of the BeHeard process.
+ * Routes for the Need Mapping stage of the Meet Without Fear process.
  * - GET /sessions/:id/needs - Get AI-synthesized needs
  * - POST /sessions/:id/needs/confirm - Confirm needs
  * - POST /sessions/:id/needs/consent - Consent to share needs

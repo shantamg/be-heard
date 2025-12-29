@@ -277,7 +277,7 @@ export function validateRetrievalPlan(
  * Build the system prompt for retrieval planning
  */
 function buildPlanningPrompt(stage: number, userId: string): string {
-  return `You are a retrieval planner for the BeHeard conflict resolution system.
+  return `You are a retrieval planner for the Meet Without Fear conflict resolution system.
 Your job is to decide what data should be retrieved to help respond to the user's message.
 
 CRITICAL RULES:

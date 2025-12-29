@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { sendInvitationEmail } from '../services/email';
 import { notifyPartner } from '../services/realtime';
 import { z } from 'zod';
-import { ApiResponse, ErrorCode } from '@be-heard/shared';
+import { ApiResponse, ErrorCode } from '@meet-without-fear/shared';
 import { successResponse, errorResponse } from '../utils/response';
 
 // ============================================================================
@@ -282,7 +282,7 @@ export async function createSession(req: Request, res: Response): Promise<void> 
     });
 
     // Generate invitation URL
-    const appUrl = process.env.APP_URL || 'https://beheard.app';
+    const appUrl = process.env.APP_URL || 'https://meetwithoutfear.app';
     const invitationUrl = `${appUrl}/invitation/${invitation.id}`;
 
     // Send invitation email if provided
@@ -663,7 +663,7 @@ export async function resendInvitation(req: Request, res: Response): Promise<voi
     }
 
     // Generate invitation URL
-    const appUrl = process.env.APP_URL || 'https://beheard.app';
+    const appUrl = process.env.APP_URL || 'https://meetwithoutfear.app';
     const invitationUrl = `${appUrl}/invitation/${invitation.id}`;
 
     const inviterName = user.name || 'Someone';

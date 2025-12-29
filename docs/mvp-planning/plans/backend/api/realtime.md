@@ -9,7 +9,7 @@ Ably-powered real-time updates for partner status and session events.
 
 ## Overview
 
-BeHeard uses [Ably](https://ably.com) for real-time communication:
+Meet Without Fear uses [Ably](https://ably.com) for real-time communication:
 - **Presence**: Know when partner is online/active
 - **Pub/Sub**: Instant notifications of partner actions
 - **Push**: Expo Push Notifications for offline users
@@ -32,7 +32,7 @@ flowchart LR
 Each session has a private channel:
 
 ```
-beheard:session:{sessionId}
+meetwithoutfear:session:{sessionId}
 ```
 
 Both participants subscribe to this channel for session-level events.
@@ -42,7 +42,7 @@ Both participants subscribe to this channel for session-level events.
 For knowing if partner is actively in the app:
 
 ```
-beheard:session:{sessionId}:presence
+meetwithoutfear:session:{sessionId}:presence
 ```
 
 ## Events
@@ -110,7 +110,7 @@ const ably = new Ably.Realtime({
 ### Subscribing to Session
 
 ```typescript
-const channel = ably.channels.get(`beheard:session:${sessionId}`);
+const channel = ably.channels.get(`meetwithoutfear:session:${sessionId}`);
 
 channel.subscribe('partner.stage_completed', (message) => {
   const { stage, completedAt } = message.data;
@@ -127,7 +127,7 @@ channel.subscribe('partner.empathy_shared', () => {
 
 ```typescript
 const presenceChannel = ably.channels.get(
-  `beheard:session:${sessionId}:presence`
+  `meetwithoutfear:session:${sessionId}:presence`
 );
 
 // Enter presence when viewing session
@@ -164,7 +164,7 @@ async function publishPartnerStageCompleted(
   sessionId: string,
   stage: number
 ) {
-  const channel = ably.channels.get(`beheard:session:${sessionId}`);
+  const channel = ably.channels.get(`meetwithoutfear:session:${sessionId}`);
   await channel.publish('partner.stage_completed', {
     stage,
     completedAt: new Date().toISOString()
@@ -179,7 +179,7 @@ Before publishing, check if partner is online:
 ```typescript
 async function notifyPartner(sessionId: string, event: string, data: any) {
   const presenceChannel = ably.channels.get(
-    `beheard:session:${sessionId}:presence`
+    `meetwithoutfear:session:${sessionId}:presence`
   );
 
   const members = await presenceChannel.presence.get();
@@ -187,7 +187,7 @@ async function notifyPartner(sessionId: string, event: string, data: any) {
 
   if (partnerPresent) {
     // Partner online - publish to Ably
-    const channel = ably.channels.get(`beheard:session:${sessionId}`);
+    const channel = ably.channels.get(`meetwithoutfear:session:${sessionId}`);
     await channel.publish(event, data);
   } else {
     // Partner offline - send push notification
@@ -246,7 +246,7 @@ function getPushMessage(event: string, data: any) {
     }
   };
 
-  return messages[event] || { title: 'BeHeard', body: 'You have an update' };
+  return messages[event] || { title: 'Meet Without Fear', body: 'You have an update' };
 }
 ```
 
@@ -296,8 +296,8 @@ function generateAblyCapability(userId: string, sessionIds: string[]) {
   const capability: Record<string, string[]> = {};
 
   for (const sessionId of sessionIds) {
-    capability[`beheard:session:${sessionId}`] = ['subscribe', 'publish'];
-    capability[`beheard:session:${sessionId}:presence`] = ['presence'];
+    capability[`meetwithoutfear:session:${sessionId}`] = ['subscribe', 'publish'];
+    capability[`meetwithoutfear:session:${sessionId}:presence`] = ['presence'];
   }
 
   return capability;

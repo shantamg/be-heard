@@ -1,5 +1,5 @@
 /**
- * Person Hooks for BeHeard Mobile
+ * Person Hooks for Meet Without Fear Mobile
  *
  * React Query hooks for person/relationship-related API operations.
  */
@@ -9,7 +9,7 @@ import {
   UseQueryOptions,
 } from '@tanstack/react-query';
 import { get, ApiClientError } from '../lib/api';
-import { Stage } from '@be-heard/shared';
+import { Stage } from '@meet-without-fear/shared';
 
 // ============================================================================
 // Query Keys

@@ -9,7 +9,7 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "http://localhost:3000",
-        "EXPO_PUBLIC_BUNDLE_ID": "com.beheard.app.dev"
+        "EXPO_PUBLIC_BUNDLE_ID": "com.meetwithoutfear.app.dev"
       }
     },
     "development-simulator": {
@@ -20,18 +20,18 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "http://localhost:3000",
-        "EXPO_PUBLIC_BUNDLE_ID": "com.beheard.app.dev"
+        "EXPO_PUBLIC_BUNDLE_ID": "com.meetwithoutfear.app.dev"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://be-heard-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://meet-without-fear-api.onrender.com"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://be-heard-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://meet-without-fear-api.onrender.com"
       }
     },
     "android-apk": {
@@ -39,7 +39,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://be-heard-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://meet-without-fear-api.onrender.com"
       }
     }
   },

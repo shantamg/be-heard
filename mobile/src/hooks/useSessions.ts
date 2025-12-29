@@ -1,5 +1,5 @@
 /**
- * Session Hooks for BeHeard Mobile
+ * Session Hooks for Meet Without Fear Mobile
  *
  * React Query hooks for session-related API operations.
  */
@@ -24,7 +24,7 @@ import {
   AcceptInvitationResponse,
   DeclineInvitationResponse,
   InvitationDTO,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 
 // ============================================================================
 // Query Keys

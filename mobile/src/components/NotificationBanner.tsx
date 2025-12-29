@@ -1,5 +1,5 @@
 /**
- * NotificationBanner Component for BeHeard Mobile
+ * NotificationBanner Component for Meet Without Fear Mobile
  *
  * A dismissible banner for displaying important notifications at the top of the screen.
  * Used for permission prompts and important alerts.

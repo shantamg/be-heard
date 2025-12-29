@@ -99,7 +99,7 @@ curl -X POST /api/v1/sessions \
       "partnerActionNeeded": ["partnerCompactSigned"]
     },
     "invitationId": "inv_def456",
-    "invitationUrl": "beheard://invite/inv_def456"
+    "invitationUrl": "meetwithoutfear://invite/inv_def456"
   }
 }
 ```

@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react-native';
-import { Stage, MessageRole } from '@be-heard/shared';
+import { Stage, MessageRole } from '@meet-without-fear/shared';
 
 // Import after mocks
 import WitnessScreen from '../../../app/(auth)/session/[id]/witness';

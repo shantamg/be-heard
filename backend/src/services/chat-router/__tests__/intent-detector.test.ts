@@ -4,7 +4,7 @@
  * Tests for the chat router intent detection system.
  */
 
-import { ChatIntent } from '@be-heard/shared';
+import { ChatIntent } from '@meet-without-fear/shared';
 
 // Mock the bedrock module before imports
 jest.mock('../../../lib/bedrock', () => ({

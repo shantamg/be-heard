@@ -2,7 +2,7 @@
  * SimpleChatHeader Component
  *
  * A minimal header for the chat screen showing just:
- * - Person's name (or "BeHeard" for solo sessions)
+ * - Person's name (or "Meet Without Fear" for solo sessions)
  * - A simple status word (e.g., "Listening", "Stage 1")
  *
  * Design based on demo: simple, unobtrusive, doesn't take focus from conversation.
@@ -29,7 +29,7 @@ interface SimpleChatHeaderProps {
 // ============================================================================
 
 export function SimpleChatHeader({
-  personName = 'BeHeard',
+  personName = 'Meet Without Fear',
   status,
   testID = 'simple-chat-header',
 }: SimpleChatHeaderProps) {

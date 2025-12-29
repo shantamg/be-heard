@@ -136,7 +136,7 @@ export function NotificationSettings({ onUpdate }: NotificationSettingsProps) {
       // Direct user to OS settings
       Alert.alert(
         'Notifications Disabled',
-        'To enable notifications, please go to Settings and enable them for BeHeard.',
+        'To enable notifications, please go to Settings and enable them for Meet Without Fear.',
         [
           { text: 'Cancel', style: 'cancel' },
           {

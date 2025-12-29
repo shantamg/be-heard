@@ -12,7 +12,7 @@
 
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import { ApiResponse, ErrorCode } from '@be-heard/shared';
+import { ApiResponse, ErrorCode } from '@meet-without-fear/shared';
 import { notifyPartner } from '../services/realtime';
 import { successResponse, errorResponse } from '../utils/response';
 import { getPartnerUserId, isSessionCreator } from '../utils/session';

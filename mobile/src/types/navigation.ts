@@ -4,7 +4,7 @@
  */
 
 // Session stage types
-// Maps to conceptual stages in the BeHeard conflict resolution process
+// Maps to conceptual stages in the Meet Without Fear conflict resolution process
 export type SessionStage =
   // Stage 0: Initial stages
   | 'onboarding'  // Stage 0a: Session onboarding/setup

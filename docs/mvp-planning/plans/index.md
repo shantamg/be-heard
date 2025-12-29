@@ -1,4 +1,4 @@
-# BeHeard MVP Plans
+# Meet Without Fear MVP Plans
 
 Implementation plans and user flow documentation for the AI-Facilitated Conflict Resolution System.
 

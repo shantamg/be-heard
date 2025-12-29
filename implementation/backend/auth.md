@@ -43,7 +43,7 @@
 
 1. **Create Ably account:**
    - Go to https://ably.com
-   - Create new app (name: `beheard-dev`)
+   - Create new app (name: `meetwithoutfear-dev`)
 
 2. **Get API key:**
    - Go to app settings > API Keys
@@ -196,8 +196,8 @@ export const getAblyToken = async (req: Request, res: Response) => {
   // Build capability object
   const capability: Record<string, string[]> = {};
   for (const session of sessions) {
-    capability[`beheard:session:${session.id}`] = ['subscribe', 'publish'];
-    capability[`beheard:session:${session.id}:presence`] = ['presence'];
+    capability[`meetwithoutfear:session:${session.id}`] = ['subscribe', 'publish'];
+    capability[`meetwithoutfear:session:${session.id}:presence`] = ['presence'];
   }
 
   const tokenRequest = await ably.auth.createTokenRequest({

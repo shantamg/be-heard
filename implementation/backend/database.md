@@ -16,7 +16,7 @@
 
 1. **Create Supabase project:**
    - Go to https://supabase.com/dashboard
-   - Create new project (name: `beheard-dev` or similar)
+   - Create new project (name: `meetwithoutfear-dev` or similar)
    - Wait for project to be ready (~2 minutes)
 
 2. **Get connection strings:**

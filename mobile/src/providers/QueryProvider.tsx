@@ -1,5 +1,5 @@
 /**
- * React Query Provider for BeHeard Mobile
+ * React Query Provider for Meet Without Fear Mobile
  *
  * Configures and provides the QueryClient to the app.
  */

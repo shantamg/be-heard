@@ -315,7 +315,7 @@ export interface TriggerActionPayload {
 ```typescript
 // mobile/src/components/ChatInterface.tsx
 
-import { TriggerActionPayload } from '@be-heard/shared';
+import { TriggerActionPayload } from '@meet-without-fear/shared';
 import { InlineTriggerRenderer } from './InlineTriggerRenderer';
 
 interface ChatInterfaceProps {
@@ -361,7 +361,7 @@ export function ChatInterface({
 ```typescript
 // mobile/src/components/InlineTriggerRenderer.tsx
 
-import { InlineTrigger, TriggerType, TriggerState, TriggerActionPayload } from '@be-heard/shared';
+import { InlineTrigger, TriggerType, TriggerState, TriggerActionPayload } from '@meet-without-fear/shared';
 
 // Import all trigger components
 import { CuriosityCompactInline } from './triggers/CuriosityCompactInline';
@@ -453,7 +453,7 @@ export function InlineTriggerRenderer({
 // mobile/src/components/triggers/FeelHeardConfirmationInline.tsx
 
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { TriggerAction, FeelHeardPayload } from '@be-heard/shared';
+import { TriggerAction, FeelHeardPayload } from '@meet-without-fear/shared';
 
 interface Props {
   payload: FeelHeardPayload;
@@ -498,7 +498,7 @@ export function FeelHeardConfirmationInline({ payload, onAction }: Props) {
 // mobile/src/components/triggers/EmotionSupportInline.tsx
 
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { TriggerAction, EmotionSupportPayload, EmotionalSupportType } from '@be-heard/shared';
+import { TriggerAction, EmotionSupportPayload, EmotionalSupportType } from '@meet-without-fear/shared';
 
 const SUPPORT_LABELS: Record<EmotionalSupportType, { label: string; icon: string }> = {
   [EmotionalSupportType.BREATHING_EXERCISE]: { label: 'Breathing Exercise', icon: '...' },
@@ -566,7 +566,7 @@ export function EmotionSupportInline({ payload, onAction }: Props) {
 
 import { useCallback } from 'react';
 import { ChatInterface } from '@/components/ChatInterface';
-import { TriggerActionPayload, TriggerAction } from '@be-heard/shared';
+import { TriggerActionPayload, TriggerAction } from '@meet-without-fear/shared';
 import { useSignCompact, useConfirmFeelHeard } from '@/hooks/useStages';
 import { useCompleteExercise } from '@/hooks/useMessages';
 

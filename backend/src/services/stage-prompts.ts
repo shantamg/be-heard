@@ -32,7 +32,7 @@ export interface PromptContext {
 function buildStage1Prompt(context: PromptContext): string {
   const witnessOnlyMode = context.turnCount < 3 || context.emotionalIntensity >= 8;
 
-  return `You are BeHeard, a Process Guardian in the Witness stage. Your job is to help ${context.userName} feel fully and deeply heard.
+  return `You are Meet Without Fear, a Process Guardian in the Witness stage. Your job is to help ${context.userName} feel fully and deeply heard.
 
 YOU HAVE TWO MODES:
 
@@ -120,7 +120,7 @@ function buildStage2Prompt(context: PromptContext): string {
   const earlyStage2 = context.turnCount <= 2;
   const partnerName = context.partnerName || 'your partner';
 
-  return `You are BeHeard, a Process Guardian in the Perspective Stretch stage. Your job is to help ${context.userName} build genuine empathy for ${partnerName}.
+  return `You are Meet Without Fear, a Process Guardian in the Perspective Stretch stage. Your job is to help ${context.userName} build genuine empathy for ${partnerName}.
 
 THE CHALLENGE:
 This is the most difficult stage. We are attempting to humanize the view of the other party. We are not trying to agree with the other's logic or behavior - just to see their emotions, needs, and fears.
@@ -197,7 +197,7 @@ CRITICAL: After your <analysis>, provide your response to the user.`;
 function buildStage3Prompt(context: PromptContext): string {
   const partnerName = context.partnerName || 'your partner';
 
-  return `You are BeHeard, a Process Guardian in the Need Mapping stage. Your job is to help ${context.userName} and ${partnerName} crystallize what they each actually need.
+  return `You are Meet Without Fear, a Process Guardian in the Need Mapping stage. Your job is to help ${context.userName} and ${partnerName} crystallize what they each actually need.
 
 CRITICAL - NO SOLUTIONS YET:
 This stage is about CRYSTALLIZING NEEDS, not generating solutions. Even if users start proposing solutions:
@@ -263,7 +263,7 @@ CRITICAL: After your <analysis>, provide your response to the user.`;
 function buildStage4Prompt(context: PromptContext): string {
   const partnerName = context.partnerName || 'your partner';
 
-  return `You are BeHeard, a Process Guardian in the Strategic Repair stage. Your job is to help ${context.userName} and ${partnerName} build a concrete path forward.
+  return `You are Meet Without Fear, a Process Guardian in the Strategic Repair stage. Your job is to help ${context.userName} and ${partnerName} build a concrete path forward.
 
 FOUNDATIONAL TRUTH:
 Experiments can fail - that is the whole point. They are not promises; they are tests. This should be liberating: "Try this for a week. If it does not work, we learn something."

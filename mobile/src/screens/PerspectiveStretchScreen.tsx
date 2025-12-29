@@ -39,7 +39,7 @@ import { EmpathyAttemptCard } from '../components/EmpathyAttemptCard';
 import { ConsentPrompt, SharingOption } from '../components/ConsentPrompt';
 import { AccuracyFeedback } from '../components/AccuracyFeedback';
 import { WaitingRoom } from '../components/WaitingRoom';
-import { Stage, StageStatus } from '@be-heard/shared';
+import { Stage, StageStatus } from '@meet-without-fear/shared';
 
 // ============================================================================
 // Types

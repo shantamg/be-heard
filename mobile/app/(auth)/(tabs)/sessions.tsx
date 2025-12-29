@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { SessionCard } from '@/src/components/SessionCard';
 import { useSessions } from '@/src/hooks/useSessions';
-import type { SessionSummaryDTO } from '@be-heard/shared';
+import type { SessionSummaryDTO } from '@meet-without-fear/shared';
 import { createStyles } from '@/src/theme/styled';
 
 /**

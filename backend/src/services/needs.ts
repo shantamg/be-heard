@@ -7,7 +7,7 @@
 
 import { getCompletion, resetBedrockClient } from '../lib/bedrock';
 import { prisma } from '../lib/prisma';
-import { NeedCategory } from '@be-heard/shared';
+import { NeedCategory } from '@meet-without-fear/shared';
 
 // ============================================================================
 // Types

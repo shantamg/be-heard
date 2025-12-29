@@ -24,7 +24,7 @@ import { EmotionalBarometer } from '@/src/components/EmotionalBarometer';
 import { FeelHeardConfirmation } from '@/src/components/FeelHeardConfirmation';
 import { BreathingExercise } from '@/src/components/BreathingExercise';
 import { WaitingRoom } from '@/src/components/WaitingRoom';
-import { Stage, MessageRole, MessageDTO } from '@be-heard/shared';
+import { Stage, MessageRole, MessageDTO } from '@meet-without-fear/shared';
 import { createStyles } from '@/src/theme/styled';
 
 // ============================================================================

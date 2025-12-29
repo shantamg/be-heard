@@ -1,4 +1,4 @@
-# BeHeard Development
+# Meet Without Fear Development
 
 ## Development Practices
 

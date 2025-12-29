@@ -4,7 +4,7 @@
  * Core types for the extensible chat router system.
  */
 
-import { ChatIntent, IntentDetectionResult, SessionSummaryDTO } from '@be-heard/shared';
+import { ChatIntent, IntentDetectionResult, SessionSummaryDTO } from '@meet-without-fear/shared';
 import { Request } from 'express';
 
 // ============================================================================
@@ -53,6 +53,8 @@ export interface IntentHandlerResult {
   /** If the message should be passed to session handler */
   passThrough?: {
     sessionId: string;
+    userMessage?: Record<string, unknown>;
+    aiResponse?: Record<string, unknown>;
   };
 
   /** Additional data for the client */

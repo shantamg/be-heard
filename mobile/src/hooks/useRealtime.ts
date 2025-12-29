@@ -1,5 +1,5 @@
 /**
- * useRealtime Hook for BeHeard Mobile
+ * useRealtime Hook for Meet Without Fear Mobile
  *
  * Provides WebSocket connection management, event subscriptions,
  * and reconnection logic using Ably for real-time functionality.
@@ -14,7 +14,7 @@ import {
   SessionEventData,
   PresenceStatus,
   REALTIME_CHANNELS,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 import { useAblyToken } from './useProfile';
 import { useAuth } from './useAuth';
 

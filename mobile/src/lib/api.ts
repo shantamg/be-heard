@@ -1,5 +1,5 @@
 /**
- * API Client for BeHeard Mobile
+ * API Client for Meet Without Fear Mobile
  *
  * Axios-based HTTP client with authentication interceptor and error handling.
  */
@@ -12,7 +12,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 import Constants from 'expo-constants';
-import { ApiError, ApiResponse, ErrorCode } from '@be-heard/shared';
+import { ApiError, ApiResponse, ErrorCode } from '@meet-without-fear/shared';
 
 // ============================================================================
 // Configuration

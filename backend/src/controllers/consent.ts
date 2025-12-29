@@ -10,7 +10,7 @@
 
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import { ErrorCode, ConsentDecision } from '@be-heard/shared';
+import { ErrorCode, ConsentDecision } from '@meet-without-fear/shared';
 import { notifyPartner } from '../services/realtime';
 import { successResponse, errorResponse } from '../utils/response';
 import { getPartnerUserId } from '../utils/session';

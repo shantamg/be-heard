@@ -5,7 +5,7 @@
  */
 
 import { Response } from 'express';
-import { ApiResponse, ErrorCode } from '@be-heard/shared';
+import { ApiResponse, ErrorCode } from '@meet-without-fear/shared';
 
 /**
  * Send a successful API response

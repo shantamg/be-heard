@@ -36,7 +36,7 @@ import { ChatInterface } from '../components/ChatInterface';
 import { NeedsSection } from '../components/NeedsSection';
 import { CommonGroundCard } from '../components/CommonGroundCard';
 import { WaitingRoom } from '../components/WaitingRoom';
-import { Stage, MessageRole, IdentifiedNeedDTO, CommonGroundDTO } from '@be-heard/shared';
+import { Stage, MessageRole, IdentifiedNeedDTO, CommonGroundDTO } from '@meet-without-fear/shared';
 
 // ============================================================================
 // Soft, Calming Color Palette for Need Mapping

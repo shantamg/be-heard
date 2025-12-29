@@ -1,7 +1,7 @@
 /**
  * AI Orchestrator Service
  *
- * Orchestrates the multi-model AI pipeline for BeHeard conversations.
+ * Orchestrates the multi-model AI pipeline for Meet Without Fear conversations.
  * Implements the two-model stratification:
  * - Haiku: Fast mechanics (retrieval planning, classification)
  * - Sonnet: Empathetic user-facing responses
@@ -26,6 +26,11 @@ import {
 } from './context-assembler';
 import { planRetrieval, getMockRetrievalPlan, type RetrievalPlan } from './retrieval-planner';
 import { buildStagePrompt } from './stage-prompts';
+import {
+  retrieveContext,
+  formatRetrievedContext,
+  type RetrievedContext,
+} from './context-retriever';
 
 // ============================================================================
 // Types
@@ -50,6 +55,7 @@ export interface OrchestratorResult {
   memoryIntent: MemoryIntentResult;
   contextBundle: ContextBundle;
   retrievalPlan?: RetrievalPlan;
+  retrievedContext?: RetrievedContext;
   usedMock: boolean;
 }
 
@@ -90,6 +96,25 @@ export async function orchestrateResponse(
     `[AI Orchestrator] Context assembled: ${contextBundle.conversationContext.turnCount} turns`
   );
 
+  // Step 2.5: Universal context retrieval
+  // This ensures awareness of relevant content from other sessions or earlier history
+  let retrievedContext: RetrievedContext | undefined;
+  try {
+    retrievedContext = await retrieveContext({
+      userId: context.userId,
+      currentMessage: context.userMessage,
+      currentSessionId: context.sessionId,
+      includePreSession: true,
+      maxCrossSessionMessages: 10,
+      similarityThreshold: 0.5,
+    });
+    console.log(
+      `[AI Orchestrator] Context retrieved: ${retrievedContext.retrievalSummary}`
+    );
+  } catch (error) {
+    console.warn('[AI Orchestrator] Context retrieval failed, continuing without:', error);
+  }
+
   // Step 3: Plan retrieval (for full depth, use Haiku)
   let retrievalPlan: RetrievalPlan | undefined;
   if (memoryIntent.depth === 'full') {
@@ -120,11 +145,24 @@ export async function orchestrateResponse(
   });
 
   // Step 5: Get response from Sonnet
-  const formattedContext = formatContextForPrompt(contextBundle);
+  const formattedContextBundle = formatContextForPrompt(contextBundle);
+
+  // Merge retrieved context with context bundle
+  let fullContext = formattedContextBundle;
+  if (retrievedContext) {
+    const formattedRetrievedContext = formatRetrievedContext({
+      ...retrievedContext,
+      conversationHistory: [], // Already in context bundle
+    });
+    if (formattedRetrievedContext.trim()) {
+      fullContext = `${formattedContextBundle}\n\n${formattedRetrievedContext}`;
+    }
+  }
+
   const messagesWithContext = buildMessagesWithContext(
     context.conversationHistory,
     context.userMessage,
-    formattedContext
+    fullContext
   );
 
   let response: string;
@@ -160,6 +198,7 @@ export async function orchestrateResponse(
     memoryIntent,
     contextBundle,
     retrievalPlan,
+    retrievedContext,
     usedMock,
   };
 }

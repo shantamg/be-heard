@@ -12,7 +12,7 @@ import {
   MissingInfo,
   IntentConfidence,
   SessionCreationState,
-} from '@be-heard/shared';
+} from '@meet-without-fear/shared';
 import { handlerRegistry } from './registry';
 import { IntentDetectionHint } from './types';
 
@@ -115,7 +115,7 @@ function buildDetectionPrompt(
     semanticContext += '\nHighly relevant semantic matches (>70%) strongly suggest SWITCH_SESSION.';
   }
 
-  return `You are an intent detection system for BeHeard, a conflict resolution app.
+  return `You are an intent detection system for Meet Without Fear, a conflict resolution app.
 
 Your job is to analyze user messages and determine their intent. The app helps people have difficult conversations with others (partners, family, friends, coworkers).
 

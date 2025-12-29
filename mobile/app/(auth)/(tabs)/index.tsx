@@ -1,7 +1,7 @@
 /**
  * Home Screen (Chat-First Interface)
  *
- * The main entry point for BeHeard. Uses the same ChatInterface as
+ * The main entry point for Meet Without Fear. Uses the same ChatInterface as
  * the session stages, but in "router" mode where the AI helps users
  * create new sessions by gathering person info conversationally.
  *
@@ -31,7 +31,7 @@ export default function HomeScreen() {
   const [showBiometricPrompt, setShowBiometricPrompt] = useState(false);
 
   // Router chat for session creation
-  const { messages, isSending, isLoading, sendMessage } = useRouterChat({
+  const { messages, isSending, isLoading, welcomeMessage, sendMessage } = useRouterChat({
     onSessionCreated: (sessionId) => {
       // Navigate directly to the new session
       router.push(`/session/${sessionId}`);
@@ -74,6 +74,7 @@ export default function HomeScreen() {
         onSendMessage={handleSendMessage}
         isLoading={isSending}
         emptyStateTitle="What can I help you work through today?"
+        emptyStateMessage={welcomeMessage}
       />
 
       {/* Biometric opt-in prompt */}
