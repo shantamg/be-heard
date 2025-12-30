@@ -56,6 +56,10 @@ export async function processSessionMessage(
         orderBy: { stage: 'desc' },
         take: 1,
       },
+      invitations: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
     },
   });
 
@@ -145,6 +149,13 @@ export async function processSessionMessage(
     (Date.now() - session.createdAt.getTime()) / 60000
   );
 
+  // Determine if we're in invitation phase
+  // Invitation phase: Stage 0 (or 1 if auto-advanced), session CREATED, invitation message not confirmed
+  const invitation = session.invitations[0];
+  const isInvitationPhase =
+    session.status === 'CREATED' &&
+    (!invitation?.messageConfirmed);
+
   // Build AI context
   const aiContext: FullAIContext = {
     sessionId,
@@ -156,6 +167,7 @@ export async function processSessionMessage(
     emotionalIntensity: 5, // TODO: Get from emotional barometer
     sessionDurationMinutes,
     isFirstTurnInSession: userTurnCount === 1,
+    isInvitationPhase,
   };
 
   // Get AI response

@@ -21,6 +21,7 @@ import {
 import { notifyPartner, publishSessionEvent } from '../services/realtime';
 import { successResponse, errorResponse } from '../utils/response';
 import { getPartnerUserId, isSessionCreator } from '../utils/session';
+import { extractInvitationResponse } from '../utils/json-extractor';
 
 // ============================================================================
 // Helpers
@@ -105,17 +106,18 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
     }
 
     // Check session allows messaging
-    // Allow ACTIVE status for all users, and INVITED status for the session creator
-    // This lets the creator start working on Stages 0-1 while waiting for partner
+    // Allow ACTIVE status for all users, and CREATED/INVITED status for the session creator
+    // CREATED: Creator is crafting invitation message
+    // INVITED: Creator is working on Stages 0-1 while waiting for partner
     if (session.status !== 'ACTIVE') {
-      if (session.status === 'INVITED') {
+      if (session.status === 'CREATED' || session.status === 'INVITED') {
         const isCreator = await isSessionCreator(sessionId, user.id);
         if (!isCreator) {
-          console.log(`[sendMessage] Session ${sessionId} is INVITED and user ${user.id} is not the creator`);
+          console.log(`[sendMessage] Session ${sessionId} is ${session.status} and user ${user.id} is not the creator`);
           errorResponse(res, 'SESSION_NOT_ACTIVE', 'Session is not active', 400);
           return;
         }
-        // Creator can proceed while session is INVITED
+        // Creator can proceed while session is CREATED or INVITED
       } else {
         console.log(`[sendMessage] Session ${sessionId} is not active: ${session.status}`);
         errorResponse(res, 'SESSION_NOT_ACTIVE', 'Session is not active', 400);
@@ -136,41 +138,47 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
     // Check user is in stage 1, auto-advance from Stage 0 if compact is signed
     let currentStage = progress?.stage ?? 0;
     if (currentStage === 0) {
-      // Check if compact is signed - if so, auto-advance to Stage 1
-      const gates = progress?.gatesSatisfied as Record<string, unknown> | null;
-      if (gates?.compactSigned) {
-        console.log(`[sendMessage] Auto-advancing user ${user.id} from Stage 0 to Stage 1`);
-        const now = new Date();
-
-        // Complete Stage 0
-        if (progress) {
-          await prisma.stageProgress.update({
-            where: { id: progress.id },
-            data: { status: 'COMPLETED', completedAt: now },
-          });
-        }
-
-        // Create Stage 1 progress
-        progress = await prisma.stageProgress.create({
-          data: {
-            sessionId,
-            userId: user.id,
-            stage: 1,
-            status: 'IN_PROGRESS',
-            startedAt: now,
-            gatesSatisfied: {},
-          },
-        });
-        currentStage = 1;
+      // During CREATED status (invitation crafting), allow messages at Stage 0
+      if (session.status === 'CREATED') {
+        console.log(`[sendMessage] Allowing Stage 0 message during invitation crafting phase`);
+        // Stay at Stage 0, allow message
       } else {
-        // Compact not signed yet - they need to sign first
-        errorResponse(
-          res,
-          'VALIDATION_ERROR',
-          'Please sign the Curiosity Compact before starting your conversation',
-          400
-        );
-        return;
+        // Check if compact is signed - if so, auto-advance to Stage 1
+        const gates = progress?.gatesSatisfied as Record<string, unknown> | null;
+        if (gates?.compactSigned) {
+          console.log(`[sendMessage] Auto-advancing user ${user.id} from Stage 0 to Stage 1`);
+          const now = new Date();
+
+          // Complete Stage 0
+          if (progress) {
+            await prisma.stageProgress.update({
+              where: { id: progress.id },
+              data: { status: 'COMPLETED', completedAt: now },
+            });
+          }
+
+          // Create Stage 1 progress
+          progress = await prisma.stageProgress.create({
+            data: {
+              sessionId,
+              userId: user.id,
+              stage: 1,
+              status: 'IN_PROGRESS',
+              startedAt: now,
+              gatesSatisfied: {},
+            },
+          });
+          currentStage = 1;
+        } else {
+          // Compact not signed yet - they need to sign first
+          errorResponse(
+            res,
+            'VALIDATION_ERROR',
+            'Please sign the Curiosity Compact before starting your conversation',
+            400
+          );
+          return;
+        }
       }
     } else if (currentStage !== 1) {
       console.log(`[sendMessage] User ${user.id} in session ${sessionId} is in stage ${currentStage}, not stage 1`);
@@ -216,6 +224,13 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
         select: { name: true },
       });
       partnerName = partner?.name || undefined;
+    } else if (session.status === 'CREATED') {
+      // During invitation phase, get partner name from the invitation
+      const invitation = await prisma.invitation.findFirst({
+        where: { sessionId, invitedById: user.id },
+        select: { name: true },
+      });
+      partnerName = invitation?.name || undefined;
     }
 
     // Get session for duration calculation
@@ -230,6 +245,15 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
     // Determine if this is the first turn in the session
     const isFirstTurnInSession = userTurnCount === 1;
 
+    // Check if we're in the invitation crafting phase (session status is CREATED)
+    const isInvitationPhase = session.status === 'CREATED';
+
+    // Check if user is trying to refine their invitation (session is INVITED and they ask to refine)
+    const isRefiningInvitation =
+      session.status === 'INVITED' &&
+      content.toLowerCase().includes('refine') &&
+      content.toLowerCase().includes('invitation');
+
     // Build full context for orchestrated response
     const aiContext: FullAIContext = {
       sessionId,
@@ -241,6 +265,8 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
       emotionalIntensity: 5, // TODO: Get from emotional barometer when implemented
       sessionDurationMinutes,
       isFirstTurnInSession,
+      isInvitationPhase: isInvitationPhase || isRefiningInvitation,
+      isRefiningInvitation,
     };
 
     // Get AI response using full orchestration pipeline
@@ -256,13 +282,33 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
       `[sendMessage] Orchestrator: intent=${orchestratorResult.memoryIntent.intent}, depth=${orchestratorResult.memoryIntent.depth}, mock=${orchestratorResult.usedMock}`
     );
 
-    // Save AI response
+    // During invitation phase or refinement, parse JSON response for structured output
+    let aiResponseContent = orchestratorResult.response;
+    let extractedInvitationMessage: string | null = null;
+
+    if (isInvitationPhase || isRefiningInvitation) {
+      const invitationResult = extractInvitationResponse(orchestratorResult.response);
+      aiResponseContent = invitationResult.response;
+      extractedInvitationMessage = invitationResult.invitationMessage;
+
+      if (extractedInvitationMessage) {
+        console.log(`[sendMessage] Extracted invitation draft: "${extractedInvitationMessage}"`);
+
+        // Save draft to invitation record
+        await prisma.invitation.updateMany({
+          where: { sessionId, invitedById: user.id },
+          data: { invitationMessage: extractedInvitationMessage },
+        });
+      }
+    }
+
+    // Save AI response (just the conversational part)
     const aiMessage = await prisma.message.create({
       data: {
         sessionId,
         senderId: null,
         role: 'AI',
-        content: orchestratorResult.response,
+        content: aiResponseContent,
         stage: currentStage,
       },
     });

@@ -48,6 +48,10 @@ export interface OrchestratorContext {
   emotionalIntensity: number;
   sessionDurationMinutes?: number;
   isFirstTurnInSession?: boolean;
+  /** Whether we're in the invitation crafting phase (stage 0, before partner joins) */
+  isInvitationPhase?: boolean;
+  /** Whether user is refining their invitation after Stage 1/2 processing */
+  isRefiningInvitation?: boolean;
 }
 
 export interface OrchestratorResult {
@@ -136,13 +140,21 @@ export async function orchestrateResponse(
   }
 
   // Step 4: Build the stage-specific prompt
-  const systemPrompt = buildStagePrompt(context.stage, {
-    userName: context.userName,
-    partnerName: context.partnerName,
-    turnCount: context.turnCount,
-    emotionalIntensity: context.emotionalIntensity,
-    contextBundle,
-  });
+  const systemPrompt = buildStagePrompt(
+    context.stage,
+    {
+      userName: context.userName,
+      partnerName: context.partnerName,
+      turnCount: context.turnCount,
+      emotionalIntensity: context.emotionalIntensity,
+      contextBundle,
+      isFirstMessage: context.isFirstTurnInSession,
+    },
+    {
+      isInvitationPhase: context.isInvitationPhase,
+      isRefiningInvitation: context.isRefiningInvitation,
+    }
+  );
 
   // Step 5: Get response from Sonnet
   const formattedContextBundle = formatContextForPrompt(contextBundle);

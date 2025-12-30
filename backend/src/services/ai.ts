@@ -51,6 +51,10 @@ export interface FullAIContext extends WitnessContext {
   stage: number;
   sessionDurationMinutes?: number;
   isFirstTurnInSession?: boolean;
+  /** Whether we're in the invitation crafting phase (stage 0, before partner joins) */
+  isInvitationPhase?: boolean;
+  /** Whether user is refining their invitation after Stage 1/2 processing */
+  isRefiningInvitation?: boolean;
 }
 
 // Re-export orchestrator types for convenience
@@ -273,6 +277,8 @@ export async function getOrchestratedResponse(
     emotionalIntensity: context.emotionalIntensity ?? 5,
     sessionDurationMinutes: context.sessionDurationMinutes,
     isFirstTurnInSession: context.isFirstTurnInSession,
+    isInvitationPhase: context.isInvitationPhase,
+    isRefiningInvitation: context.isRefiningInvitation,
   };
 
   return orchestrateResponse(orchestratorContext);
