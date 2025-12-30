@@ -58,9 +58,14 @@ export function ChatBubble({
 
   // Typewriter state
   const [displayedText, setDisplayedText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
   const hasCompletedRef = useRef(false);
   const messageIdRef = useRef(message.id);
+
+  // Store callbacks in refs to avoid restarting animation when they change
+  const onCompleteRef = useRef(onTypewriterComplete);
+  const onProgressRef = useRef(onTypewriterProgress);
+  onCompleteRef.current = onTypewriterComplete;
+  onProgressRef.current = onTypewriterProgress;
 
   // Determine if we should use typewriter effect
   const shouldUseTypewriter = isAI && enableTypewriter && !message.skipTypewriter;
@@ -87,7 +92,6 @@ export function ChatBubble({
     }
 
     // Start typewriter animation
-    setIsTyping(true);
     let currentIndex = 0;
 
     const interval = setInterval(() => {
@@ -95,21 +99,20 @@ export function ChatBubble({
         setDisplayedText(message.content.slice(0, currentIndex));
         // Call progress callback every ~15 characters to trigger scroll
         if (currentIndex % 15 === 0) {
-          onTypewriterProgress?.();
+          onProgressRef.current?.();
         }
         currentIndex++;
       } else {
         clearInterval(interval);
-        setIsTyping(false);
         hasCompletedRef.current = true;
-        onTypewriterComplete?.();
+        onCompleteRef.current?.();
       }
     }, TYPEWRITER_SPEED_MS);
 
     return () => {
       clearInterval(interval);
     };
-  }, [message.id, message.content, shouldUseTypewriter, onTypewriterComplete, onTypewriterProgress]);
+  }, [message.id, message.content, shouldUseTypewriter]);
 
   // For non-typewriter messages, always show full content
   const textToDisplay = shouldUseTypewriter ? displayedText : message.content;

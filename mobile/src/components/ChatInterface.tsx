@@ -96,6 +96,16 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   const styles = useStyles();
   const flatListRef = useRef<FlatList<ChatListItem>>(null);
+  const contentHeightRef = useRef(0);
+  const layoutHeightRef = useRef(0);
+
+  // Scroll helper that uses offset for more reliable scrolling
+  const scrollToBottom = useCallback((animated = true) => {
+    const scrollOffset = contentHeightRef.current - layoutHeightRef.current;
+    if (scrollOffset > 0) {
+      flatListRef.current?.scrollToOffset({ offset: scrollOffset, animated });
+    }
+  }, []);
 
   // Track which messages have completed typewriter effect
   const [completedMessages, setCompletedMessages] = useState<Set<string>>(new Set());
@@ -141,47 +151,38 @@ export function ChatInterface({
 
   // Handle typewriter progress - scroll to keep new content visible
   const handleTypewriterProgress = useCallback(() => {
-    flatListRef.current?.scrollToEnd({ animated: false });
-  }, []);
+    scrollToBottom(false);
+  }, [scrollToBottom]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (listItems.length > 0) {
-      // Small delay to ensure layout is complete
-      const timer = setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-      return () => clearTimeout(timer);
+      // Multiple scroll attempts to ensure new content is visible
+      const timers = [50, 150, 300].map(delay =>
+        setTimeout(() => scrollToBottom(delay > 100), delay)
+      );
+      return () => timers.forEach(clearTimeout);
     }
-  }, [listItems.length]);
+  }, [listItems.length, scrollToBottom]);
 
   // Also scroll when content above input changes (e.g., invitation draft appears)
   useEffect(() => {
     if (renderAboveInput) {
-      const timer = setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 150);
+      const timer = setTimeout(() => scrollToBottom(true), 150);
       return () => clearTimeout(timer);
     }
-  }, [renderAboveInput]);
+  }, [renderAboveInput, scrollToBottom]);
 
   // Also scroll when loading state changes (typing indicator appears)
   useEffect(() => {
     if (isLoading) {
-      // First scroll immediately to start showing the indicator
-      const timer1 = setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 50);
-      // Second scroll after layout has settled to ensure full visibility
-      const timer2 = setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 200);
-      return () => {
-        clearTimeout(timer1);
-        clearTimeout(timer2);
-      };
+      // Multiple scroll attempts to ensure the typing indicator is visible
+      const timers = [50, 150, 300, 500].map(delay =>
+        setTimeout(() => scrollToBottom(delay > 100), delay)
+      );
+      return () => timers.forEach(clearTimeout);
     }
-  }, [isLoading]);
+  }, [isLoading, scrollToBottom]);
 
   const renderItem: ListRenderItem<ChatListItem> = useCallback(({ item }) => {
     // Render indicator
@@ -248,6 +249,12 @@ export function ChatInterface({
         ListEmptyComponent={renderEmptyState}
         showsVerticalScrollIndicator={false}
         testID="chat-message-list"
+        onContentSizeChange={(_, height) => {
+          contentHeightRef.current = height;
+        }}
+        onLayout={(event) => {
+          layoutHeightRef.current = event.nativeEvent.layout.height;
+        }}
       />
       {showEmotionSlider && onEmotionChange && (
         <EmotionSlider
