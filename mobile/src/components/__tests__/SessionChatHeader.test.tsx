@@ -30,11 +30,11 @@ describe('SessionChatHeader', () => {
       );
     });
 
-    it('shows AI assistant status when no partner', () => {
+    it('shows online status when no partner (AI mode)', () => {
       const { getByTestId } = render(<SessionChatHeader />);
 
-      expect(getByTestId('session-chat-header-status')).toHaveTextContent(
-        'AI assistant'
+      expect(getByTestId('session-chat-header-online-status')).toHaveTextContent(
+        'online'
       );
     });
   });
@@ -45,7 +45,7 @@ describe('SessionChatHeader', () => {
         <SessionChatHeader partnerName="Alex" />
       );
 
-      expect(getByTestId('session-chat-header-status')).toHaveTextContent(
+      expect(getByTestId('session-chat-header-online-status')).toHaveTextContent(
         'offline'
       );
     });
@@ -55,57 +55,58 @@ describe('SessionChatHeader', () => {
         <SessionChatHeader partnerName="Alex" partnerOnline={true} />
       );
 
-      expect(getByTestId('session-chat-header-status')).toHaveTextContent(
+      expect(getByTestId('session-chat-header-online-status')).toHaveTextContent(
         'online'
       );
     });
 
-    it('shows typing indicator when partner is typing', () => {
-      const { queryByTestId } = render(
-        <SessionChatHeader partnerName="Alex" partnerTyping={true} />
-      );
-
-      // When typing, the status text should not be rendered
-      expect(queryByTestId('session-chat-header-status')).toBeNull();
-    });
-
-    it('shows connecting status when connection is establishing', () => {
+    it('shows offline when connected but partner not online', () => {
       const { getByTestId } = render(
         <SessionChatHeader
           partnerName="Alex"
+          partnerOnline={false}
+          connectionStatus={ConnectionStatus.CONNECTED}
+        />
+      );
+
+      expect(getByTestId('session-chat-header-online-status')).toHaveTextContent(
+        'offline'
+      );
+    });
+
+    it('shows offline when partner online but connection not connected', () => {
+      const { getByTestId } = render(
+        <SessionChatHeader
+          partnerName="Alex"
+          partnerOnline={true}
           connectionStatus={ConnectionStatus.CONNECTING}
         />
       );
 
-      expect(getByTestId('session-chat-header-status')).toHaveTextContent(
-        'connecting...'
+      // Partner is online but connection not fully established, so effectively offline
+      expect(getByTestId('session-chat-header-online-status')).toHaveTextContent(
+        'offline'
+      );
+    });
+  });
+
+  describe('brief status', () => {
+    it('shows brief status when provided', () => {
+      const { getByTestId } = render(
+        <SessionChatHeader partnerName="Alex" briefStatus="invited" />
+      );
+
+      expect(getByTestId('session-chat-header-brief-status')).toHaveTextContent(
+        'invited'
       );
     });
 
-    it('shows connection lost when connection failed', () => {
-      const { getByTestId } = render(
-        <SessionChatHeader
-          partnerName="Alex"
-          connectionStatus={ConnectionStatus.FAILED}
-        />
+    it('does not show brief status when not provided', () => {
+      const { queryByTestId } = render(
+        <SessionChatHeader partnerName="Alex" />
       );
 
-      expect(getByTestId('session-chat-header-status')).toHaveTextContent(
-        'connection lost'
-      );
-    });
-
-    it('shows connecting status when connection is suspended', () => {
-      const { getByTestId } = render(
-        <SessionChatHeader
-          partnerName="Alex"
-          connectionStatus={ConnectionStatus.SUSPENDED}
-        />
-      );
-
-      expect(getByTestId('session-chat-header-status')).toHaveTextContent(
-        'connecting...'
-      );
+      expect(queryByTestId('session-chat-header-brief-status')).toBeNull();
     });
   });
 
@@ -136,7 +137,20 @@ describe('SessionChatHeader', () => {
 
       expect(getByTestId('custom-header')).toBeTruthy();
       expect(getByTestId('custom-header-partner-name')).toBeTruthy();
-      expect(getByTestId('custom-header-status')).toBeTruthy();
+      expect(getByTestId('custom-header-online-status')).toBeTruthy();
+    });
+  });
+
+  describe('layout', () => {
+    it('renders status row below the partner name', () => {
+      const { getByTestId } = render(
+        <SessionChatHeader partnerName="Alex" partnerOnline={true} />
+      );
+
+      // Verify both elements exist
+      expect(getByTestId('session-chat-header-partner-name')).toBeTruthy();
+      expect(getByTestId('session-chat-header-online-status')).toBeTruthy();
+      expect(getByTestId('status-dot')).toBeTruthy();
     });
   });
 });

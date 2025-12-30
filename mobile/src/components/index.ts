@@ -32,6 +32,7 @@ export { EmotionalBarometer } from './EmotionalBarometer';
 export { BreathingExercise } from './BreathingExercise';
 export { GroundingExercise } from './GroundingExercise';
 export { BodyScanExercise } from './BodyScanExercise';
+export { IntensityCheck } from './IntensityCheck';
 export { SupportOptionsModal } from './SupportOptionsModal';
 export type { SupportOption } from './SupportOptionsModal';
 
@@ -41,6 +42,8 @@ export { CuriosityCompact } from './CuriosityCompact';
 export { WaitingRoom } from './WaitingRoom';
 export { WaitingStatusMessage } from './WaitingStatusMessage';
 export type { WaitingStatusType, WaitingStatusMessageProps } from './WaitingStatusMessage';
+export { InvitationShareButton } from './InvitationShareButton';
+export { RefineInvitationDrawer } from './RefineInvitationDrawer';
 
 // Stage 1 components
 export { FeelHeardConfirmation } from './FeelHeardConfirmation';

@@ -13,7 +13,7 @@ import {
   useInfiniteQuery,
   UseInfiniteQueryOptions,
 } from '@tanstack/react-query';
-import { get, post, ApiClientError } from '../lib/api';
+import { get, post, put, ApiClientError } from '../lib/api';
 import {
   SessionSummaryDTO,
   SessionDetailDTO,
@@ -25,6 +25,7 @@ import {
   DeclineInvitationResponse,
   InvitationDTO,
 } from '@meet-without-fear/shared';
+import { stageKeys } from './useStages';
 
 // ============================================================================
 // Query Keys
@@ -39,6 +40,8 @@ export const sessionKeys = {
   detail: (id: string) => [...sessionKeys.details(), id] as const,
   invitations: () => ['invitations'] as const,
   invitation: (id: string) => [...sessionKeys.invitations(), id] as const,
+  sessionInvitation: (sessionId: string) =>
+    [...sessionKeys.all, sessionId, 'invitation'] as const,
 };
 
 // ============================================================================
@@ -342,6 +345,116 @@ export function useResendInvitation(
     onSuccess: (_, { invitationId }) => {
       queryClient.invalidateQueries({
         queryKey: sessionKeys.invitation(invitationId),
+      });
+    },
+    ...options,
+  });
+}
+
+// ============================================================================
+// Session Invitation Message Hooks
+// ============================================================================
+
+interface SessionInvitationResponse {
+  invitation: {
+    id: string;
+    name: string | null;
+    invitationMessage: string | null;
+    messageConfirmed: boolean;
+    status: string;
+    expiresAt: string;
+  };
+}
+
+/**
+ * Get invitation details for a session.
+ */
+export function useSessionInvitation(
+  sessionId: string | undefined,
+  options?: Omit<
+    UseQueryOptions<SessionInvitationResponse, ApiClientError>,
+    'queryKey' | 'queryFn'
+  >
+) {
+  return useQuery({
+    queryKey: sessionKeys.sessionInvitation(sessionId || ''),
+    queryFn: async () => {
+      if (!sessionId) throw new Error('Session ID is required');
+      return get<SessionInvitationResponse>(`/sessions/${sessionId}/invitation`);
+    },
+    enabled: !!sessionId,
+    staleTime: 30_000,
+    ...options,
+  });
+}
+
+/**
+ * Update the invitation message for a session.
+ */
+export function useUpdateInvitationMessage(
+  options?: Omit<
+    UseMutationOptions<
+      { invitation: { id: string; invitationMessage: string | null; messageConfirmed: boolean } },
+      ApiClientError,
+      { sessionId: string; message: string }
+    >,
+    'mutationFn'
+  >
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ sessionId, message }) => {
+      return put<{ invitation: { id: string; invitationMessage: string | null; messageConfirmed: boolean } }>(
+        `/sessions/${sessionId}/invitation/message`,
+        { message }
+      );
+    },
+    onSuccess: (data, { sessionId }) => {
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.sessionInvitation(sessionId),
+      });
+    },
+    ...options,
+  });
+}
+
+/**
+ * Confirm the invitation message for a session.
+ */
+export function useConfirmInvitationMessage(
+  options?: Omit<
+    UseMutationOptions<
+      {
+        confirmed: boolean;
+        invitation: { id: string; invitationMessage: string | null; messageConfirmed: boolean };
+      },
+      ApiClientError,
+      { sessionId: string; message?: string }
+    >,
+    'mutationFn'
+  >
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ sessionId, message }) => {
+      return post<{
+        confirmed: boolean;
+        invitation: { id: string; invitationMessage: string | null; messageConfirmed: boolean };
+      }>(`/sessions/${sessionId}/invitation/confirm`, { message });
+    },
+    onSuccess: (_, { sessionId }) => {
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.sessionInvitation(sessionId),
+      });
+      // Also invalidate session detail to reflect the status change
+      queryClient.invalidateQueries({
+        queryKey: sessionKeys.detail(sessionId),
+      });
+      // Invalidate stage progress since backend advances to Stage 1
+      queryClient.invalidateQueries({
+        queryKey: stageKeys.progress(sessionId),
       });
     },
     ...options,

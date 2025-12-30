@@ -40,6 +40,8 @@ interface ChatInterfaceProps {
   onHighEmotion?: (value: number) => void;
   /** Use compact emotion slider for low-profile display */
   compactEmotionSlider?: boolean;
+  /** Content to render above the input (e.g., invitation share button) */
+  renderAboveInput?: () => React.ReactNode;
 }
 
 // ============================================================================
@@ -62,6 +64,7 @@ export function ChatInterface({
   onEmotionChange,
   onHighEmotion,
   compactEmotionSlider = false,
+  renderAboveInput,
 }: ChatInterfaceProps) {
   const styles = useStyles();
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
@@ -76,6 +79,16 @@ export function ChatInterface({
       return () => clearTimeout(timer);
     }
   }, [messages.length]);
+
+  // Also scroll when content above input changes (e.g., invitation draft appears)
+  useEffect(() => {
+    if (renderAboveInput) {
+      const timer = setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [renderAboveInput]);
 
   // Also scroll when loading state changes (typing indicator appears)
   useEffect(() => {
@@ -154,6 +167,7 @@ export function ChatInterface({
           testID="chat-emotion-slider"
         />
       )}
+      {renderAboveInput?.()}
       <ChatInput onSend={onSendMessage} disabled={disabled || isLoading} />
     </KeyboardAvoidingView>
   );

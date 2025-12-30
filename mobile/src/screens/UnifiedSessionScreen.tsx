@@ -6,7 +6,7 @@
  * appearing as inline cards or overlays.
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stage, MessageRole, StrategyPhase, SessionStatus } from '@meet-without-fear/shared';
@@ -29,8 +29,12 @@ import { StrategyRanking } from '../components/StrategyRanking';
 import { OverlapReveal } from '../components/OverlapReveal';
 import { AgreementCard } from '../components/AgreementCard';
 import { CuriosityCompact } from '../components/CuriosityCompact';
+import { InvitationShareButton } from '../components/InvitationShareButton';
+import { RefineInvitationDrawer } from '../components/RefineInvitationDrawer';
 
 import { useUnifiedSession, InlineChatCard, WaitingStatusType } from '../hooks/useUnifiedSession';
+import { createInvitationLink } from '../hooks/useInvitation';
+import { useAuth } from '../hooks/useAuth';
 import { createStyles } from '../theme/styled';
 
 // ============================================================================
@@ -50,8 +54,17 @@ interface UnifiedSessionScreenProps {
 /**
  * Get the appropriate welcome message for each stage
  */
-function getWelcomeMessage(stage: Stage, partnerName?: string | null): string {
+function getWelcomeMessage(
+  stage: Stage,
+  partnerName?: string | null,
+  isInvitationPhase?: boolean
+): string {
   const nickname = partnerName || 'your partner';
+
+  // Invitation phase has its own welcome message
+  if (isInvitationPhase) {
+    return `First, tell me what's going on so we can craft an invitation to ${nickname}.`;
+  }
 
   switch (stage) {
     case Stage.ONBOARDING:
@@ -74,8 +87,9 @@ function getWelcomeMessage(stage: Stage, partnerName?: string | null): string {
  */
 function getBriefStatus(status?: SessionStatus): string | undefined {
   switch (status) {
-    case SessionStatus.INVITED:
     case SessionStatus.CREATED:
+      return undefined; // No badge during invitation crafting phase
+    case SessionStatus.INVITED:
       return 'invited';
     case SessionStatus.ACTIVE:
       return undefined; // No badge needed when active
@@ -98,6 +112,7 @@ export function UnifiedSessionScreen({
   onStageComplete,
 }: UnifiedSessionScreenProps) {
   const styles = useStyles();
+  const { user } = useAuth();
 
   const {
     // Loading
@@ -122,6 +137,12 @@ export function UnifiedSessionScreen({
     barometerValue,
     pendingConfirmation,
 
+    // Invitation phase
+    isInvitationPhase,
+    invitationMessage,
+    invitationConfirmed,
+    invitation,
+
     // Stage-specific data
     compactData,
     empathyDraftData,
@@ -144,6 +165,7 @@ export function UnifiedSessionScreen({
     handleBarometerChange,
     handleConfirmFeelHeard,
     handleSignCompact,
+    handleConfirmInvitationMessage,
     handleSaveEmpathyDraft,
     handleShareEmpathy,
     handleValidatePartnerEmpathy,
@@ -161,6 +183,15 @@ export function UnifiedSessionScreen({
   } = useUnifiedSession(sessionId);
 
   // -------------------------------------------------------------------------
+  // Local State for Refine Invitation Drawer
+  // -------------------------------------------------------------------------
+  const [showRefineDrawer, setShowRefineDrawer] = useState(false);
+
+  // Track when user is refining the invitation (after initial send, from Stage 1)
+  // This overrides Stage 1 UI to show invitation crafting UI instead
+  const [isRefiningInvitation, setIsRefiningInvitation] = useState(false);
+
+  // -------------------------------------------------------------------------
   // Effective Stage (accounts for compact signed but stage not yet updated)
   // -------------------------------------------------------------------------
   const effectiveStage = useMemo(() => {
@@ -175,21 +206,21 @@ export function UnifiedSessionScreen({
   // -------------------------------------------------------------------------
   const displayMessages = useMemo((): ChatMessage[] => {
     if (messages.length === 0) {
-      // Show welcome message for the effective stage
+      // Show welcome message for the effective stage (or invitation phase)
       return [
         {
-          id: `welcome-${effectiveStage}`,
+          id: `welcome-${effectiveStage}-${isInvitationPhase ? 'invite' : 'normal'}`,
           sessionId,
           senderId: null,
           role: MessageRole.AI,
-          content: getWelcomeMessage(effectiveStage, partnerName),
+          content: getWelcomeMessage(effectiveStage, partnerName, isInvitationPhase),
           stage: effectiveStage,
           timestamp: new Date().toISOString(),
         },
       ];
     }
     return messages;
-  }, [messages, effectiveStage, sessionId, partnerName]);
+  }, [messages, effectiveStage, sessionId, partnerName, isInvitationPhase]);
 
   // -------------------------------------------------------------------------
   // Render Inline Card
@@ -241,13 +272,13 @@ export function UnifiedSessionScreen({
                   <Text style={styles.rephraseButtonText}>Rephrase</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.continueButton}
+                  style={styles.interventionContinueButton}
                   onPress={() => {
                     clearMirrorIntervention();
                     // Send pending message anyway
                   }}
                 >
-                  <Text style={styles.continueButtonText}>Continue anyway</Text>
+                  <Text style={styles.interventionContinueButtonText}>Continue anyway</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -439,6 +470,16 @@ export function UnifiedSessionScreen({
       onNavigateBack,
     ]
   );
+
+  // -------------------------------------------------------------------------
+  // Invitation URL for sharing (must be before early returns)
+  // -------------------------------------------------------------------------
+  const invitationUrl = useMemo(() => {
+    if (invitation?.id) {
+      return createInvitationLink(invitation.id);
+    }
+    return '';
+  }, [invitation?.id]);
 
   // -------------------------------------------------------------------------
   // Render Overlays
@@ -650,9 +691,11 @@ export function UnifiedSessionScreen({
   }
 
   // -------------------------------------------------------------------------
-  // Onboarding Stage - Show Compact First
+  // Onboarding Stage - Show Compact First (but not during invitation phase)
   // -------------------------------------------------------------------------
-  if (currentStage === Stage.ONBOARDING && !compactData?.mySigned) {
+  // During invitation phase, we show the chat to craft the invitation message
+  // After invitation is sent, we show the compact
+  if (currentStage === Stage.ONBOARDING && !compactData?.mySigned && !isInvitationPhase) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         <SessionChatHeader
@@ -702,6 +745,12 @@ export function UnifiedSessionScreen({
         partnerName={partnerName}
         partnerOnline={false}
         briefStatus={getBriefStatus(session?.status)}
+        hideOnlineStatus={isInvitationPhase}
+        onBriefStatusPress={
+          session?.status === SessionStatus.INVITED
+            ? () => setShowRefineDrawer(true)
+            : undefined
+        }
         testID="session-chat-header"
       />
       <View style={styles.content}>
@@ -709,7 +758,7 @@ export function UnifiedSessionScreen({
           messages={displayMessages}
           onSendMessage={sendMessage}
           isLoading={isSending}
-          showEmotionSlider={effectiveStage === Stage.WITNESS}
+          showEmotionSlider={effectiveStage === Stage.WITNESS && !isInvitationPhase && !isRefiningInvitation}
           emotionValue={barometerValue}
           onEmotionChange={handleBarometerChange}
           onHighEmotion={(value) => {
@@ -718,6 +767,36 @@ export function UnifiedSessionScreen({
             }
           }}
           compactEmotionSlider
+          renderAboveInput={
+            (isInvitationPhase || isRefiningInvitation) && invitationMessage && invitationUrl
+              ? () => (
+                  <View style={styles.invitationDraftContainer}>
+                    <Text style={styles.invitationDraftMessage}>
+                      "{invitationMessage}"
+                    </Text>
+                    <InvitationShareButton
+                      invitationMessage={invitationMessage}
+                      invitationUrl={invitationUrl}
+                      partnerName={partnerName}
+                      senderName={user?.name || user?.firstName || undefined}
+                      testID="invitation-share-button"
+                    />
+                    <TouchableOpacity
+                      style={styles.continueButton}
+                      onPress={() => {
+                        handleConfirmInvitationMessage(invitationMessage);
+                        setIsRefiningInvitation(false); // Exit refinement mode
+                      }}
+                      testID="invitation-continue-button"
+                    >
+                      <Text style={styles.continueButtonText}>
+                        {isRefiningInvitation ? "I've sent it - Back to conversation" : "I've sent it - Continue"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )
+              : undefined
+          }
         />
 
         {/* Render inline cards at the end of the chat */}
@@ -726,6 +805,30 @@ export function UnifiedSessionScreen({
 
       {/* Overlays */}
       {renderOverlay()}
+
+      {/* Refine Invitation Drawer */}
+      {invitationMessage && invitationUrl && (
+        <RefineInvitationDrawer
+          visible={showRefineDrawer}
+          invitationMessage={invitationMessage}
+          invitationUrl={invitationUrl}
+          partnerName={partnerName}
+          senderName={user?.name || user?.firstName || undefined}
+          onRefine={() => {
+            // Close the drawer and enter refinement mode
+            setShowRefineDrawer(false);
+            setIsRefiningInvitation(true);
+            // Send auto-message to refine
+            sendMessage("I'd like to refine the invitation message.");
+          }}
+          onShareSuccess={() => {
+            // Confirm the invitation after sharing
+            handleConfirmInvitationMessage(invitationMessage);
+            setShowRefineDrawer(false);
+          }}
+          onClose={() => setShowRefineDrawer(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -757,6 +860,35 @@ const useStyles = () =>
     },
     accentColor: {
       color: t.colors.accent,
+    },
+
+    // Invitation Draft
+    invitationDraftContainer: {
+      paddingHorizontal: t.spacing.lg,
+      paddingVertical: t.spacing.md,
+      backgroundColor: t.colors.bgSecondary,
+      borderTopWidth: 1,
+      borderTopColor: t.colors.border,
+    },
+    invitationDraftMessage: {
+      fontSize: t.typography.fontSize.md,
+      fontStyle: 'italic',
+      color: t.colors.textPrimary,
+      textAlign: 'center',
+      marginBottom: t.spacing.sm,
+      paddingHorizontal: t.spacing.md,
+      lineHeight: 22,
+    },
+    continueButton: {
+      marginTop: t.spacing.sm,
+      marginHorizontal: t.spacing.lg,
+      paddingVertical: t.spacing.sm,
+      alignItems: 'center',
+    },
+    continueButtonText: {
+      fontSize: t.typography.fontSize.md,
+      color: t.colors.textSecondary,
+      textDecorationLine: 'underline',
     },
 
     // Inline Cards
@@ -866,7 +998,7 @@ const useStyles = () =>
       fontSize: 14,
       fontWeight: '600',
     },
-    continueButton: {
+    interventionContinueButton: {
       flex: 1,
       padding: 12,
       backgroundColor: t.colors.bgTertiary,
@@ -875,7 +1007,7 @@ const useStyles = () =>
       borderWidth: 1,
       borderColor: t.colors.border,
     },
-    continueButtonText: {
+    interventionContinueButtonText: {
       color: t.colors.textSecondary,
       fontSize: 14,
       fontWeight: '500',

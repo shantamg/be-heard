@@ -8,7 +8,11 @@
 import { useMemo, useCallback, useReducer, useEffect, useRef } from 'react';
 import { Stage, MessageRole, StrategyPhase } from '@meet-without-fear/shared';
 
-import { useSession } from './useSessions';
+import {
+  useSession,
+  useSessionInvitation,
+  useConfirmInvitationMessage,
+} from './useSessions';
 import {
   useMessages,
   useSendMessage,
@@ -348,6 +352,12 @@ export function useUnifiedSession(sessionId: string | undefined) {
   // Stage 0: Compact
   const { data: compactData } = useCompactStatus(sessionId);
 
+  // Invitation - fetch for invitation phase detection
+  // We enable this when session status is CREATED (sessionData is available)
+  const { data: invitationData } = useSessionInvitation(sessionId, {
+    enabled: !!sessionId && sessionData?.session?.status === 'CREATED',
+  });
+
   // Stage 2: Empathy - only fetch when in stage 2 or later
   const { data: empathyDraftData } = useEmpathyDraft(sessionId, {
     enabled: !!sessionId && currentStage >= Stage.PERSPECTIVE_STRETCH,
@@ -382,6 +392,7 @@ export function useUnifiedSession(sessionId: string | undefined) {
   const { mutate: recordEmotion } = useRecordEmotion();
   const { mutate: confirmHeard } = useConfirmFeelHeard();
   const { mutate: signCompact } = useSignCompact();
+  const { mutate: confirmInvitationMessage } = useConfirmInvitationMessage();
   const { mutate: advanceStage } = useAdvanceStage();
   const { mutate: saveDraft } = useSaveEmpathyDraft();
   const { mutate: consentToShare } = useConsentToShareEmpathy();
@@ -408,6 +419,16 @@ export function useUnifiedSession(sessionId: string | undefined) {
   const partnerName = loadingSession
     ? ''
     : (session?.partner?.nickname ?? session?.partner?.name ?? 'Partner');
+
+  // Invitation phase detection
+  // We're in invitation phase when:
+  // - Session status is CREATED
+  // - Invitation message hasn't been confirmed yet
+  const invitation = invitationData?.invitation;
+  const isInvitationPhase =
+    session?.status === 'CREATED' && !invitation?.messageConfirmed;
+  const invitationMessage = invitation?.invitationMessage ?? null;
+  const invitationConfirmed = invitation?.messageConfirmed ?? false;
   const myProgress = progressData?.myProgress;
   const partnerProgress = progressData?.partnerProgress;
   const canAdvance = progressData?.canAdvance ?? false;
@@ -836,6 +857,17 @@ export function useUnifiedSession(sessionId: string | undefined) {
     [sessionId, signCompact, advanceStage]
   );
 
+  const handleConfirmInvitationMessage = useCallback(
+    (message?: string, onSuccess?: () => void) => {
+      if (!sessionId) return;
+      confirmInvitationMessage(
+        { sessionId, message },
+        { onSuccess }
+      );
+    },
+    [sessionId, confirmInvitationMessage]
+  );
+
   const handleSaveEmpathyDraft = useCallback(
     (content: string, readyToShare?: boolean) => {
       if (!sessionId) return;
@@ -990,6 +1022,12 @@ export function useUnifiedSession(sessionId: string | undefined) {
     followUpDate: state.followUpDate,
     waitingStatus: state.waitingStatus,
 
+    // Invitation phase
+    isInvitationPhase,
+    invitationMessage,
+    invitationConfirmed,
+    invitation,
+
     // Stage-specific data
     compactData,
     empathyDraftData,
@@ -1021,6 +1059,7 @@ export function useUnifiedSession(sessionId: string | undefined) {
     handleBarometerChange,
     handleConfirmFeelHeard,
     handleSignCompact,
+    handleConfirmInvitationMessage,
     handleSaveEmpathyDraft,
     handleShareEmpathy,
     handleValidatePartnerEmpathy,
