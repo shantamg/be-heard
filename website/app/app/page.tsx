@@ -43,15 +43,15 @@ export default function AppDownloadPage() {
       <div className="container mx-auto px-6 py-16">
         <div className="max-w-2xl mx-auto text-center">
           {/* Title */}
-          <h1 className="text-3xl md:text-4xl font-bold mb-4 animate-fade-in">
+          <h1 className="text-3xl md:text-4xl font-bold mb-4">
             Get the App
           </h1>
-          <p className="text-muted-foreground text-lg mb-10 animate-fade-in animation-delay-100">
+          <p className="text-muted-foreground text-lg mb-10">
             Download Meet Without Fear to start transforming your conversations.
           </p>
 
           {/* Platform Selector */}
-          <div className="flex justify-center gap-4 mb-10 animate-fade-in animation-delay-200">
+          <div className="flex justify-center gap-4 mb-10">
             <button
               onClick={() => setSelectedPlatform("ios")}
               className={`flex items-center gap-3 px-6 py-4 rounded-xl font-semibold transition-all ${
@@ -77,7 +77,7 @@ export default function AppDownloadPage() {
           </div>
 
           {/* Download Section */}
-          <div className="animate-fade-in animation-delay-300">
+          <div>
             {selectedPlatform === "ios" ? (
               <div className="space-y-8">
                 {/* QR Code for desktop */}
@@ -142,17 +142,19 @@ export default function AppDownloadPage() {
                   </div>
                 )}
 
-                {/* Download button */}
-                <a
-                  href={androidApkUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  download
-                  className="inline-flex items-center justify-center gap-3 bg-accent text-accent-foreground px-8 py-4 rounded-xl font-semibold text-lg hover:bg-accent/90 transition-all"
-                >
-                  <Smartphone className="w-6 h-6" />
-                  Download APK
-                </a>
+                {/* Download button for mobile */}
+                {isMobile && (
+                  <a
+                    href={androidApkUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    className="inline-flex items-center justify-center gap-3 bg-accent text-accent-foreground px-8 py-4 rounded-xl font-semibold text-lg hover:bg-accent/90 transition-all"
+                  >
+                    <Smartphone className="w-6 h-6" />
+                    Download APK
+                  </a>
+                )}
               </div>
             )}
           </div>

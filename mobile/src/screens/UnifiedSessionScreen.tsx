@@ -197,23 +197,30 @@ export function UnifiedSessionScreen({
   const wasInvitationConfirmedRef = useRef(invitationConfirmed);
   const [invitationSentIndicator, setInvitationSentIndicator] = useState<ChatIndicatorItem | null>(null);
 
-  // Track when to show the invitation draft panel (after typewriter completes)
-  // Start true if invitation message already exists (loaded from history)
-  const [showInvitationPanel, setShowInvitationPanel] = useState(() => !!invitationMessage);
+  // Track when we're waiting for typewriter to complete before showing invitation panel
+  // Only set to true when invitationMessage changes from one value to another (not from undefined)
+  const [waitingForTypewriter, setWaitingForTypewriter] = useState(false);
+  const prevInvitationMessageRef = useRef(invitationMessage);
 
   // Animation for the invitation panel slide-up
-  // Start at 1 if invitation message already exists
-  const invitationPanelAnim = useRef(new Animated.Value(invitationMessage ? 1 : 0)).current;
+  const invitationPanelAnim = useRef(new Animated.Value(0)).current;
 
-  // Animate panel when showInvitationPanel changes
+  // Calculate whether panel should show: have message, in right phase, not waiting for typewriter
+  const shouldShowInvitationPanel = !!(
+    invitationMessage &&
+    (isInvitationPhase || isRefiningInvitation) &&
+    !waitingForTypewriter
+  );
+
+  // Animate panel when shouldShowInvitationPanel changes
   useEffect(() => {
     Animated.spring(invitationPanelAnim, {
-      toValue: showInvitationPanel ? 1 : 0,
+      toValue: shouldShowInvitationPanel ? 1 : 0,
       useNativeDriver: true,
       tension: 50,
       friction: 8,
     }).start();
-  }, [showInvitationPanel, invitationPanelAnim]);
+  }, [shouldShowInvitationPanel, invitationPanelAnim]);
 
   // When invitation becomes confirmed, create the "Invitation Sent" indicator
   useEffect(() => {
@@ -225,36 +232,30 @@ export function UnifiedSessionScreen({
         id: `invitation-sent-${Date.now()}`,
         timestamp: new Date().toISOString(),
       });
-      // Reset the panel visibility - it will show after typewriter completes
-      setShowInvitationPanel(false);
     }
     wasInvitationConfirmedRef.current = invitationConfirmed;
   }, [invitationConfirmed]);
 
-  // Track when invitation message changes (for triggering animation after typewriter)
-  const prevInvitationMessageRef = useRef(invitationMessage);
-  const isFirstRenderRef = useRef(true);
+  // Track when invitation message changes from one defined value to another
+  // This indicates a new AI response, so wait for typewriter
+  // If changing from undefined to defined, it's initial load - show immediately
   useEffect(() => {
-    // Skip first render - if message exists on mount, it's already shown
-    if (isFirstRenderRef.current) {
-      isFirstRenderRef.current = false;
-      return;
+    const prev = prevInvitationMessageRef.current;
+    const curr = invitationMessage;
+
+    // If message changed from one defined value to another, wait for typewriter
+    if (prev !== undefined && curr !== undefined && prev !== curr) {
+      setWaitingForTypewriter(true);
     }
-    // When invitation message changes (new message from AI), hide panel
-    // It will be shown by handleLastAIMessageComplete when typewriter finishes
-    if (invitationMessage && invitationMessage !== prevInvitationMessageRef.current) {
-      setShowInvitationPanel(false);
-    }
-    prevInvitationMessageRef.current = invitationMessage;
+
+    prevInvitationMessageRef.current = curr;
   }, [invitationMessage]);
 
   // Callback when the last AI message finishes typing
   const handleLastAIMessageComplete = useCallback(() => {
-    // If we have an invitation message draft and we're in invitation phase, show the panel
-    if (invitationMessage && (isInvitationPhase || isRefiningInvitation)) {
-      setShowInvitationPanel(true);
-    }
-  }, [invitationMessage, isInvitationPhase, isRefiningInvitation]);
+    // Stop waiting for typewriter - this will make panel visible
+    setWaitingForTypewriter(false);
+  }, []);
 
   // Build indicators array
   const indicators = useMemo((): ChatIndicatorItem[] => {
@@ -861,7 +862,7 @@ export function UnifiedSessionScreen({
                         ],
                       },
                     ]}
-                    pointerEvents={showInvitationPanel ? 'auto' : 'none'}
+                    pointerEvents={shouldShowInvitationPanel ? 'auto' : 'none'}
                   >
                     <Text style={styles.invitationDraftMessage}>
                       "{invitationMessage}"
