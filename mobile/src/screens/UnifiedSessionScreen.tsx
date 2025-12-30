@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
-import { View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, ActivityIndicator, TouchableOpacity, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stage, MessageRole, StrategyPhase, SessionStatus } from '@meet-without-fear/shared';
 
@@ -198,7 +198,22 @@ export function UnifiedSessionScreen({
   const [invitationSentIndicator, setInvitationSentIndicator] = useState<ChatIndicatorItem | null>(null);
 
   // Track when to show the invitation draft panel (after typewriter completes)
-  const [showInvitationPanel, setShowInvitationPanel] = useState(false);
+  // Start true if invitation message already exists (loaded from history)
+  const [showInvitationPanel, setShowInvitationPanel] = useState(() => !!invitationMessage);
+
+  // Animation for the invitation panel slide-up
+  // Start at 1 if invitation message already exists
+  const invitationPanelAnim = useRef(new Animated.Value(invitationMessage ? 1 : 0)).current;
+
+  // Animate panel when showInvitationPanel changes
+  useEffect(() => {
+    Animated.spring(invitationPanelAnim, {
+      toValue: showInvitationPanel ? 1 : 0,
+      useNativeDriver: true,
+      tension: 50,
+      friction: 8,
+    }).start();
+  }, [showInvitationPanel, invitationPanelAnim]);
 
   // When invitation becomes confirmed, create the "Invitation Sent" indicator
   useEffect(() => {
@@ -216,13 +231,22 @@ export function UnifiedSessionScreen({
     wasInvitationConfirmedRef.current = invitationConfirmed;
   }, [invitationConfirmed]);
 
-  // During invitation phase before confirmation, show panel based on whether there's a draft
+  // Track when invitation message changes (for triggering animation after typewriter)
+  const prevInvitationMessageRef = useRef(invitationMessage);
+  const isFirstRenderRef = useRef(true);
   useEffect(() => {
-    if (isInvitationPhase && invitationMessage && !invitationConfirmed) {
-      // Show the panel immediately during invitation crafting phase
-      setShowInvitationPanel(true);
+    // Skip first render - if message exists on mount, it's already shown
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+      return;
     }
-  }, [isInvitationPhase, invitationMessage, invitationConfirmed]);
+    // When invitation message changes (new message from AI), hide panel
+    // It will be shown by handleLastAIMessageComplete when typewriter finishes
+    if (invitationMessage && invitationMessage !== prevInvitationMessageRef.current) {
+      setShowInvitationPanel(false);
+    }
+    prevInvitationMessageRef.current = invitationMessage;
+  }, [invitationMessage]);
 
   // Callback when the last AI message finishes typing
   const handleLastAIMessageComplete = useCallback(() => {
@@ -820,9 +844,25 @@ export function UnifiedSessionScreen({
           compactEmotionSlider
           onLastAIMessageComplete={handleLastAIMessageComplete}
           renderAboveInput={
-            showInvitationPanel && (isInvitationPhase || isRefiningInvitation) && invitationMessage && invitationUrl
+            (isInvitationPhase || isRefiningInvitation) && invitationMessage && invitationUrl
               ? () => (
-                  <View style={styles.invitationDraftContainer}>
+                  <Animated.View
+                    style={[
+                      styles.invitationDraftContainer,
+                      {
+                        opacity: invitationPanelAnim,
+                        transform: [
+                          {
+                            translateY: invitationPanelAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [100, 0],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                    pointerEvents={showInvitationPanel ? 'auto' : 'none'}
+                  >
                     <Text style={styles.invitationDraftMessage}>
                       "{invitationMessage}"
                     </Text>
@@ -845,7 +885,7 @@ export function UnifiedSessionScreen({
                         {isRefiningInvitation ? "I've sent it - Back to conversation" : "I've sent it - Continue"}
                       </Text>
                     </TouchableOpacity>
-                  </View>
+                  </Animated.View>
                 )
               : undefined
           }

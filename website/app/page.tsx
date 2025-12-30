@@ -24,13 +24,13 @@ export default function HomePage() {
       {/* Hero Section */}
       <section className="py-20 md:py-32">
         <div className="container mx-auto px-6 text-center">
-          <h1 className="text-4xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-accent to-purple-400 bg-clip-text text-transparent animate-fade-in">
+          <h1 className="text-4xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-accent to-purple-400 bg-clip-text text-transparent">
             Meet Without Fear
           </h1>
-          <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-10 animate-fade-in animation-delay-100">
+          <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-10">
             Transform difficult conversations into opportunities for connection and understanding.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center animate-fade-in animation-delay-200">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
               href="/app"
               className="inline-flex items-center justify-center gap-2 bg-accent text-accent-foreground px-8 py-4 rounded-xl font-semibold text-lg hover:bg-accent/90 transition-all hover:scale-105"
