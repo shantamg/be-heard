@@ -19,7 +19,7 @@
    ```bash
    # backend/.env
    RESEND_API_KEY="re_..."
-   FROM_EMAIL="noreply@meetwithoutfear.app"
+   FROM_EMAIL="noreply@meetwithoutfear.com"
    ```
 
 2. **SMS (Twilio) - Optional for MVP:**
