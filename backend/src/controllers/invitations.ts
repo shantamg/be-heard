@@ -257,11 +257,11 @@ export async function createSession(req: Request, res: Response): Promise<void> 
       }
     }
 
-    // Create session in INVITED status
+    // Create session in CREATED status (becomes INVITED after message is confirmed)
     const session = await prisma.session.create({
       data: {
         relationshipId: relationship.id,
-        status: 'INVITED',
+        status: 'CREATED',
       },
     });
 
@@ -277,7 +277,7 @@ export async function createSession(req: Request, res: Response): Promise<void> 
     });
 
     // Generate invitation URL (user shares via their own channels)
-    const appUrl = process.env.APP_URL || 'https://meetwithoutfear.app';
+    const appUrl = process.env.APP_URL || 'https://meetwithoutfear.com';
     const invitationUrl = `${appUrl}/invitation/${invitation.id}`;
 
     // Create initial stage progress for inviter
@@ -302,6 +302,18 @@ export async function createSession(req: Request, res: Response): Promise<void> 
     await prisma.sharedVessel.create({
       data: {
         sessionId: session.id,
+      },
+    });
+
+    // Create initial AI message to start the invitation crafting conversation
+    const partnerDisplayName = inviteName || 'them';
+    await prisma.message.create({
+      data: {
+        sessionId: session.id,
+        senderId: null,
+        role: 'AI',
+        content: `First, tell me what's going on so we can craft an invitation to ${partnerDisplayName}.`,
+        stage: 0,
       },
     });
 

@@ -8,6 +8,9 @@
  * - GET /sessions/:id/progress - Get stage progress for both users
  * - POST /sessions/:id/resolve - Resolve session
  * - POST /sessions/:id/stages/advance - Advance to next stage
+ * - GET /sessions/:id/invitation - Get invitation details
+ * - PUT /sessions/:id/invitation/message - Update invitation message
+ * - POST /sessions/:id/invitation/confirm - Confirm invitation message
  */
 
 import { Request, Response } from 'express';
@@ -668,5 +671,279 @@ export async function advanceStage(req: Request, res: Response): Promise<void> {
   } catch (error) {
     console.error('[advanceStage] Error:', error);
     errorResponse(res, ErrorCode.INTERNAL_ERROR, 'Failed to advance stage', 500);
+  }
+}
+
+// ============================================================================
+// Invitation Message Endpoints
+// ============================================================================
+
+/**
+ * Get invitation details for a session
+ * GET /sessions/:id/invitation
+ */
+export async function getInvitation(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      errorResponse(res, ErrorCode.UNAUTHORIZED, 'Authentication required', 401);
+      return;
+    }
+
+    const sessionId = req.params.id;
+
+    // Get session with invitation
+    const session = await prisma.session.findFirst({
+      where: {
+        id: sessionId,
+        relationship: {
+          members: {
+            some: { userId: user.id },
+          },
+        },
+      },
+      include: {
+        invitations: {
+          where: { invitedById: user.id },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    if (!session) {
+      errorResponse(res, ErrorCode.NOT_FOUND, 'Session not found', 404);
+      return;
+    }
+
+    const invitation = session.invitations[0];
+    if (!invitation) {
+      errorResponse(res, ErrorCode.NOT_FOUND, 'Invitation not found', 404);
+      return;
+    }
+
+    successResponse(res, {
+      invitation: {
+        id: invitation.id,
+        name: invitation.name,
+        invitationMessage: invitation.invitationMessage,
+        messageConfirmed: invitation.messageConfirmed,
+        status: invitation.status,
+        expiresAt: invitation.expiresAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('[getInvitation] Error:', error);
+    errorResponse(res, ErrorCode.INTERNAL_ERROR, 'Failed to get invitation', 500);
+  }
+}
+
+/**
+ * Update invitation message
+ * PUT /sessions/:id/invitation/message
+ */
+export async function updateInvitationMessage(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      errorResponse(res, ErrorCode.UNAUTHORIZED, 'Authentication required', 401);
+      return;
+    }
+
+    const sessionId = req.params.id;
+    const { message } = req.body;
+
+    if (!message || typeof message !== 'string') {
+      errorResponse(res, ErrorCode.VALIDATION_ERROR, 'Message is required', 400);
+      return;
+    }
+
+    // Limit message length
+    if (message.length > 500) {
+      errorResponse(res, ErrorCode.VALIDATION_ERROR, 'Message too long (max 500 characters)', 400);
+      return;
+    }
+
+    // Get session with invitation
+    const session = await prisma.session.findFirst({
+      where: {
+        id: sessionId,
+        relationship: {
+          members: {
+            some: { userId: user.id },
+          },
+        },
+      },
+      include: {
+        invitations: {
+          where: { invitedById: user.id },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    if (!session) {
+      errorResponse(res, ErrorCode.NOT_FOUND, 'Session not found', 404);
+      return;
+    }
+
+    const invitation = session.invitations[0];
+    if (!invitation) {
+      errorResponse(res, ErrorCode.NOT_FOUND, 'Invitation not found', 404);
+      return;
+    }
+
+    // Check invitation hasn't been confirmed yet
+    if (invitation.messageConfirmed) {
+      errorResponse(res, ErrorCode.VALIDATION_ERROR, 'Invitation message already confirmed', 400);
+      return;
+    }
+
+    // Update invitation message
+    const updatedInvitation = await prisma.invitation.update({
+      where: { id: invitation.id },
+      data: { invitationMessage: message },
+    });
+
+    successResponse(res, {
+      invitation: {
+        id: updatedInvitation.id,
+        invitationMessage: updatedInvitation.invitationMessage,
+        messageConfirmed: updatedInvitation.messageConfirmed,
+      },
+    });
+  } catch (error) {
+    console.error('[updateInvitationMessage] Error:', error);
+    errorResponse(res, ErrorCode.INTERNAL_ERROR, 'Failed to update invitation message', 500);
+  }
+}
+
+/**
+ * Confirm invitation message (ready to share)
+ * POST /sessions/:id/invitation/confirm
+ */
+export async function confirmInvitationMessage(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      errorResponse(res, ErrorCode.UNAUTHORIZED, 'Authentication required', 401);
+      return;
+    }
+
+    const sessionId = req.params.id;
+    const { message } = req.body;
+
+    // Get session with invitation
+    const session = await prisma.session.findFirst({
+      where: {
+        id: sessionId,
+        relationship: {
+          members: {
+            some: { userId: user.id },
+          },
+        },
+      },
+      include: {
+        invitations: {
+          where: { invitedById: user.id },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    if (!session) {
+      errorResponse(res, ErrorCode.NOT_FOUND, 'Session not found', 404);
+      return;
+    }
+
+    const invitation = session.invitations[0];
+    if (!invitation) {
+      errorResponse(res, ErrorCode.NOT_FOUND, 'Invitation not found', 404);
+      return;
+    }
+
+    // Already confirmed
+    if (invitation.messageConfirmed) {
+      successResponse(res, {
+        confirmed: true,
+        invitation: {
+          id: invitation.id,
+          invitationMessage: invitation.invitationMessage,
+          messageConfirmed: true,
+        },
+      });
+      return;
+    }
+
+    // Confirm (and optionally update message)
+    const updatedInvitation = await prisma.invitation.update({
+      where: { id: invitation.id },
+      data: {
+        invitationMessage: message || invitation.invitationMessage,
+        messageConfirmed: true,
+      },
+    });
+
+    // Update session status to INVITED (ready for partner to accept)
+    await prisma.session.update({
+      where: { id: sessionId },
+      data: { status: 'INVITED' },
+    });
+
+    // Advance user from Stage 0 to Stage 1 (Witness)
+    const now = new Date();
+
+    // Complete Stage 0 if exists
+    await prisma.stageProgress.updateMany({
+      where: {
+        sessionId,
+        userId: user.id,
+        stage: 0,
+        status: 'IN_PROGRESS',
+      },
+      data: {
+        status: 'COMPLETED',
+        completedAt: now,
+        gatesSatisfied: { compactSigned: true, invitationSent: true },
+      },
+    });
+
+    // Create Stage 1 progress
+    await prisma.stageProgress.upsert({
+      where: {
+        sessionId_userId_stage: {
+          sessionId,
+          userId: user.id,
+          stage: 1,
+        },
+      },
+      update: {
+        status: 'IN_PROGRESS',
+        startedAt: now,
+      },
+      create: {
+        sessionId,
+        userId: user.id,
+        stage: 1,
+        status: 'IN_PROGRESS',
+        startedAt: now,
+        gatesSatisfied: {},
+      },
+    });
+
+    successResponse(res, {
+      confirmed: true,
+      invitation: {
+        id: updatedInvitation.id,
+        invitationMessage: updatedInvitation.invitationMessage,
+        messageConfirmed: updatedInvitation.messageConfirmed,
+      },
+      advancedToStage: 1,
+    });
+  } catch (error) {
+    console.error('[confirmInvitationMessage] Error:', error);
+    errorResponse(res, ErrorCode.INTERNAL_ERROR, 'Failed to confirm invitation message', 500);
   }
 }

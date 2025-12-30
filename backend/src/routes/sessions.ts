@@ -20,6 +20,9 @@ import {
   getProgress,
   resolveSession,
   advanceStage,
+  getInvitation,
+  updateInvitationMessage,
+  confirmInvitationMessage,
 } from '../controllers/sessions';
 
 const router = Router();
@@ -65,5 +68,26 @@ router.post('/sessions/:id/resolve', requireAuth, requireSessionAccess, asyncHan
  * @access Private - requires authentication and session access
  */
 router.post('/sessions/:id/stages/advance', requireAuth, requireSessionAccess, asyncHandler(advanceStage));
+
+/**
+ * @route GET /api/v1/sessions/:id/invitation
+ * @description Get invitation details for a session
+ * @access Private - requires authentication and session access
+ */
+router.get('/sessions/:id/invitation', requireAuth, requireSessionAccess, asyncHandler(getInvitation));
+
+/**
+ * @route PUT /api/v1/sessions/:id/invitation/message
+ * @description Update invitation message
+ * @access Private - requires authentication and session access
+ */
+router.put('/sessions/:id/invitation/message', requireAuth, requireSessionAccess, asyncHandler(updateInvitationMessage));
+
+/**
+ * @route POST /api/v1/sessions/:id/invitation/confirm
+ * @description Confirm invitation message (ready to share)
+ * @access Private - requires authentication and session access
+ */
+router.post('/sessions/:id/invitation/confirm', requireAuth, requireSessionAccess, asyncHandler(confirmInvitationMessage));
 
 export default router;

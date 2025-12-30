@@ -608,18 +608,20 @@ enum GlobalLibrarySource {
 // ============================================================================
 
 model Invitation {
-  id            String           @id @default(cuid())
-  session       Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  sessionId     String
-  invitedBy     User             @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
-  invitedById   String
-  name          String?          // Display name for the invited person
-  status        InvitationStatus @default(PENDING)
-  createdAt     DateTime         @default(now())
-  expiresAt     DateTime
-  acceptedAt    DateTime?
-  declinedAt    DateTime?
-  declineReason String?
+  id                String           @id @default(cuid())
+  session           Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId         String
+  invitedBy         User             @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  invitedById       String
+  name              String?          // Display name for the invited person
+  invitationMessage String?          @db.Text // The crafted invitation message
+  messageConfirmed  Boolean          @default(false) // User confirmed the message
+  status            InvitationStatus @default(PENDING)
+  createdAt         DateTime         @default(now())
+  expiresAt         DateTime
+  acceptedAt        DateTime?
+  declinedAt        DateTime?
+  declineReason     String?
 
   @@index([sessionId])
   @@index([status])
