@@ -24,6 +24,7 @@ import {
   AcceptInvitationResponse,
   DeclineInvitationResponse,
   InvitationDTO,
+  Stage,
 } from '@meet-without-fear/shared';
 import { stageKeys } from './useStages';
 import { messageKeys } from './useMessages';
@@ -447,7 +448,7 @@ export function useConfirmInvitationMessage(
         transitionMessage?: { id: string; content: string; timestamp: string };
       }>(`/sessions/${sessionId}/invitation/confirm`, { message });
     },
-    onSuccess: (_, { sessionId }) => {
+    onSuccess: (data, { sessionId }) => {
       queryClient.invalidateQueries({
         queryKey: sessionKeys.sessionInvitation(sessionId),
       });
@@ -459,10 +460,44 @@ export function useConfirmInvitationMessage(
       queryClient.invalidateQueries({
         queryKey: stageKeys.progress(sessionId),
       });
-      // Invalidate messages to show the new transition message
+      // Invalidate ALL messages queries for this session (both with and without stage filter)
+      // This ensures the transition message appears when stage 1 loads
       queryClient.invalidateQueries({
-        queryKey: messageKeys.list(sessionId),
+        predicate: (query) => {
+          const key = query.queryKey;
+          return (
+            Array.isArray(key) &&
+            key[0] === 'messages' &&
+            key[1] === 'list' &&
+            key[2] === sessionId
+          );
+        },
       });
+
+      // If we received a transition message, add it to the messages cache
+      if (data.transitionMessage && data.advancedToStage === Stage.WITNESS) {
+        const transitionMsg = {
+          id: data.transitionMessage.id,
+          sessionId,
+          senderId: null,
+          role: 'AI' as const,
+          content: data.transitionMessage.content,
+          stage: Stage.WITNESS,
+          timestamp: data.transitionMessage.timestamp,
+        };
+
+        // Add to the non-stage-filtered message cache (what we use now)
+        queryClient.setQueryData<{ messages: typeof transitionMsg[]; hasMore: boolean }>(
+          messageKeys.list(sessionId),
+          (old) => {
+            if (!old) return { messages: [transitionMsg], hasMore: false };
+            // Append the transition message if not already present
+            const exists = old.messages.some(m => m.id === transitionMsg.id);
+            if (exists) return old;
+            return { ...old, messages: [...old.messages, transitionMsg] };
+          }
+        );
+      }
     },
     ...options,
   });

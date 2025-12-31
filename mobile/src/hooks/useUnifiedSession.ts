@@ -14,7 +14,7 @@ import {
   useConfirmInvitationMessage,
 } from './useSessions';
 import {
-  useMessages,
+  useInfiniteMessages,
   useSendMessage,
   useOptimisticMessage,
   useRecordEmotion,
@@ -339,9 +339,16 @@ export function useUnifiedSession(sessionId: string | undefined) {
 
   const currentStage = progressData?.myProgress?.stage ?? Stage.ONBOARDING;
 
-  // Messages - fetch for current stage
-  const { data: messagesData, isLoading: loadingMessages } = useMessages(
-    { sessionId: sessionId!, stage: currentStage },
+  // Messages - fetch all messages with infinite scroll (no stage filter)
+  // This allows previous stage messages to remain visible after stage transitions
+  const {
+    data: messagesData,
+    isLoading: loadingMessages,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteMessages(
+    { sessionId: sessionId!, limit: 25 },
     { enabled: !!sessionId }
   );
 
@@ -414,7 +421,17 @@ export function useUnifiedSession(sessionId: string | undefined) {
   // Derived Values
   // -------------------------------------------------------------------------
   const session = sessionData?.session;
-  const messages = messagesData?.messages ?? [];
+  // Flatten paginated messages - pages are in reverse chronological order (newest first)
+  // but each page's messages are in chronological order, so we need to flatten
+  // with older pages first: [page2, page1, page0].flatMap(p => p.messages)
+  const messages = useMemo(() => {
+    // messagesData is InfiniteData<GetMessagesResponse> with pages array
+    const pages = messagesData?.pages;
+    if (!pages || pages.length === 0) return [];
+    // Pages are stored newest-first, but we want chronological order for display
+    // Reverse pages so older messages come first, then flatten
+    return [...pages].reverse().flatMap(page => page.messages);
+  }, [messagesData]);
   // Only show 'Partner' fallback after data has loaded, otherwise show empty string
   const partnerName = loadingSession
     ? ''
@@ -1007,6 +1024,11 @@ export function useUnifiedSession(sessionId: string | undefined) {
     messages,
     inlineCards,
     isSending,
+
+    // Pagination for loading older messages
+    fetchMoreMessages: fetchNextPage,
+    hasMoreMessages: hasNextPage ?? false,
+    isFetchingMoreMessages: isFetchingNextPage,
 
     // Overlay state
     activeOverlay: state.activeOverlay,

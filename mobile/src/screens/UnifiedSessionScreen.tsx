@@ -129,6 +129,9 @@ export function UnifiedSessionScreen({
     messages,
     inlineCards,
     isSending,
+    fetchMoreMessages,
+    hasMoreMessages,
+    isFetchingMoreMessages,
 
     // Overlay state
     activeOverlay,
@@ -194,12 +197,24 @@ export function UnifiedSessionScreen({
   // -------------------------------------------------------------------------
   // Track Invitation Confirmation for Indicator
   // -------------------------------------------------------------------------
-  const wasInvitationConfirmedRef = useRef(invitationConfirmed);
-  const [invitationSentIndicator, setInvitationSentIndicator] = useState<ChatIndicatorItem | null>(null);
-
   // Track when we're waiting for typewriter to complete before showing invitation panel
   const [waitingForTypewriter, setWaitingForTypewriter] = useState(false);
   const prevInvitationMessageRef = useRef(invitationMessage);
+
+  // Track if the session has "woken up" (user has sent a message)
+  const hasSessionBeenActiveRef = useRef(false);
+
+  // Track when the user taps "I've sent it" - for optimistic UI
+  const [isConfirmingInvitation, setIsConfirmingInvitation] = useState(false);
+  // Store the timestamp when invitation was confirmed (for indicator positioning)
+  const [invitationConfirmedAt, setInvitationConfirmedAt] = useState<string | null>(null);
+
+  // Update the ref whenever isSending becomes true
+  useEffect(() => {
+    if (isSending) {
+      hasSessionBeenActiveRef.current = true;
+    }
+  }, [isSending]);
 
   // Animation for the invitation panel slide-up
   const invitationPanelAnim = useRef(new Animated.Value(0)).current;
@@ -208,7 +223,8 @@ export function UnifiedSessionScreen({
   const shouldShowInvitationPanel = !!(
     invitationMessage &&
     (isInvitationPhase || isRefiningInvitation) &&
-    !waitingForTypewriter
+    !waitingForTypewriter &&
+    !isConfirmingInvitation // Hide panel when confirming
   );
 
   // Animate panel when shouldShowInvitationPanel changes
@@ -221,30 +237,32 @@ export function UnifiedSessionScreen({
     }).start();
   }, [shouldShowInvitationPanel, invitationPanelAnim]);
 
-  // When invitation becomes confirmed, create the "Invitation Sent" indicator
+  // When invitation confirmation completes, store the timestamp
   useEffect(() => {
-    if (invitationConfirmed && !wasInvitationConfirmedRef.current) {
-      // Invitation just got confirmed - add the indicator
-      setInvitationSentIndicator({
-        type: 'indicator',
-        indicatorType: 'invitation-sent',
-        id: `invitation-sent-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-      });
+    if (invitationConfirmed && !invitationConfirmedAt) {
+      // Find the timestamp of the last stage 0 message (or use current time)
+      const stage0Messages = messages.filter(m => m.stage === Stage.ONBOARDING);
+      const lastStage0Msg = stage0Messages[stage0Messages.length - 1];
+      const timestamp = lastStage0Msg?.timestamp || new Date().toISOString();
+      setInvitationConfirmedAt(timestamp);
+      setIsConfirmingInvitation(false);
     }
-    wasInvitationConfirmedRef.current = invitationConfirmed;
-  }, [invitationConfirmed]);
+  }, [invitationConfirmed, invitationConfirmedAt, messages]);
 
   // Track when invitation message appears or changes
-  // Always wait for typewriter - ChatInterface will signal immediately if no animation needed
   useEffect(() => {
     const prev = prevInvitationMessageRef.current;
     const curr = invitationMessage;
 
-    // If message appeared or changed, wait for typewriter to complete
-    // ChatInterface will call onLastAIMessageComplete immediately if all messages are historical
+    // Only run if the message actually changed or appeared
     if (curr && prev !== curr) {
-      setWaitingForTypewriter(true);
+      // If the session has been active (user sent a message), wait for typewriter
+      // If the session has never been active (fresh load), show immediately
+      if (hasSessionBeenActiveRef.current) {
+        setWaitingForTypewriter(true);
+      } else {
+        setWaitingForTypewriter(false);
+      }
     }
 
     prevInvitationMessageRef.current = curr;
@@ -259,11 +277,19 @@ export function UnifiedSessionScreen({
   // Build indicators array
   const indicators = useMemo((): ChatIndicatorItem[] => {
     const items: ChatIndicatorItem[] = [];
-    if (invitationSentIndicator) {
-      items.push(invitationSentIndicator);
+    // Show invitation sent indicator if invitation was confirmed
+    // Use the stored timestamp to position it correctly in the message list
+    if (invitationConfirmed || isConfirmingInvitation) {
+      items.push({
+        type: 'indicator',
+        indicatorType: 'invitation-sent',
+        id: 'invitation-sent',
+        // Use stored timestamp, or if still confirming, use a timestamp after the last message
+        timestamp: invitationConfirmedAt || new Date().toISOString(),
+      });
     }
     return items;
-  }, [invitationSentIndicator]);
+  }, [invitationConfirmed, isConfirmingInvitation, invitationConfirmedAt]);
 
   // -------------------------------------------------------------------------
   // Effective Stage (accounts for compact signed but stage not yet updated)
@@ -832,7 +858,7 @@ export function UnifiedSessionScreen({
           messages={displayMessages}
           indicators={indicators}
           onSendMessage={sendMessage}
-          isLoading={isSending}
+          isLoading={isSending || isConfirmingInvitation}
           showEmotionSlider={effectiveStage === Stage.WITNESS && !isInvitationPhase && !isRefiningInvitation}
           emotionValue={barometerValue}
           onEmotionChange={handleBarometerChange}
@@ -843,6 +869,9 @@ export function UnifiedSessionScreen({
           }}
           compactEmotionSlider
           onLastAIMessageComplete={handleLastAIMessageComplete}
+          onLoadMore={fetchMoreMessages}
+          hasMore={hasMoreMessages}
+          isLoadingMore={isFetchingMoreMessages}
           renderAboveInput={
             (isInvitationPhase || isRefiningInvitation) && invitationMessage && invitationUrl
               ? () => (
@@ -876,8 +905,10 @@ export function UnifiedSessionScreen({
                     <TouchableOpacity
                       style={styles.continueButton}
                       onPress={() => {
-                        handleConfirmInvitationMessage(invitationMessage);
+                        // Optimistic UI: immediately show loading state
+                        setIsConfirmingInvitation(true);
                         setIsRefiningInvitation(false); // Exit refinement mode
+                        handleConfirmInvitationMessage(invitationMessage);
                       }}
                       testID="invitation-continue-button"
                     >
@@ -914,9 +945,11 @@ export function UnifiedSessionScreen({
             sendMessage("I'd like to refine the invitation message.");
           }}
           onShareSuccess={() => {
+            // Optimistic UI: immediately show loading state
+            setIsConfirmingInvitation(true);
+            setShowRefineDrawer(false);
             // Confirm the invitation after sharing
             handleConfirmInvitationMessage(invitationMessage);
-            setShowRefineDrawer(false);
           }}
           onClose={() => setShowRefineDrawer(false)}
         />
