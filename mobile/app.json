@@ -9,19 +9,24 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/images/splash.png",
+      "image": "./assets/images/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#111827"
     },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.galuten.meetwithoutfear",
-      "buildNumber": "14",
+      "buildNumber": "18",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSMicrophoneUsageDescription": "This app needs access to your microphone to record audio sessions."
       },
-      "appleTeamId": "446P429C8Q"
+      "appleTeamId": "446P429C8Q",
+      "splash": {
+        "image": "./assets/images/icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#111827"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -30,7 +35,7 @@
       },
       "icon": "./assets/images/icon.png",
       "package": "com.meetwithoutfear.app",
-      "versionCode": 13,
+      "versionCode": 17,
       "permissions": [
         "RECORD_AUDIO"
       ]
@@ -51,8 +56,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash.png",
-          "imageWidth": 200,
+          "image": "./assets/images/icon.png",
           "resizeMode": "contain",
           "backgroundColor": "#111827"
         }
@@ -62,7 +66,7 @@
       "eas": {
         "projectId": "f381a744-a85d-478c-a8dd-75d54414aa5a"
       },
-      "apiUrl": "https://meet-without-fear-api.onrender.com",
+      "apiUrl": "https://api.meetwithoutfear.com",
       "router": {
         "root": "./app"
       }

@@ -3,16 +3,15 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Apple, Smartphone, ArrowLeft, QrCode } from "lucide-react";
+import { Apple, Smartphone, ArrowLeft } from "lucide-react";
 
 type Platform = "ios" | "android";
 
 export default function AppDownloadPage() {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>("ios");
-  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    // Detect platform on mount
+    // Detect platform on mount to set default tab
     const userAgent = navigator.userAgent || navigator.vendor;
 
     if (/android/i.test(userAgent)) {
@@ -20,9 +19,6 @@ export default function AppDownloadPage() {
     } else if (/iPad|iPhone|iPod/.test(userAgent)) {
       setSelectedPlatform("ios");
     }
-
-    // Check if mobile
-    setIsMobile(/Mobi|Android/i.test(userAgent));
   }, []);
 
   const testFlightUrl = process.env.NEXT_PUBLIC_TESTFLIGHT_URL || "https://testflight.apple.com/join/YOUR_CODE";
@@ -84,41 +80,67 @@ export default function AppDownloadPage() {
           <div>
             {selectedPlatform === "ios" ? (
               <div className="space-y-8">
-                {/* QR Code for desktop */}
-                {!isMobile && (
-                  <div className="bg-card border border-border rounded-2xl p-8 inline-block">
-                    <div className="w-48 h-48 bg-white rounded-xl flex items-center justify-center mx-auto mb-4">
-                      <QrCode className="w-24 h-24 text-gray-400" />
-                      <span className="sr-only">QR Code to download from TestFlight</span>
-                    </div>
-                    <p className="text-muted-foreground text-sm">
-                      Scan with your iPhone to download
-                    </p>
+                {/* QR Code for desktop only */}
+                <div className="hidden md:inline-block bg-card border border-border rounded-2xl p-8">
+                  <div className="w-48 h-48 bg-white rounded-xl flex items-center justify-center mx-auto mb-4 p-2">
+                    <Image
+                      src="/testflight-qr.png"
+                      alt="QR Code to download from TestFlight"
+                      width={176}
+                      height={176}
+                      className="rounded-lg"
+                    />
                   </div>
-                )}
-
-                {/* Download button for mobile */}
-                {isMobile && (
+                  <p className="text-muted-foreground text-sm mb-4">
+                    Scan with your iPhone to download
+                  </p>
                   <a
                     href={testFlightUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-3 bg-accent text-accent-foreground px-8 py-4 rounded-xl font-semibold text-lg hover:bg-accent/90 transition-all"
+                    className="text-accent hover:underline text-sm"
                   >
-                    <Apple className="w-6 h-6" />
-                    Download from TestFlight
+                    Or open TestFlight link directly →
                   </a>
-                )}
+                </div>
 
-                <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                  The app is currently in beta testing via Apple TestFlight.
-                  You&apos;ll need to install TestFlight first if you haven&apos;t already.
+                {/* Download button for mobile only */}
+                <a
+                  href={testFlightUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="md:hidden inline-flex items-center justify-center gap-3 bg-accent text-accent-foreground px-8 py-4 rounded-xl font-semibold text-lg hover:bg-accent/90 transition-all"
+                >
+                  <Apple className="w-6 h-6" />
+                  Download from TestFlight
+                </a>
+
+                {/* Desktop description */}
+                <p className="hidden md:block text-muted-foreground text-sm max-w-md mx-auto">
+                  The app is currently in beta testing via Apple TestFlight. Scan the QR code with your iPhone to download.
+                </p>
+
+                {/* Mobile description */}
+                <p className="md:hidden text-muted-foreground text-sm max-w-md mx-auto">
+                  Tap the button to open TestFlight and install the app.
                 </p>
               </div>
             ) : (
               <div className="space-y-8">
-                {/* Android Instructions */}
-                <div className="bg-card border border-border rounded-2xl p-6 text-left max-w-md mx-auto">
+                {/* Download button for mobile only */}
+                <a
+                  href={androidApkUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download
+                  className="md:hidden inline-flex items-center justify-center gap-3 bg-accent text-accent-foreground px-8 py-4 rounded-xl font-semibold text-lg hover:bg-accent/90 transition-all"
+                >
+                  <Smartphone className="w-6 h-6" />
+                  Download APK
+                </a>
+
+                {/* Android Instructions for mobile only */}
+                <div className="md:hidden bg-card border border-border rounded-2xl p-6 text-left max-w-md mx-auto">
                   <h3 className="text-accent font-semibold mb-4">Installation Instructions</h3>
                   <div className="space-y-3 text-sm text-muted-foreground">
                     <p>
@@ -133,32 +155,14 @@ export default function AppDownloadPage() {
                   </div>
                 </div>
 
-                {/* QR Code for desktop */}
-                {!isMobile && (
-                  <div className="bg-card border border-border rounded-2xl p-8 inline-block">
-                    <div className="w-48 h-48 bg-white rounded-xl flex items-center justify-center mx-auto mb-4">
-                      <QrCode className="w-24 h-24 text-gray-400" />
-                      <span className="sr-only">QR Code to download APK</span>
-                    </div>
-                    <p className="text-muted-foreground text-sm">
-                      Scan with your Android phone to download
-                    </p>
-                  </div>
-                )}
-
-                {/* Download button for mobile */}
-                {isMobile && (
-                  <a
-                    href={androidApkUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    download
-                    className="inline-flex items-center justify-center gap-3 bg-accent text-accent-foreground px-8 py-4 rounded-xl font-semibold text-lg hover:bg-accent/90 transition-all"
-                  >
-                    <Smartphone className="w-6 h-6" />
-                    Download APK
-                  </a>
-                )}
+                {/* Message for desktop only */}
+                <div className="hidden md:inline-block bg-card border border-border rounded-2xl p-8">
+                  <Smartphone className="w-16 h-16 text-accent mx-auto mb-4" />
+                  <p className="text-muted-foreground text-sm max-w-md">
+                    Android download is available on your Android device.
+                    Visit this page on your phone to download the APK.
+                  </p>
+                </div>
               </div>
             )}
           </div>

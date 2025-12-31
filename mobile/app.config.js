@@ -3,7 +3,7 @@ const { withPlugins } = require('@expo/config-plugins');
 module.exports = ({ config }) => {
   // Set default API URL if not provided (production URL)
   if (!process.env.EXPO_PUBLIC_API_URL) {
-    process.env.EXPO_PUBLIC_API_URL = 'https://meet-without-fear-api.onrender.com';
+    process.env.EXPO_PUBLIC_API_URL = 'https://api.meetwithoutfear.com';
   }
 
   // Override bundle identifier for development builds

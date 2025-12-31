@@ -25,6 +25,24 @@ SplashScreen.preventAutoHideAsync();
 // Clerk publishable key
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
 
+// Log Clerk key status for debugging (first 10 chars only for security)
+if (__DEV__) {
+  console.log('[Clerk] Key present:', !!CLERK_PUBLISHABLE_KEY);
+  console.log('[Clerk] Key prefix:', CLERK_PUBLISHABLE_KEY.substring(0, 10));
+} else if (!CLERK_PUBLISHABLE_KEY) {
+  console.error('[Clerk] CRITICAL: No publishable key in production build!');
+}
+
+/**
+ * Component to hide splash screen once Clerk is loaded
+ */
+function HideSplashOnReady() {
+  useEffect(() => {
+    SplashScreen.hideAsync();
+  }, []);
+  return null;
+}
+
 /**
  * Notification initializer component
  */
@@ -56,12 +74,7 @@ function ClerkAuthSetup() {
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({});
 
-  useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError]);
-
+  // Keep showing splash screen until fonts are loaded
   if (!fontsLoaded && !fontError) {
     return null;
   }
@@ -69,6 +82,7 @@ export default function RootLayout() {
   return (
     <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
       <ClerkLoaded>
+        <HideSplashOnReady />
         <ClerkAuthSetup />
         <AuthProviderWrapper />
       </ClerkLoaded>

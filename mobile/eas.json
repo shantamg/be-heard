@@ -16,7 +16,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://meet-without-fear-api.onrender.com",
+        "EXPO_PUBLIC_API_URL": "https://api.meetwithoutfear.com",
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsubWVldHdpdGhvdXRmZWFyLmNvbSQ"
       }
     },
@@ -34,12 +34,12 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://meet-without-fear-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://api.meetwithoutfear.com"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://meet-without-fear-api.onrender.com",
+        "EXPO_PUBLIC_API_URL": "https://api.meetwithoutfear.com",
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsubWVldHdpdGhvdXRmZWFyLmNvbSQ"
       }
     },
@@ -48,7 +48,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://meet-without-fear-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://api.meetwithoutfear.com"
       }
     }
   },
