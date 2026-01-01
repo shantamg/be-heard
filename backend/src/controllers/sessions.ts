@@ -730,6 +730,7 @@ export async function getInvitation(req: Request, res: Response): Promise<void> 
         name: invitation.name,
         invitationMessage: invitation.invitationMessage,
         messageConfirmed: invitation.messageConfirmed,
+        messageConfirmedAt: invitation.messageConfirmedAt?.toISOString() ?? null,
         status: invitation.status,
         expiresAt: invitation.expiresAt.toISOString(),
       },
@@ -874,10 +875,14 @@ export async function confirmInvitationMessage(req: Request, res: Response): Pro
           id: invitation.id,
           invitationMessage: invitation.invitationMessage,
           messageConfirmed: true,
+          messageConfirmedAt: invitation.messageConfirmedAt?.toISOString() ?? null,
         },
       });
       return;
     }
+
+    // Advance user from Stage 0 to Stage 1 (Witness)
+    const now = new Date();
 
     // Confirm (and optionally update message)
     const updatedInvitation = await prisma.invitation.update({
@@ -885,6 +890,7 @@ export async function confirmInvitationMessage(req: Request, res: Response): Pro
       data: {
         invitationMessage: message || invitation.invitationMessage,
         messageConfirmed: true,
+        messageConfirmedAt: now,
       },
     });
 
@@ -893,9 +899,6 @@ export async function confirmInvitationMessage(req: Request, res: Response): Pro
       where: { id: sessionId },
       data: { status: 'INVITED' },
     });
-
-    // Advance user from Stage 0 to Stage 1 (Witness)
-    const now = new Date();
 
     // Complete Stage 0 if exists
     await prisma.stageProgress.updateMany({
@@ -1022,6 +1025,7 @@ export async function confirmInvitationMessage(req: Request, res: Response): Pro
         id: updatedInvitation.id,
         invitationMessage: updatedInvitation.invitationMessage,
         messageConfirmed: updatedInvitation.messageConfirmed,
+        messageConfirmedAt: updatedInvitation.messageConfirmedAt?.toISOString() ?? null,
       },
       advancedToStage: 1,
       transitionMessage,

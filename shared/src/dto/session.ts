@@ -108,6 +108,8 @@ export interface InvitationDTO {
   invitationMessage?: string | null;
   /** Whether the user has confirmed the invitation message */
   messageConfirmed?: boolean;
+  /** When the user confirmed the invitation message (for chat indicator positioning) */
+  messageConfirmedAt?: string | null;
 }
 
 export enum InvitationStatus {

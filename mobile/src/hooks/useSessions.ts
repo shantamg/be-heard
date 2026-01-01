@@ -363,6 +363,8 @@ interface SessionInvitationResponse {
     name: string | null;
     invitationMessage: string | null;
     messageConfirmed: boolean;
+    /** When the user confirmed the invitation message (for chat indicator positioning) */
+    messageConfirmedAt: string | null;
     status: string;
     expiresAt: string;
   };

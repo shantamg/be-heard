@@ -614,9 +614,10 @@ model Invitation {
   invitedBy         User             @relation("InvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
   invitedById       String
   name              String?          // Display name for the invited person
-  invitationMessage String?          @db.Text // The crafted invitation message
-  messageConfirmed  Boolean          @default(false) // User confirmed the message
-  status            InvitationStatus @default(PENDING)
+  invitationMessage   String?          @db.Text // The crafted invitation message
+  messageConfirmed    Boolean          @default(false) // User confirmed the message
+  messageConfirmedAt  DateTime?        // When the user confirmed the message (for chat indicator positioning)
+  status              InvitationStatus @default(PENDING)
   createdAt         DateTime         @default(now())
   expiresAt         DateTime
   acceptedAt        DateTime?
