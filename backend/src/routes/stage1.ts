@@ -14,6 +14,7 @@ import {
   sendMessage,
   confirmFeelHeard,
   getConversationHistory,
+  getInitialMessage,
 } from '../controllers/stage1';
 
 const router = Router();
@@ -40,6 +41,14 @@ router.get(
   requireAuth,
   requireSessionAccess,
   asyncHandler(getConversationHistory)
+);
+
+// Get AI-generated initial message for a session/stage
+router.post(
+  '/sessions/:id/messages/initial',
+  requireAuth,
+  requireSessionAccess,
+  asyncHandler(getInitialMessage)
 );
 
 export default router;

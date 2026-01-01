@@ -81,6 +81,12 @@ export interface PromptContext {
   isRefiningInvitation?: boolean;
 }
 
+/** Simplified context for initial message generation (no context bundle needed) */
+export interface InitialMessageContext {
+  userName: string;
+  partnerName?: string;
+}
+
 // ============================================================================
 // Stage 0: Invitation Crafting (before partner joins)
 // ============================================================================
@@ -735,6 +741,134 @@ Respond in JSON format:
   "response": "Your transition that celebrates their clarity and invites experimental thinking"
 }
 \`\`\``;
+}
+
+// ============================================================================
+// Initial Message Prompts (First message when starting a stage)
+// ============================================================================
+
+/**
+ * Build a prompt for generating the initial AI message when a session/stage starts.
+ * This replaces hardcoded welcome messages with AI-generated ones.
+ */
+export function buildInitialMessagePrompt(
+  stage: number,
+  context: InitialMessageContext,
+  isInvitationPhase?: boolean
+): string {
+  const partnerName = context.partnerName || 'your partner';
+
+  // Invitation phase - starting to craft an invitation
+  if (isInvitationPhase) {
+    return `You are Meet Without Fear, a Process Guardian. ${context.userName} just started a new session to have a conversation with ${partnerName}.
+
+${BASE_GUIDANCE}
+
+YOUR TASK:
+Generate a warm, brief opening message (1-2 sentences) to start the conversation. You want to understand what's going on so you can help them craft an invitation.
+
+Keep it simple and open - invite them to share what's on their mind without being too formal or clinical.
+
+Respond in JSON format:
+\`\`\`json
+{
+  "response": "Your opening message"
+}
+\`\`\``;
+  }
+
+  // Stage-specific initial messages
+  switch (stage) {
+    case 0: // Compact/Onboarding
+      return `You are Meet Without Fear, a Process Guardian. ${context.userName} is about to begin a conversation process with ${partnerName}.
+
+${BASE_GUIDANCE}
+
+YOUR TASK:
+Generate a brief, warm welcome (1-2 sentences) that sets the stage for the process ahead. Keep it grounded and inviting.
+
+Respond in JSON format:
+\`\`\`json
+{
+  "response": "Your welcome message"
+}
+\`\`\``;
+
+    case 1: // Witness
+      return `You are Meet Without Fear, a Process Guardian in the Witness stage. ${context.userName} is ready to share what's going on between them and ${partnerName}.
+
+${BASE_GUIDANCE}
+
+YOUR TASK:
+Generate an opening message (1-2 sentences) that invites them to share what's happening. Be warm and curious without being clinical.
+
+Respond in JSON format:
+\`\`\`json
+{
+  "response": "Your opening message"
+}
+\`\`\``;
+
+    case 2: // Perspective Stretch
+      return `You are Meet Without Fear, a Process Guardian in the Perspective Stretch stage. ${context.userName} has been heard and is ready to explore ${partnerName}'s perspective.
+
+${BASE_GUIDANCE}
+
+YOUR TASK:
+Generate an opening message (1-2 sentences) that gently introduces the perspective-taking work ahead. Be encouraging without being pushy.
+
+Respond in JSON format:
+\`\`\`json
+{
+  "response": "Your opening message"
+}
+\`\`\``;
+
+    case 3: // Need Mapping
+      return `You are Meet Without Fear, a Process Guardian in the Need Mapping stage. ${context.userName} is ready to explore what they truly need from the situation with ${partnerName}.
+
+${BASE_GUIDANCE}
+
+YOUR TASK:
+Generate an opening message (1-2 sentences) that invites them to explore their underlying needs. Keep it warm and curious.
+
+Respond in JSON format:
+\`\`\`json
+{
+  "response": "Your opening message"
+}
+\`\`\``;
+
+    case 4: // Strategic Repair
+      return `You are Meet Without Fear, a Process Guardian in the Strategic Repair stage. ${context.userName} and ${partnerName} are ready to explore practical next steps.
+
+${BASE_GUIDANCE}
+
+YOUR TASK:
+Generate an opening message (1-2 sentences) that celebrates their progress and introduces the idea of small experiments. Keep it practical and encouraging.
+
+Respond in JSON format:
+\`\`\`json
+{
+  "response": "Your opening message"
+}
+\`\`\``;
+
+    default:
+      return `You are Meet Without Fear, a Process Guardian. ${context.userName} is ready to continue their conversation process with ${partnerName}.
+
+${BASE_GUIDANCE}
+
+YOUR TASK:
+Generate a brief, warm message (1-2 sentences) to continue the conversation.
+
+Respond in JSON format:
+\`\`\`json
+{
+  "response": "Your message"
+}
+\`\`\``;
+  }
 }
 
 // ============================================================================

@@ -47,41 +47,6 @@ interface UnifiedSessionScreenProps {
   onStageComplete?: (stage: Stage) => void;
 }
 
-// ============================================================================
-// AI Welcome Messages per Stage
-// ============================================================================
-
-/**
- * Get the appropriate welcome message for each stage
- */
-function getWelcomeMessage(
-  stage: Stage,
-  partnerName?: string | null,
-  isInvitationPhase?: boolean
-): string {
-  const nickname = partnerName || 'your partner';
-
-  // Invitation phase has its own welcome message
-  if (isInvitationPhase) {
-    return `First, tell me what's going on so we can craft an invitation to ${nickname}.`;
-  }
-
-  switch (stage) {
-    case Stage.ONBOARDING:
-      return `Welcome! Before we begin, let's establish some ground rules that will help us have a productive conversation.`;
-    case Stage.WITNESS:
-      return `What's going on between you and ${nickname}?`;
-    case Stage.PERSPECTIVE_STRETCH:
-      return `Now let's work on understanding ${nickname}'s perspective. I'll help you build empathy by exploring what they might be feeling and why.`;
-    case Stage.NEED_MAPPING:
-      return `Let's explore what you truly need from this situation. Behind every frustration is an unmet need - let's discover yours together.`;
-    case Stage.STRATEGIC_REPAIR:
-      return `You've both done incredible work. Now let's find strategies that address both of your needs. I'll suggest some options to get us started.`;
-    default:
-      return `What's going on between you and ${nickname}?`;
-  }
-}
-
 /**
  * Get brief status text for the header based on session status
  */
@@ -117,6 +82,7 @@ export function UnifiedSessionScreen({
   const {
     // Loading
     isLoading,
+    isFetchingInitialMessage,
 
     // Session context
     session,
@@ -198,10 +164,10 @@ export function UnifiedSessionScreen({
   // Track Invitation Confirmation for Indicator
   // -------------------------------------------------------------------------
 
-  // Track when the user taps "I've sent it" - for optimistic UI
+  // Track when the user taps "I've sent it" - for optimistic UI during API call
   const [isConfirmingInvitation, setIsConfirmingInvitation] = useState(false);
-  // Store the timestamp when invitation was confirmed (for indicator positioning)
-  const [invitationConfirmedAt, setInvitationConfirmedAt] = useState<string | null>(null);
+  // Store optimistic timestamp for when confirmation is in progress
+  const [optimisticConfirmTimestamp, setOptimisticConfirmTimestamp] = useState<string | null>(null);
 
   // Animation for the invitation panel slide-up
   const invitationPanelAnim = useRef(new Animated.Value(0)).current;
@@ -223,35 +189,31 @@ export function UnifiedSessionScreen({
     }).start();
   }, [shouldShowInvitationPanel, invitationPanelAnim]);
 
-  // When invitation confirmation completes, store the timestamp
+  // Clear optimistic state when API confirms
   useEffect(() => {
-    if (invitationConfirmed && !invitationConfirmedAt) {
-      // Find the timestamp of the last stage 0 message (or use current time)
-      const stage0Messages = messages.filter(m => m.stage === Stage.ONBOARDING);
-      const lastStage0Msg = stage0Messages[stage0Messages.length - 1];
-      const timestamp = lastStage0Msg?.timestamp || new Date().toISOString();
-      setInvitationConfirmedAt(timestamp);
+    if (invitationConfirmed && isConfirmingInvitation) {
       setIsConfirmingInvitation(false);
+      setOptimisticConfirmTimestamp(null);
     }
-  }, [invitationConfirmed, invitationConfirmedAt, messages]);
-
+  }, [invitationConfirmed, isConfirmingInvitation]);
 
   // Build indicators array
+  // Use messageConfirmedAt from API for reliable positioning across reloads
   const indicators = useMemo((): ChatIndicatorItem[] => {
     const items: ChatIndicatorItem[] = [];
     // Show invitation sent indicator if invitation was confirmed
-    // Use the stored timestamp to position it correctly in the message list
-    if (invitationConfirmed || isConfirmingInvitation) {
+    // Use the API timestamp for reliable positioning, or optimistic timestamp during confirmation
+    const confirmedAt = invitation?.messageConfirmedAt ?? optimisticConfirmTimestamp;
+    if ((invitationConfirmed || isConfirmingInvitation) && confirmedAt) {
       items.push({
         type: 'indicator',
         indicatorType: 'invitation-sent',
         id: 'invitation-sent',
-        // Use stored timestamp, or if still confirming, use a timestamp after the last message
-        timestamp: invitationConfirmedAt || new Date().toISOString(),
+        timestamp: confirmedAt,
       });
     }
     return items;
-  }, [invitationConfirmed, isConfirmingInvitation, invitationConfirmedAt]);
+  }, [invitationConfirmed, isConfirmingInvitation, invitation?.messageConfirmedAt, optimisticConfirmTimestamp]);
 
   // -------------------------------------------------------------------------
   // Effective Stage (accounts for compact signed but stage not yet updated)
@@ -264,25 +226,14 @@ export function UnifiedSessionScreen({
   }, [currentStage, compactData?.mySigned]);
 
   // -------------------------------------------------------------------------
-  // Prepare Messages with Welcome Message
+  // Prepare Messages for Display
   // -------------------------------------------------------------------------
   const displayMessages = useMemo((): ChatMessage[] => {
-    if (messages.length === 0) {
-      // Show welcome message for the effective stage (or invitation phase)
-      return [
-        {
-          id: `welcome-${effectiveStage}-${isInvitationPhase ? 'invite' : 'normal'}`,
-          sessionId,
-          senderId: null,
-          role: MessageRole.AI,
-          content: getWelcomeMessage(effectiveStage, partnerName, isInvitationPhase),
-          stage: effectiveStage,
-          timestamp: new Date().toISOString(),
-        },
-      ];
-    }
+    // If we're fetching the initial message, show empty (typing indicator will show)
+    // If we have messages, show them
+    // The initial AI message will be added to the cache when fetch completes
     return messages;
-  }, [messages, effectiveStage, sessionId, partnerName, isInvitationPhase]);
+  }, [messages]);
 
   // -------------------------------------------------------------------------
   // Render Inline Card
@@ -820,7 +771,7 @@ export function UnifiedSessionScreen({
           messages={displayMessages}
           indicators={indicators}
           onSendMessage={sendMessage}
-          isLoading={isSending || isConfirmingInvitation}
+          isLoading={isSending || isConfirmingInvitation || isFetchingInitialMessage}
           showEmotionSlider={effectiveStage === Stage.WITNESS && !isInvitationPhase && !isRefiningInvitation}
           emotionValue={barometerValue}
           onEmotionChange={handleBarometerChange}
@@ -866,8 +817,9 @@ export function UnifiedSessionScreen({
                     <TouchableOpacity
                       style={styles.continueButton}
                       onPress={() => {
-                        // Optimistic UI: immediately show loading state
+                        // Optimistic UI: immediately show loading state and indicator
                         setIsConfirmingInvitation(true);
+                        setOptimisticConfirmTimestamp(new Date().toISOString());
                         setIsRefiningInvitation(false); // Exit refinement mode
                         handleConfirmInvitationMessage(invitationMessage);
                       }}
@@ -906,8 +858,9 @@ export function UnifiedSessionScreen({
             sendMessage("I'd like to refine the invitation message.");
           }}
           onShareSuccess={() => {
-            // Optimistic UI: immediately show loading state
+            // Optimistic UI: immediately show loading state and indicator
             setIsConfirmingInvitation(true);
+            setOptimisticConfirmTimestamp(new Date().toISOString());
             setShowRefineDrawer(false);
             // Confirm the invitation after sharing
             handleConfirmInvitationMessage(invitationMessage);

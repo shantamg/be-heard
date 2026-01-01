@@ -18,6 +18,7 @@ import {
   useSendMessage,
   useOptimisticMessage,
   useRecordEmotion,
+  useFetchInitialMessage,
 } from './useMessages';
 import {
   useProgress,
@@ -431,6 +432,10 @@ export function useUnifiedSession(sessionId: string | undefined) {
   const { mutate: resolveSession } = useResolveSession();
   const { addOptimisticMessage, removeOptimisticMessage } = useOptimisticMessage();
 
+  // Initial message - fetch AI-generated first message when session has no messages
+  const { mutate: fetchInitialMessage, isPending: isFetchingInitialMessage } = useFetchInitialMessage();
+  const hasFetchedInitialMessage = useRef(false);
+
   // -------------------------------------------------------------------------
   // Derived Values
   // -------------------------------------------------------------------------
@@ -607,6 +612,44 @@ export function useUnifiedSession(sessionId: string | undefined) {
     overlappingStrategies.length,
     state.waitingStatus,
     state.previousWaitingStatus,
+  ]);
+
+  // -------------------------------------------------------------------------
+  // Initial Message Effect
+  // -------------------------------------------------------------------------
+  // Fetch AI-generated initial message when session loads with no messages
+  useEffect(() => {
+    // Skip if:
+    // - No session ID
+    // - Still loading session or messages
+    // - Already fetched or fetching
+    // - Messages already exist
+    if (
+      !sessionId ||
+      loadingSession ||
+      loadingMessages ||
+      hasFetchedInitialMessage.current ||
+      isFetchingInitialMessage
+    ) {
+      return;
+    }
+
+    // Check if messages are empty after loading completes
+    const messagesPages = messagesData?.pages;
+    const hasMessages = messagesPages && messagesPages.some(page => page.messages.length > 0);
+
+    if (!hasMessages) {
+      console.log('[useUnifiedSession] No messages found, fetching initial message...');
+      hasFetchedInitialMessage.current = true;
+      fetchInitialMessage({ sessionId });
+    }
+  }, [
+    sessionId,
+    loadingSession,
+    loadingMessages,
+    messagesData?.pages,
+    isFetchingInitialMessage,
+    fetchInitialMessage,
   ]);
 
   // -------------------------------------------------------------------------
@@ -1036,6 +1079,7 @@ export function useUnifiedSession(sessionId: string | undefined) {
   return {
     // Loading state
     isLoading: loadingSession || loadingProgress || loadingMessages,
+    isFetchingInitialMessage,
 
     // Session context
     session,

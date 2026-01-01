@@ -11,6 +11,9 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { getOrchestratedResponse, type FullAIContext } from '../services/ai';
+import { getSonnetResponse } from '../lib/bedrock';
+import { buildInitialMessagePrompt } from '../services/stage-prompts';
+import { extractJsonFromResponse } from '../utils/json-extractor';
 import {
   sendMessageRequestSchema,
   feelHeardRequestSchema,
@@ -627,5 +630,143 @@ export async function getConversationHistory(
   } catch (error) {
     console.error('[getConversationHistory] Error:', error);
     errorResponse(res, 'INTERNAL_ERROR', 'Failed to get messages', 500);
+  }
+}
+
+/**
+ * Get AI-generated initial message for a session/stage
+ * POST /sessions/:id/messages/initial
+ */
+export async function getInitialMessage(
+  req: Request,
+  res: Response
+): Promise<void> {
+  try {
+    const user = req.user;
+    if (!user) {
+      errorResponse(res, 'UNAUTHORIZED', 'Authentication required', 401);
+      return;
+    }
+
+    const { id: sessionId } = req.params;
+
+    // Check session exists and user has access
+    const session = await prisma.session.findFirst({
+      where: {
+        id: sessionId,
+        relationship: {
+          members: {
+            some: { userId: user.id },
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      errorResponse(res, 'NOT_FOUND', 'Session not found', 404);
+      return;
+    }
+
+    // Check if there are already messages in this session for this user
+    const existingMessages = await prisma.message.findFirst({
+      where: {
+        sessionId,
+        OR: [{ senderId: user.id }, { role: 'AI', senderId: null }],
+      },
+    });
+
+    if (existingMessages) {
+      // Already has messages, don't generate a new initial message
+      errorResponse(res, 'VALIDATION_ERROR', 'Session already has messages', 400);
+      return;
+    }
+
+    // Get user's current stage progress
+    const progress = await prisma.stageProgress.findFirst({
+      where: {
+        sessionId,
+        userId: user.id,
+      },
+      orderBy: { stage: 'desc' },
+    });
+
+    const currentStage = progress?.stage ?? 0;
+
+    // Determine if this is the invitation phase
+    const isInvitationPhase = session.status === 'CREATED';
+
+    // Get partner name from invitation if available
+    let partnerName: string | undefined;
+    const invitation = await prisma.invitation.findFirst({
+      where: { sessionId, invitedById: user.id },
+      select: { name: true },
+    });
+    partnerName = invitation?.name || undefined;
+
+    // Build the initial message prompt
+    const prompt = buildInitialMessagePrompt(
+      currentStage,
+      {
+        userName: user.name || 'there',
+        partnerName,
+      },
+      isInvitationPhase
+    );
+
+    // Get AI response
+    let responseContent: string;
+    try {
+      const aiResponse = await getSonnetResponse({
+        systemPrompt: prompt,
+        messages: [],
+        maxTokens: 512,
+      });
+
+      if (aiResponse) {
+        // Parse the JSON response
+        const parsed = extractJsonFromResponse(aiResponse) as Record<string, unknown>;
+        responseContent = typeof parsed.response === 'string'
+          ? parsed.response
+          : 'Hi! I\'m here to help you have a meaningful conversation. What\'s on your mind?';
+      } else {
+        // Fallback if AI unavailable
+        responseContent = isInvitationPhase
+          ? `Hi ${user.name || 'there'}! I'm here to help you prepare for a conversation. What's been on your mind lately?`
+          : `Hi ${user.name || 'there'}! I'm ready to listen. What would you like to share?`;
+      }
+    } catch (error) {
+      console.error('[getInitialMessage] AI response error:', error);
+      responseContent = isInvitationPhase
+        ? `Hi ${user.name || 'there'}! I'm here to help you prepare for a conversation. What's been on your mind lately?`
+        : `Hi ${user.name || 'there'}! I'm ready to listen. What would you like to share?`;
+    }
+
+    // Save the AI message
+    const aiMessage = await prisma.message.create({
+      data: {
+        sessionId,
+        senderId: null,
+        role: 'AI',
+        content: responseContent,
+        stage: currentStage,
+      },
+    });
+
+    console.log(`[getInitialMessage] Generated initial message for session ${sessionId}, stage ${currentStage}`);
+
+    successResponse(res, {
+      message: {
+        id: aiMessage.id,
+        sessionId: aiMessage.sessionId,
+        senderId: aiMessage.senderId,
+        role: aiMessage.role,
+        content: aiMessage.content,
+        stage: aiMessage.stage,
+        timestamp: aiMessage.timestamp.toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('[getInitialMessage] Error:', error);
+    errorResponse(res, 'INTERNAL_ERROR', 'Failed to get initial message', 500);
   }
 }

@@ -515,3 +515,89 @@ export function useOptimisticMessage() {
     },
   };
 }
+
+// ============================================================================
+// Initial Message Hook
+// ============================================================================
+
+interface InitialMessageResponse {
+  message: MessageDTO;
+}
+
+/**
+ * Fetch AI-generated initial message for a session.
+ * Called when starting a new session that has no messages yet.
+ */
+export function useFetchInitialMessage(
+  options?: Omit<
+    UseMutationOptions<InitialMessageResponse, ApiClientError, { sessionId: string }>,
+    'mutationFn'
+  >
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ sessionId }: { sessionId: string }) => {
+      return post<InitialMessageResponse, Record<string, never>>(
+        `/sessions/${sessionId}/messages/initial`,
+        {}
+      );
+    },
+    onSuccess: (data, { sessionId }) => {
+      const stage = data.message.stage;
+
+      // Add the AI message to the cache
+      const updateCache = (old: GetMessagesResponse | undefined) => {
+        if (!old) {
+          return { messages: [data.message], hasMore: false };
+        }
+        return {
+          ...old,
+          messages: [...(old.messages || []), data.message],
+        };
+      };
+
+      // Update infinite query cache
+      const updateInfiniteCache = (
+        old: InfiniteData<GetMessagesResponse> | undefined
+      ): InfiniteData<GetMessagesResponse> | undefined => {
+        if (!old || old.pages.length === 0) {
+          return {
+            pages: [{ messages: [data.message], hasMore: false }],
+            pageParams: [undefined],
+          };
+        }
+        const updatedPages = [...old.pages];
+        const firstPage = updatedPages[0];
+        updatedPages[0] = {
+          ...firstPage,
+          messages: [data.message, ...(firstPage.messages || [])],
+        };
+        return { ...old, pages: updatedPages };
+      };
+
+      // Update stage-specific cache
+      if (stage !== undefined) {
+        queryClient.setQueryData<GetMessagesResponse>(
+          messageKeys.list(sessionId, stage),
+          updateCache
+        );
+        queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
+          messageKeys.infinite(sessionId, stage),
+          updateInfiniteCache
+        );
+      }
+
+      // Also update non-stage-filtered cache
+      queryClient.setQueryData<GetMessagesResponse>(
+        messageKeys.list(sessionId),
+        updateCache
+      );
+      queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
+        messageKeys.infinite(sessionId),
+        updateInfiniteCache
+      );
+    },
+    ...options,
+  });
+}
