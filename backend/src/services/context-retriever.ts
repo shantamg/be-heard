@@ -14,6 +14,8 @@
 
 import { prisma } from '../lib/prisma';
 import { getEmbedding, getHaikuJson } from '../lib/bedrock';
+import { MemoryIntentResult } from './memory-intent';
+import { MemoryPreferencesDTO } from '@meet-without-fear/shared';
 
 // ============================================================================
 // Types
@@ -80,6 +82,12 @@ export interface RetrievalOptions {
 
   /** Whether to include pre-session messages */
   includePreSession?: boolean;
+
+  /** Memory intent result from intent determination (provides stage-aware config) */
+  memoryIntent?: MemoryIntentResult;
+
+  /** User's memory preferences (controls cross-session recall permission) */
+  userPreferences?: MemoryPreferencesDTO;
 }
 
 // ============================================================================
@@ -398,9 +406,15 @@ export async function retrieveContext(options: RetrievalOptions): Promise<Retrie
     maxCrossSessionMessages = 10,
     similarityThreshold = 0.5,
     includePreSession = true,
+    memoryIntent,
+    userPreferences,
   } = options;
 
   const startTime = Date.now();
+
+  // Use memory intent to override thresholds and limits if provided
+  const effectiveThreshold = memoryIntent?.threshold ?? similarityThreshold;
+  const effectiveMaxCrossSession = memoryIntent?.maxCrossSession ?? maxCrossSessionMessages;
 
   // Run detection and basic retrieval in parallel
   const [
@@ -418,12 +432,25 @@ export async function retrieveContext(options: RetrievalOptions): Promise<Retrie
   let relevantFromCurrentSession: RelevantMessage[] = [];
 
   if (referenceDetection.needsRetrieval && referenceDetection.searchQueries.length > 0) {
+    // Determine if cross-session recall is allowed
+    // Cross-session is allowed if:
+    // 1. memoryIntent says allowCrossSession is true, OR
+    // 2. User explicitly referenced past content (needsRetrieval), OR
+    // 3. User has enabled crossSessionRecall in preferences
+    const shouldSearchCrossSession =
+      (memoryIntent?.allowCrossSession ?? true) ||
+      referenceDetection.needsRetrieval ||
+      (userPreferences?.crossSessionRecall ?? false);
+
     // Search using the generated queries
     const searchPromises = referenceDetection.searchQueries.map(async (query) => {
       const [crossSession, withinSession] = await Promise.all([
-        searchAcrossSessions(userId, query, currentSessionId, maxCrossSessionMessages, similarityThreshold),
+        // Only search cross-session if allowed
+        shouldSearchCrossSession
+          ? searchAcrossSessions(userId, query, currentSessionId, effectiveMaxCrossSession, effectiveThreshold)
+          : Promise.resolve([]),
         currentSessionId
-          ? searchWithinSession(currentSessionId, query, 5, similarityThreshold)
+          ? searchWithinSession(currentSessionId, query, 5, effectiveThreshold)
           : Promise.resolve([]),
       ]);
       return { crossSession, withinSession };
@@ -455,7 +482,7 @@ export async function retrieveContext(options: RetrievalOptions): Promise<Retrie
     // Sort by similarity and limit
     relevantFromOtherSessions = relevantFromOtherSessions
       .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, maxCrossSessionMessages);
+      .slice(0, effectiveMaxCrossSession);
 
     relevantFromCurrentSession = relevantFromCurrentSession
       .sort((a, b) => b.similarity - a.similarity)

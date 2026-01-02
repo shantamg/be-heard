@@ -95,3 +95,37 @@ export const updateBiometricPreferenceResponseSchema = z.object({
 });
 
 export type UpdateBiometricPreferenceResponseInput = z.infer<typeof updateBiometricPreferenceResponseSchema>;
+
+// ============================================================================
+// Memory Preferences
+// ============================================================================
+
+export const memoryPreferencesDTOSchema = z.object({
+  sessionContinuity: z.boolean(),
+  crossSessionRecall: z.boolean(),
+  patternInsights: z.boolean(),
+  rememberAgreements: z.boolean(),
+});
+
+export type MemoryPreferencesDTOInput = z.infer<typeof memoryPreferencesDTOSchema>;
+
+export const getMemoryPreferencesResponseSchema = z.object({
+  preferences: memoryPreferencesDTOSchema,
+});
+
+export type GetMemoryPreferencesResponseInput = z.infer<typeof getMemoryPreferencesResponseSchema>;
+
+export const updateMemoryPreferencesRequestSchema = z.object({
+  sessionContinuity: z.boolean().optional(),
+  crossSessionRecall: z.boolean().optional(),
+  patternInsights: z.boolean().optional(),
+  rememberAgreements: z.boolean().optional(),
+});
+
+export type UpdateMemoryPreferencesRequestInput = z.infer<typeof updateMemoryPreferencesRequestSchema>;
+
+export const updateMemoryPreferencesResponseSchema = z.object({
+  preferences: memoryPreferencesDTOSchema,
+});
+
+export type UpdateMemoryPreferencesResponseInput = z.infer<typeof updateMemoryPreferencesResponseSchema>;

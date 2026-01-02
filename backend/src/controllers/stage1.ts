@@ -12,7 +12,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { getOrchestratedResponse, type FullAIContext } from '../services/ai';
 import { getSonnetResponse } from '../lib/bedrock';
-import { buildInitialMessagePrompt } from '../services/stage-prompts';
+import { buildInitialMessagePrompt, buildStagePrompt } from '../services/stage-prompts';
 import { extractJsonFromResponse } from '../utils/json-extractor';
 import {
   sendMessageRequestSchema,
@@ -24,6 +24,7 @@ import {
 import { notifyPartner, publishSessionEvent } from '../services/realtime';
 import { successResponse, errorResponse } from '../utils/response';
 import { getPartnerUserId, isSessionCreator } from '../utils/session';
+import { embedMessage } from '../services/embedding';
 
 // ============================================================================
 // Helpers
@@ -204,6 +205,11 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
       },
     });
 
+    // Embed message for cross-session retrieval (non-blocking)
+    embedMessage(userMessage.id).catch((err) =>
+      console.warn('[sendMessage] Failed to embed user message:', err)
+    );
+
     // Get conversation history for context
     const history = await prisma.message.findMany({
       where: {
@@ -354,6 +360,11 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
       },
     });
 
+    // Embed AI message for cross-session retrieval (non-blocking)
+    embedMessage(aiMessage.id).catch((err) =>
+      console.warn('[sendMessage] Failed to embed AI message:', err)
+    );
+
     successResponse(res, {
       userMessage: {
         id: userMessage.id,
@@ -498,6 +509,103 @@ export async function confirmFeelHeard(
       },
     });
 
+    const confirmedAt = new Date().toISOString();
+
+    // Generate AI transition message when user confirms they feel heard
+    let transitionMessage: {
+      id: string;
+      content: string;
+      timestamp: string;
+      stage: number;
+    } | null = null;
+
+    if (confirmed) {
+      try {
+        // Get partner name for the transition message
+        const partnerId = await getPartnerUserId(sessionId, user.id);
+        let partnerName: string | undefined;
+        if (partnerId) {
+          const partner = await prisma.user.findUnique({
+            where: { id: partnerId },
+            select: { name: true },
+          });
+          partnerName = partner?.name || undefined;
+        } else {
+          // Get from invitation if partner hasn't joined yet
+          const invitation = await prisma.invitation.findFirst({
+            where: { sessionId, invitedById: user.id },
+            select: { name: true },
+          });
+          partnerName = invitation?.name || undefined;
+        }
+
+        // Build a simple transition prompt for Stage 1 → Stage 2
+        const transitionPrompt = `You are Meet Without Fear, a Process Guardian. ${user.name || 'The user'} has been sharing their experience in the Witness stage and has confirmed they feel fully heard. Now it's time to gently transition to exploring ${partnerName || 'their partner'}'s perspective.
+
+Generate a brief, warm transition message (2-3 sentences) that:
+1. Acknowledges the important work they've done sharing and feeling heard
+2. Gently introduces the idea of exploring ${partnerName || 'their partner'}'s perspective
+3. Ends with an open question to begin the perspective exploration
+
+Keep it natural and conversational. Don't use clinical language or mention "stages".
+
+Respond in JSON format:
+\`\`\`json
+{
+  "response": "Your transition message"
+}
+\`\`\``;
+
+        const aiResponse = await getSonnetResponse({
+          systemPrompt: transitionPrompt,
+          messages: [],
+          maxTokens: 512,
+        });
+
+        let transitionContent: string;
+        if (aiResponse) {
+          try {
+            const parsed = extractJsonFromResponse(aiResponse) as Record<string, unknown>;
+            transitionContent = typeof parsed.response === 'string'
+              ? parsed.response
+              : `You've done important work sharing and being heard. When you're ready, I'm curious - have you ever wondered what ${partnerName || 'your partner'} might be experiencing in all this?`;
+          } catch {
+            transitionContent = `You've done important work sharing and being heard. When you're ready, I'm curious - have you ever wondered what ${partnerName || 'your partner'} might be experiencing in all this?`;
+          }
+        } else {
+          transitionContent = `You've done important work sharing and being heard. When you're ready, I'm curious - have you ever wondered what ${partnerName || 'your partner'} might be experiencing in all this?`;
+        }
+
+        // Save the transition message to the database
+        const aiMessage = await prisma.message.create({
+          data: {
+            sessionId,
+            senderId: null,
+            role: 'AI',
+            content: transitionContent,
+            stage: 1, // Still Stage 1, but this is the transition message
+          },
+        });
+
+        // Embed for cross-session retrieval (non-blocking)
+        embedMessage(aiMessage.id).catch((err) =>
+          console.warn('[confirmFeelHeard] Failed to embed transition message:', err)
+        );
+
+        transitionMessage = {
+          id: aiMessage.id,
+          content: aiMessage.content,
+          timestamp: aiMessage.timestamp.toISOString(),
+          stage: aiMessage.stage,
+        };
+
+        console.log(`[confirmFeelHeard] Generated transition message for session ${sessionId}`);
+      } catch (error) {
+        console.error('[confirmFeelHeard] Failed to generate transition message:', error);
+        // Continue without transition message - not a critical failure
+      }
+    }
+
     // Check if partner has also completed
     const partnerCompleted = await hasPartnerCompletedStage1(sessionId, user.id);
     const canAdvance = confirmed && partnerCompleted;
@@ -523,9 +631,10 @@ export async function confirmFeelHeard(
 
     successResponse(res, {
       confirmed,
-      confirmedAt: new Date().toISOString(),
+      confirmedAt,
       canAdvance,
       partnerCompleted,
+      transitionMessage,
     });
   } catch (error) {
     console.error('[confirmFeelHeard] Error:', error);
@@ -748,6 +857,11 @@ export async function getInitialMessage(
         stage: currentStage,
       },
     });
+
+    // Embed initial message for cross-session retrieval (non-blocking)
+    embedMessage(aiMessage.id).catch((err) =>
+      console.warn('[getInitialMessage] Failed to embed message:', err)
+    );
 
     console.log(`[getInitialMessage] Generated initial message for session ${sessionId}, stage ${currentStage}`);
 

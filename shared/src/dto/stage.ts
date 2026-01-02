@@ -150,4 +150,12 @@ export interface ConfirmFeelHeardResponse {
 
   // Optional final emotional reading (stored when user completes stage)
   finalEmotionalReading?: number | null;
+
+  // Transition message from AI when user confirms they feel heard
+  transitionMessage?: {
+    id: string;
+    content: string;
+    timestamp: string;
+    stage: number;
+  } | null;
 }

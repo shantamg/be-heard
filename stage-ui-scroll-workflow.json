@@ -1,0 +1,33 @@
+{
+  "name": "stage-ui-scroll-bug-swarm",
+  "tasks": [
+    {
+      "id": "research-repro",
+      "type": "research",
+      "description": "Reproduce and precisely describe the infinite-scroll bug: when older messages load (pagination/prepend), container scrolls to bottom; then TWO subsequent attempts to scroll up snap back to bottom; after that it behaves normally. Output: exact repro steps + suspected triggers + instrumentation plan (log scrollTop/scrollHeight/clientHeight; capture when auto-scroll fires)."
+    },
+    {
+      "id": "code-root-cause",
+      "type": "code",
+      "depends_on": ["research-repro"],
+      "description": "Inspect chat scroll code: identify any auto-scroll-to-bottom logic, effects triggered on message list changes, focus management, virtualization library behaviors, intersection observer loops, and layout reflow timing. Output: top 3 root-cause hypotheses with discriminating experiments."
+    },
+    {
+      "id": "code-fix-plan",
+      "type": "code",
+      "depends_on": ["code-root-cause"],
+      "description": "Design and implement stable fix proposal: when prepending older messages, preserve viewport anchor so visible content stays fixed relative to screen. Provide concrete algorithm options (anchor element + offset restore, scrollHeight delta restore, requestAnimationFrame timing, disable auto-scroll during prepend). Output: recommended approach + pseudocode + where to place it in React lifecycle."
+    },
+    {
+      "id": "analysis-stage-ui-spec",
+      "type": "analysis",
+      "description": "Design deterministic stage-driven UI injection: one chat component supports inline inserts (buttons/tables/cards). Stage machine owns stageId + progressFlags + eligibility; UI inserts appear deterministically based on eligibility (not LLM whim). Include base system prompt snippet explaining stages; include explicit transition prompt/event when user taps stage-advance CTA."
+    },
+    {
+      "id": "coordination-synthesis",
+      "type": "coordination",
+      "depends_on": ["code-fix-plan", "analysis-stage-ui-spec"],
+      "description": "Synthesize into final deliverables: (1) scroll bug root cause + fix plan, (2) stage/UI contract + prompts, (3) minimal regression test plan (simulate prepend; assert no snap-back on next two scroll attempts; viewport anchor invariants)."
+    }
+  ]
+}

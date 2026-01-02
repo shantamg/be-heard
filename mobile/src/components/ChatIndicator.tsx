@@ -12,7 +12,7 @@ import { createStyles } from '../theme/styled';
 // Types
 // ============================================================================
 
-export type ChatIndicatorType = 'invitation-sent' | 'stage-transition' | 'session-start';
+export type ChatIndicatorType = 'invitation-sent' | 'stage-transition' | 'session-start' | 'feel-heard';
 
 interface ChatIndicatorProps {
   type: ChatIndicatorType;
@@ -35,6 +35,8 @@ export function ChatIndicator({ type, timestamp, testID }: ChatIndicatorProps) {
         return 'Moving Forward';
       case 'session-start':
         return 'Session Started';
+      case 'feel-heard':
+        return 'Fully Heard';
       default:
         return '';
     }
@@ -44,6 +46,8 @@ export function ChatIndicator({ type, timestamp, testID }: ChatIndicatorProps) {
     switch (type) {
       case 'invitation-sent':
         return styles.invitationSentLine;
+      case 'feel-heard':
+        return styles.feelHeardLine;
       default:
         return styles.defaultLine;
     }
@@ -53,6 +57,8 @@ export function ChatIndicator({ type, timestamp, testID }: ChatIndicatorProps) {
     switch (type) {
       case 'invitation-sent':
         return styles.invitationSentText;
+      case 'feel-heard':
+        return styles.feelHeardText;
       default:
         return styles.defaultText;
     }
@@ -103,6 +109,13 @@ const useStyles = () =>
     },
     invitationSentText: {
       color: 'rgba(245, 158, 11, 0.9)',
+    },
+    // Feel heard: teal/green tint for completion feeling
+    feelHeardLine: {
+      backgroundColor: 'rgba(20, 184, 166, 0.3)',
+    },
+    feelHeardText: {
+      color: 'rgba(20, 184, 166, 0.9)',
     },
     defaultLine: {
       backgroundColor: t.colors.border,

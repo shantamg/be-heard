@@ -23,6 +23,7 @@ model User {
   pushToken           String?   // Expo push token for realtime fallbacks
   biometricEnabled    Boolean   @default(false)
   biometricEnrolledAt DateTime?
+  memoryPreferences   Json?     // MemoryPreferencesDTO - AI memory settings
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 

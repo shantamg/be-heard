@@ -9,6 +9,7 @@
 import { prisma } from '../../lib/prisma';
 import { getOrchestratedResponse, type FullAIContext } from '../ai';
 import { getPartnerUserId } from '../../utils/session';
+import { embedMessage } from '../embedding';
 
 export interface SessionMessageInput {
   sessionId: string;
@@ -114,6 +115,11 @@ export async function processSessionMessage(
       stage: currentStage,
     },
   });
+
+  // Embed user message for cross-session retrieval (non-blocking)
+  embedMessage(userMessage.id).catch((err) =>
+    console.warn('[SessionProcessor] Failed to embed user message:', err)
+  );
 
   // Get conversation history
   const history = await prisma.message.findMany({
@@ -226,6 +232,11 @@ export async function processSessionMessage(
       stage: currentStage,
     },
   });
+
+  // Embed AI message for cross-session retrieval (non-blocking)
+  embedMessage(aiMessage.id).catch((err) =>
+    console.warn('[SessionProcessor] Failed to embed AI message:', err)
+  );
 
   return {
     userMessage: {

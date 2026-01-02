@@ -41,12 +41,32 @@ export interface MemoryIntentContext {
 }
 
 /**
+ * Surface style for memory-based observations
+ */
+export type SurfaceStyle = 'silent' | 'tentative' | 'explicit';
+
+/**
+ * Stage-aware configuration for memory retrieval
+ */
+export interface StageMemoryConfig {
+  threshold: number; // Similarity threshold (0.45-0.70)
+  maxCrossSession: number; // Max cross-session messages (0-10)
+  allowCrossSession: boolean; // Whether cross-session recall is allowed
+  surfaceStyle: SurfaceStyle; // How to surface patterns
+}
+
+/**
  * Result of memory intent determination
  */
 export interface MemoryIntentResult {
   intent: MemoryIntent;
   depth: RetrievalDepth;
   reason: string;
+  // Stage-aware configuration
+  threshold: number; // 0.45-0.70 based on stage
+  maxCrossSession: number; // 0-10 based on stage
+  allowCrossSession: boolean; // false in Stage 1 unless explicit reference
+  surfaceStyle: SurfaceStyle; // How to surface observations
 }
 
 // ============================================================================
@@ -96,8 +116,76 @@ const SKIP_PATTERNS = [
 ];
 
 // ============================================================================
+// Stage Configuration
+// ============================================================================
+
+/**
+ * Get stage-aware configuration for memory retrieval.
+ *
+ * Stage 1: Conservative - high threshold, no cross-session by default
+ * Stage 2: Moderate - tentative observations allowed
+ * Stage 3-4: Full - explicit pattern observations with evidence
+ */
+export function getStageConfig(stage: number, turnCount: number): StageMemoryConfig {
+  switch (stage) {
+    case 1:
+      return {
+        threshold: 0.65,
+        maxCrossSession: turnCount <= 3 ? 0 : 3,
+        allowCrossSession: false,
+        surfaceStyle: 'silent',
+      };
+    case 2:
+      return {
+        threshold: 0.55,
+        maxCrossSession: 5,
+        allowCrossSession: true,
+        surfaceStyle: 'tentative',
+      };
+    case 3:
+      return {
+        threshold: 0.50,
+        maxCrossSession: 10,
+        allowCrossSession: true,
+        surfaceStyle: 'explicit',
+      };
+    case 4:
+      return {
+        threshold: 0.50,
+        maxCrossSession: 10,
+        allowCrossSession: true,
+        surfaceStyle: 'explicit',
+      };
+    default:
+      return {
+        threshold: 0.60,
+        maxCrossSession: 3,
+        allowCrossSession: false,
+        surfaceStyle: 'silent',
+      };
+  }
+}
+
+// ============================================================================
 // Intent Determination
 // ============================================================================
+
+/**
+ * Helper to build a complete MemoryIntentResult with stage config
+ */
+function buildResult(
+  base: { intent: MemoryIntent; depth: RetrievalDepth; reason: string },
+  stageConfig: StageMemoryConfig,
+  overrides?: Partial<StageMemoryConfig>
+): MemoryIntentResult {
+  return {
+    ...base,
+    threshold: overrides?.threshold ?? stageConfig.threshold,
+    maxCrossSession: overrides?.maxCrossSession ?? stageConfig.maxCrossSession,
+    allowCrossSession: overrides?.allowCrossSession ?? stageConfig.allowCrossSession,
+    surfaceStyle: overrides?.surfaceStyle ?? stageConfig.surfaceStyle,
+  };
+}
 
 /**
  * Determine what kind of memory access is appropriate for this turn.
@@ -109,53 +197,76 @@ export function determineMemoryIntent(
 ): MemoryIntentResult {
   const { stage, emotionalIntensity, userMessage, turnCount, sessionDurationMinutes, isFirstTurnInSession } = context;
 
+  // Get stage-aware config
+  const stageConfig = getStageConfig(stage, turnCount);
+
   // Safety first: high distress means avoid deep recall
   if (emotionalIntensity >= 9 || DISTRESS_PATTERNS.some((p) => p.test(userMessage))) {
-    return {
-      intent: 'avoid_recall',
-      depth: 'none',
-      reason: 'High emotional distress detected - staying present without triggering past content',
-    };
+    return buildResult(
+      {
+        intent: 'avoid_recall',
+        depth: 'none',
+        reason: 'High emotional distress detected - staying present without triggering past content',
+      },
+      stageConfig,
+      { allowCrossSession: false, maxCrossSession: 0, surfaceStyle: 'silent' }
+    );
   }
 
   // High intensity (but not critical) - minimal recall
   if (emotionalIntensity >= 8) {
-    return {
-      intent: 'emotional_validation',
-      depth: 'minimal',
-      reason: 'High emotional intensity - focusing on validation with minimal context',
-    };
+    return buildResult(
+      {
+        intent: 'emotional_validation',
+        depth: 'minimal',
+        reason: 'High emotional intensity - focusing on validation with minimal context',
+      },
+      stageConfig,
+      { allowCrossSession: false, maxCrossSession: 0, surfaceStyle: 'silent' }
+    );
   }
 
   // User explicitly referencing past agreements/commitments
   if (COMMITMENT_PATTERNS.some((p) => p.test(userMessage))) {
-    return {
-      intent: 'recall_commitment',
-      depth: 'full',
-      reason: 'User referencing past commitment - full structured retrieval needed',
-    };
+    return buildResult(
+      {
+        intent: 'recall_commitment',
+        depth: 'full',
+        reason: 'User referencing past commitment - full structured retrieval needed',
+      },
+      stageConfig,
+      // Allow cross-session when user explicitly references past
+      { allowCrossSession: true }
+    );
   }
 
   // User trying to skip ahead
   if (SKIP_PATTERNS.some((p) => p.test(userMessage))) {
-    return {
-      intent: 'stage_enforcement',
-      depth: 'none',
-      reason: 'User attempting to skip stage - enforce process without deep recall',
-    };
+    return buildResult(
+      {
+        intent: 'stage_enforcement',
+        depth: 'none',
+        reason: 'User attempting to skip stage - enforce process without deep recall',
+      },
+      stageConfig,
+      { allowCrossSession: false, maxCrossSession: 0 }
+    );
   }
 
   // First turn of a new session - offer continuity
   if (isFirstTurnInSession && sessionDurationMinutes === 0) {
-    return {
-      intent: 'offer_continuity',
-      depth: 'light',
-      reason: 'New session start - light continuity from previous session',
-    };
+    return buildResult(
+      {
+        intent: 'offer_continuity',
+        depth: 'light',
+        reason: 'New session start - light continuity from previous session',
+      },
+      stageConfig
+    );
   }
 
   // Stage-specific defaults
-  return getDefaultIntentForStage(stage, turnCount, emotionalIntensity);
+  return getDefaultIntentForStage(stage, turnCount, emotionalIntensity, stageConfig);
 }
 
 /**
@@ -164,63 +275,86 @@ export function determineMemoryIntent(
 function getDefaultIntentForStage(
   stage: number,
   turnCount: number,
-  emotionalIntensity: number
+  emotionalIntensity: number,
+  stageConfig: StageMemoryConfig
 ): MemoryIntentResult {
   switch (stage) {
     case 0:
       // Stage 0: Onboarding - minimal recall, just metadata
-      return {
-        intent: 'stage_enforcement',
-        depth: 'minimal',
-        reason: 'Stage 0 - onboarding with minimal context',
-      };
+      return buildResult(
+        {
+          intent: 'stage_enforcement',
+          depth: 'minimal',
+          reason: 'Stage 0 - onboarding with minimal context',
+        },
+        stageConfig,
+        { allowCrossSession: false, maxCrossSession: 0 }
+      );
 
     case 1:
       // Stage 1: Witnessing - stay present, minimal recall
       // Early turns especially should focus on presence
       if (turnCount <= 3 || emotionalIntensity >= 6) {
-        return {
-          intent: 'emotional_validation',
-          depth: 'minimal',
-          reason: 'Stage 1 witnessing - prioritizing presence over recall',
-        };
+        return buildResult(
+          {
+            intent: 'emotional_validation',
+            depth: 'minimal',
+            reason: 'Stage 1 witnessing - prioritizing presence over recall',
+          },
+          stageConfig
+        );
       }
-      return {
-        intent: 'emotional_validation',
-        depth: 'light',
-        reason: 'Stage 1 witnessing - light context for continuity',
-      };
+      return buildResult(
+        {
+          intent: 'emotional_validation',
+          depth: 'light',
+          reason: 'Stage 1 witnessing - light context for continuity',
+        },
+        stageConfig
+      );
 
     case 2:
       // Stage 2: Perspective stretch - need more context
-      return {
-        intent: 'recall_commitment',
-        depth: 'light',
-        reason: 'Stage 2 perspective - context needed for empathy building',
-      };
+      return buildResult(
+        {
+          intent: 'recall_commitment',
+          depth: 'light',
+          reason: 'Stage 2 perspective - context needed for empathy building',
+        },
+        stageConfig
+      );
 
     case 3:
       // Stage 3: Need mapping - moderate recall
-      return {
-        intent: 'recall_commitment',
-        depth: 'full',
-        reason: 'Stage 3 need mapping - full context for synthesis',
-      };
+      return buildResult(
+        {
+          intent: 'recall_commitment',
+          depth: 'full',
+          reason: 'Stage 3 need mapping - full context for synthesis',
+        },
+        stageConfig
+      );
 
     case 4:
       // Stage 4: Strategic repair - full recall for agreements
-      return {
-        intent: 'recall_commitment',
-        depth: 'full',
-        reason: 'Stage 4 repair - full context for negotiation',
-      };
+      return buildResult(
+        {
+          intent: 'recall_commitment',
+          depth: 'full',
+          reason: 'Stage 4 repair - full context for negotiation',
+        },
+        stageConfig
+      );
 
     default:
-      return {
-        intent: 'emotional_validation',
-        depth: 'minimal',
-        reason: 'Unknown stage - defaulting to minimal recall',
-      };
+      return buildResult(
+        {
+          intent: 'emotional_validation',
+          depth: 'minimal',
+          reason: 'Unknown stage - defaulting to minimal recall',
+        },
+        stageConfig
+      );
   }
 }
 

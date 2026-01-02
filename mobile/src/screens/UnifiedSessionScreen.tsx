@@ -9,7 +9,7 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { View, Text, ActivityIndicator, TouchableOpacity, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stage, MessageRole, StrategyPhase, SessionStatus } from '@meet-without-fear/shared';
+import { Stage, MessageRole, StrategyPhase, SessionStatus, Stage1Gates } from '@meet-without-fear/shared';
 
 import { ChatInterface, ChatMessage, ChatIndicatorItem } from '../components/ChatInterface';
 import { SessionChatHeader } from '../components/SessionChatHeader';
@@ -18,6 +18,7 @@ import { BreathingExercise } from '../components/BreathingExercise';
 import { GroundingExercise } from '../components/GroundingExercise';
 import { BodyScanExercise } from '../components/BodyScanExercise';
 import { SupportOptionsModal, SupportOption } from '../components/SupportOptionsModal';
+import { SessionEntryMoodCheck } from '../components/SessionEntryMoodCheck';
 // WaitingStatusMessage removed - we no longer show "waiting for partner" messages
 import { EmpathyAttemptCard } from '../components/EmpathyAttemptCard';
 import { AccuracyFeedback } from '../components/AccuracyFeedback';
@@ -162,6 +163,13 @@ export function UnifiedSessionScreen({
   const [isRefiningInvitation, setIsRefiningInvitation] = useState(false);
 
   // -------------------------------------------------------------------------
+  // Local State for Session Entry Mood Check
+  // -------------------------------------------------------------------------
+  // Tracks if user has completed the mood check for this session entry
+  // Resets each time the component mounts (i.e., each time user navigates to session)
+  const [hasCompletedMoodCheck, setHasCompletedMoodCheck] = useState(false);
+
+  // -------------------------------------------------------------------------
   // Track Invitation Confirmation for Indicator
   // -------------------------------------------------------------------------
 
@@ -213,8 +221,22 @@ export function UnifiedSessionScreen({
         timestamp: confirmedAt,
       });
     }
+    // Show "Fully Heard" indicator if user confirmed they feel heard (Stage 1 completion)
+    // The timestamp is stored in the gates data and persists across session reloads
+    const gates = myProgress?.gates;
+    if (gates && gates.stage === Stage.WITNESS) {
+      const stage1Gates = gates as Stage1Gates;
+      if (stage1Gates.feelHeardConfirmedAt) {
+        items.push({
+          type: 'indicator',
+          indicatorType: 'feel-heard',
+          id: 'feel-heard',
+          timestamp: stage1Gates.feelHeardConfirmedAt,
+        });
+      }
+    }
     return items;
-  }, [invitationConfirmed, isConfirmingInvitation, invitation?.messageConfirmedAt, optimisticConfirmTimestamp]);
+  }, [invitationConfirmed, isConfirmingInvitation, invitation?.messageConfirmedAt, optimisticConfirmTimestamp, myProgress?.gates]);
 
   // -------------------------------------------------------------------------
   // Effective Stage (accounts for compact signed but stage not yet updated)
@@ -695,6 +717,26 @@ export function UnifiedSessionScreen({
     compactData.mySigned === false;
 
   // -------------------------------------------------------------------------
+  // Session Entry Mood Check - shown after compact signed, before chat
+  // -------------------------------------------------------------------------
+  // Asks user "How are you feeling right now?" to set accurate barometer value.
+  // Only shows once per session entry (resets when navigating away and back).
+  // Skipped if user is currently in an exercise overlay (will set intensity after).
+  const shouldShowMoodCheck = useMemo(() => {
+    // Don't show if still loading
+    if (isLoading) return false;
+    // Don't show if compact overlay is showing (must sign compact first)
+    if (shouldShowCompactOverlay) return false;
+    // Don't show if already completed mood check this session entry
+    if (hasCompletedMoodCheck) return false;
+    // Don't show if currently in an exercise overlay (user will set intensity after)
+    if (activeOverlay) return false;
+
+    // Show mood check for all session entries
+    return true;
+  }, [isLoading, shouldShowCompactOverlay, hasCompletedMoodCheck, activeOverlay]);
+
+  // -------------------------------------------------------------------------
   // Strategy Ranking Phase - Full Screen Overlay
   // -------------------------------------------------------------------------
   if (currentStage === Stage.STRATEGIC_REPAIR && strategyPhase === StrategyPhase.RANKING) {
@@ -844,6 +886,16 @@ export function UnifiedSessionScreen({
         onSign={() => handleSignCompact(() => onStageComplete?.(Stage.ONBOARDING))}
         onNavigateBack={onNavigateBack}
         isPending={isSigningCompact}
+      />
+
+      {/* Session Entry Mood Check - asks how user is feeling on session entry */}
+      <SessionEntryMoodCheck
+        visible={shouldShowMoodCheck}
+        initialValue={barometerValue}
+        onComplete={(intensity) => {
+          handleBarometerChange(intensity);
+          setHasCompletedMoodCheck(true);
+        }}
       />
     </SafeAreaView>
   );

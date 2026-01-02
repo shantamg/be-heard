@@ -16,9 +16,14 @@ import {
   UpdatePushTokenResponse,
   AblyTokenResponse,
   UpdateBiometricPreferenceResponse,
+  GetMemoryPreferencesResponse,
+  UpdateMemoryPreferencesResponse,
+  MemoryPreferencesDTO,
+  DEFAULT_MEMORY_PREFERENCES,
   updateProfileRequestSchema,
   updatePushTokenRequestSchema,
   updateBiometricPreferenceRequestSchema,
+  updateMemoryPreferencesRequestSchema,
 } from '@meet-without-fear/shared';
 
 // ============================================================================
@@ -314,6 +319,82 @@ export const updateBiometricPreference = asyncHandler(async (req: Request, res: 
     data: {
       biometricEnabled: updatedUser.biometricEnabled,
       biometricEnrolledAt: updatedUser.biometricEnrolledAt?.toISOString() ?? null,
+    },
+  };
+
+  res.json(response);
+});
+
+// ============================================================================
+// GET /auth/me/memory-preferences
+// ============================================================================
+
+export const getMemoryPreferences = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const user = getUser(req);
+
+  // Get user with memory preferences
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { memoryPreferences: true },
+  });
+
+  // Parse stored preferences or use defaults
+  const storedPrefs = dbUser?.memoryPreferences as MemoryPreferencesDTO | null;
+  const preferences: MemoryPreferencesDTO = storedPrefs ?? DEFAULT_MEMORY_PREFERENCES;
+
+  const response: ApiResponse<GetMemoryPreferencesResponse> = {
+    success: true,
+    data: {
+      preferences,
+    },
+  };
+
+  res.json(response);
+});
+
+// ============================================================================
+// PUT /auth/me/memory-preferences
+// ============================================================================
+
+export const updateMemoryPreferences = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const user = getUser(req);
+
+  // Validate request body
+  const parseResult = updateMemoryPreferencesRequestSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    throw new ValidationError('Invalid memory preferences data', {
+      errors: parseResult.error.flatten().fieldErrors,
+    });
+  }
+
+  const updates = parseResult.data;
+
+  // Get current preferences
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { memoryPreferences: true },
+  });
+
+  const currentPrefs = (dbUser?.memoryPreferences as MemoryPreferencesDTO | null) ?? DEFAULT_MEMORY_PREFERENCES;
+
+  // Merge updates with current preferences
+  const newPreferences: MemoryPreferencesDTO = {
+    sessionContinuity: updates.sessionContinuity ?? currentPrefs.sessionContinuity,
+    crossSessionRecall: updates.crossSessionRecall ?? currentPrefs.crossSessionRecall,
+    patternInsights: updates.patternInsights ?? currentPrefs.patternInsights,
+    rememberAgreements: updates.rememberAgreements ?? currentPrefs.rememberAgreements,
+  };
+
+  // Update user preferences
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { memoryPreferences: newPreferences as object },
+  });
+
+  const response: ApiResponse<UpdateMemoryPreferencesResponse> = {
+    success: true,
+    data: {
+      preferences: newPreferences,
     },
   };
 

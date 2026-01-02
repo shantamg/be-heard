@@ -12,6 +12,7 @@ import {
   UseMutationOptions,
   useInfiniteQuery,
   UseInfiniteQueryOptions,
+  InfiniteData,
 } from '@tanstack/react-query';
 import { get, post, put, ApiClientError } from '../lib/api';
 import {
@@ -25,6 +26,8 @@ import {
   DeclineInvitationResponse,
   InvitationDTO,
   Stage,
+  GetMessagesResponse,
+  MessageRole,
 } from '@meet-without-fear/shared';
 import { stageKeys } from './useStages';
 import { messageKeys } from './useMessages';
@@ -482,13 +485,13 @@ export function useConfirmInvitationMessage(
           id: data.transitionMessage.id,
           sessionId,
           senderId: null,
-          role: 'AI' as const,
+          role: MessageRole.AI,
           content: data.transitionMessage.content,
           stage: Stage.WITNESS,
           timestamp: data.transitionMessage.timestamp,
         };
 
-        // Add to the non-stage-filtered message cache (what we use now)
+        // Add to the non-stage-filtered message cache (regular query)
         queryClient.setQueryData<{ messages: typeof transitionMsg[]; hasMore: boolean }>(
           messageKeys.list(sessionId),
           (old) => {
@@ -497,6 +500,30 @@ export function useConfirmInvitationMessage(
             const exists = old.messages.some(m => m.id === transitionMsg.id);
             if (exists) return old;
             return { ...old, messages: [...old.messages, transitionMsg] };
+          }
+        );
+
+        // Also add to the infinite query cache (what useUnifiedSession uses)
+        queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
+          messageKeys.infinite(sessionId),
+          (old) => {
+            if (!old || old.pages.length === 0) {
+              // Create initial structure for infinite query
+              return {
+                pages: [{ messages: [transitionMsg], hasMore: false }],
+                pageParams: [undefined],
+              };
+            }
+            // Append to the first page (newest messages)
+            const firstPage = old.pages[0];
+            const exists = firstPage.messages.some(m => m.id === transitionMsg.id);
+            if (exists) return old;
+            const updatedPages = [...old.pages];
+            updatedPages[0] = {
+              ...firstPage,
+              messages: [...firstPage.messages, transitionMsg],
+            };
+            return { ...old, pages: updatedPages };
           }
         );
       }

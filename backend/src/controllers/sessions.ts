@@ -21,6 +21,7 @@ import { successResponse, errorResponse } from '../utils/response';
 import { getPartnerUserId, isSessionCreator } from '../utils/session';
 import { getOrchestratedResponse, type FullAIContext } from '../services/ai';
 import { extractJsonSafe } from '../utils/json-extractor';
+import { embedMessage } from '../services/embedding';
 
 // ============================================================================
 // Controllers
@@ -1006,6 +1007,11 @@ export async function confirmInvitationMessage(req: Request, res: Response): Pro
           stage: 1,
         },
       });
+
+      // Embed message for cross-session retrieval (non-blocking)
+      embedMessage(aiMessage.id).catch((err) =>
+        console.warn('[confirmInvitationMessage] Failed to embed message:', err)
+      );
 
       transitionMessage = {
         id: aiMessage.id,

@@ -16,6 +16,8 @@ import {
   deletePushToken,
   getAblyToken,
   updateBiometricPreference,
+  getMemoryPreferences,
+  updateMemoryPreferences,
 } from '../controllers/auth';
 
 const router = Router();
@@ -96,5 +98,31 @@ router.get('/ably-token', getAblyToken);
  * - biometricEnrolledAt: string | null
  */
 router.patch('/biometric', updateBiometricPreference);
+
+/**
+ * GET /auth/me/memory-preferences
+ *
+ * Get current memory preferences.
+ *
+ * Response: GetMemoryPreferencesResponse
+ * - preferences: MemoryPreferencesDTO
+ */
+router.get('/me/memory-preferences', getMemoryPreferences);
+
+/**
+ * PUT /auth/me/memory-preferences
+ *
+ * Update memory preferences.
+ *
+ * Request: UpdateMemoryPreferencesRequest
+ * - sessionContinuity?: boolean
+ * - crossSessionRecall?: boolean
+ * - patternInsights?: boolean
+ * - rememberAgreements?: boolean
+ *
+ * Response: UpdateMemoryPreferencesResponse
+ * - preferences: MemoryPreferencesDTO
+ */
+router.put('/me/memory-preferences', updateMemoryPreferences);
 
 export default router;

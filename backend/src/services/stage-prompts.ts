@@ -12,6 +12,7 @@
  */
 
 import { type ContextBundle } from './context-assembler';
+import { type SurfaceStyle } from './memory-intent';
 
 // ============================================================================
 // Base Guidance (Inherited by all stages)
@@ -79,6 +80,8 @@ export interface PromptContext {
   invitationMessage?: string | null;
   /** Whether user is refining their invitation after Stage 1/2 processing */
   isRefiningInvitation?: boolean;
+  /** How to surface pattern observations (from surfacing policy) */
+  surfacingStyle?: SurfaceStyle;
 }
 
 /** Simplified context for initial message generation (no context bundle needed) */
@@ -256,6 +259,15 @@ EMOTIONAL INTENSITY:
 Current reading: ${context.emotionalIntensity}/10
 ${context.emotionalIntensity >= 8 ? 'User is at high intensity. Stay in WITNESS MODE. Validate heavily. This is not the moment for insight.' : ''}
 
+MEMORY USAGE:
+${context.turnCount <= 3 ?
+`- Do NOT reference past sessions or name patterns
+- Let context inform empathy silently
+- Stay fully present with what they share now` :
+`- Light retrieval for continuity allowed
+- No explicit pattern claims unless user asks
+- Patterns may inform your approach (silent use only)`}
+
 Turn number: ${context.turnCount}
 ${hasEnoughTurns ? `
 FEEL-HEARD CHECK:
@@ -359,9 +371,21 @@ WHAT TO ALWAYS AVOID:
 EMOTIONAL INTENSITY:
 Current reading: ${context.emotionalIntensity}/10
 
+MEMORY USAGE:
+- Cross-session recall allowed for empathy building
+- Tentative observations allowed: "I'm wondering if..." or "Does this connect to..."
+- Require 2+ examples before any observation
+- Never state patterns as facts
+
 Turn number in Stage 2: ${context.turnCount}
 
-CRITICAL: After your <analysis>, provide your response to the user.`;
+Respond in JSON format:
+\`\`\`json
+{
+  "analysis": "Your internal reasoning (stripped before delivery)",
+  "response": "Your conversational response to the user"
+}
+\`\`\``;
 }
 
 // ============================================================================
@@ -430,9 +454,21 @@ WHAT TO ALWAYS AVOID:
 - "Have you considered..." (solution steering)
 - Rushing to agreement
 
+MEMORY USAGE:
+- Full cross-session recall for synthesis
+- Explicit pattern observations allowed with evidence
+- Frame collaboratively: "I've noticed X coming up - does that resonate?"
+- Reference specific examples when naming patterns
+
 Turn number in Stage 3: ${context.turnCount}
 
-CRITICAL: After your <analysis>, provide your response to the user.`;
+Respond in JSON format:
+\`\`\`json
+{
+  "analysis": "Your internal reasoning (stripped before delivery)",
+  "response": "Your conversational response to the user"
+}
+\`\`\``;
 }
 
 // ============================================================================
@@ -511,9 +547,21 @@ WHAT TO ALWAYS AVOID:
 - Shaming experiment "failure"
 - Forcing agreement when someone honestly cannot
 
+MEMORY USAGE:
+- Full cross-session recall for synthesis
+- Explicit pattern observations allowed with evidence
+- Frame collaboratively: "I've noticed X coming up - does that resonate?"
+- Reference specific examples when naming patterns
+
 Turn number in Stage 4: ${context.turnCount}
 
-CRITICAL: After your <analysis>, provide your response to the user.`;
+Respond in JSON format:
+\`\`\`json
+{
+  "analysis": "Your internal reasoning (stripped before delivery)",
+  "response": "Your conversational response to the user"
+}
+\`\`\``;
 }
 
 // ============================================================================

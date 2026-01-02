@@ -14,6 +14,7 @@
  */
 
 import { getSonnetResponse } from '../lib/bedrock';
+import { prisma } from '../lib/prisma';
 import {
   determineMemoryIntent,
   type MemoryIntentContext,
@@ -32,6 +33,12 @@ import {
   type RetrievedContext,
 } from './context-retriever';
 import { extractJsonFromResponse } from '../utils/json-extractor';
+import {
+  decideSurfacing,
+  userAskedForPattern,
+  countPatternEvidence,
+} from './surfacing-policy';
+import { DEFAULT_MEMORY_PREFERENCES, type MemoryPreferencesDTO } from '@meet-without-fear/shared';
 
 // ============================================================================
 // Types
@@ -75,6 +82,27 @@ export interface OrchestratorResult {
 }
 
 // ============================================================================
+// User Preferences
+// ============================================================================
+
+/**
+ * Get user's memory preferences from database.
+ * Returns defaults if not set.
+ */
+async function getUserMemoryPreferences(userId: string): Promise<MemoryPreferencesDTO> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { memoryPreferences: true },
+    });
+    return (user?.memoryPreferences as MemoryPreferencesDTO | null) ?? DEFAULT_MEMORY_PREFERENCES;
+  } catch (error) {
+    console.warn('[AI Orchestrator] Failed to fetch memory preferences, using defaults:', error);
+    return DEFAULT_MEMORY_PREFERENCES;
+  }
+}
+
+// ============================================================================
 // Orchestration
 // ============================================================================
 
@@ -86,6 +114,9 @@ export async function orchestrateResponse(
   context: OrchestratorContext
 ): Promise<OrchestratorResult> {
   const startTime = Date.now();
+
+  // Step 0: Fetch user preferences
+  const userPrefs = await getUserMemoryPreferences(context.userId);
 
   // Step 1: Determine memory intent
   const memoryIntentContext: MemoryIntentContext = {
@@ -113,6 +144,7 @@ export async function orchestrateResponse(
 
   // Step 2.5: Universal context retrieval
   // This ensures awareness of relevant content from other sessions or earlier history
+  // Uses stage-aware thresholds from memory intent
   let retrievedContext: RetrievedContext | undefined;
   try {
     retrievedContext = await retrieveContext({
@@ -120,8 +152,11 @@ export async function orchestrateResponse(
       currentMessage: context.userMessage,
       currentSessionId: context.sessionId,
       includePreSession: true,
-      maxCrossSessionMessages: 10,
-      similarityThreshold: 0.5,
+      // Use stage-aware config from memory intent
+      maxCrossSessionMessages: memoryIntent.maxCrossSession,
+      similarityThreshold: memoryIntent.threshold,
+      memoryIntent,
+      userPreferences: userPrefs,
     });
     console.log(
       `[AI Orchestrator] Context retrieved: ${retrievedContext.retrievalSummary}`
@@ -129,6 +164,19 @@ export async function orchestrateResponse(
   } catch (error) {
     console.warn('[AI Orchestrator] Context retrieval failed, continuing without:', error);
   }
+
+  // Step 2.6: Apply surfacing policy
+  // Determine how/whether to surface pattern observations
+  const surfacingDecision = decideSurfacing(
+    context.stage,
+    context.turnCount,
+    userAskedForPattern(context.userMessage),
+    userPrefs.patternInsights,
+    countPatternEvidence(retrievedContext ?? null)
+  );
+  console.log(
+    `[AI Orchestrator] Surfacing decision: shouldSurface=${surfacingDecision.shouldSurface}, style=${surfacingDecision.style}`
+  );
 
   // Step 3: Plan retrieval (for full depth, use Haiku)
   let retrievalPlan: RetrievalPlan | undefined;
@@ -161,6 +209,7 @@ export async function orchestrateResponse(
       contextBundle,
       isFirstMessage: context.isFirstTurnInSession,
       invitationMessage: context.currentInvitationMessage,
+      surfacingStyle: surfacingDecision.style,
     },
     {
       isInvitationPhase: context.isInvitationPhase,
@@ -197,11 +246,8 @@ export async function orchestrateResponse(
   let invitationMessage: string | null = null;
 
   // Determine if we should expect structured JSON output
-  // Stage 0 (invitation phase), invitation refinement, and Stage 1 (witness) use structured JSON
-  const expectsStructuredOutput =
-    (context.stage === 0 && context.isInvitationPhase) ||
-    context.isRefiningInvitation ||
-    context.stage === 1;
+  // All stages use structured JSON format in their prompts
+  const expectsStructuredOutput = true;
 
   try {
     // Note: Extended thinking is not supported by Claude 3.5 Sonnet v2 on Bedrock
@@ -318,12 +364,8 @@ function parseStructuredResponse(rawResponse: string): ParsedStructuredResponse 
 
     // Validate we have a response field
     if (typeof parsed.response !== 'string') {
-      console.warn('[AI Orchestrator] Parsed JSON missing response field, using raw response');
-      return {
-        response: stripAnalysisTags(rawResponse),
-        offerFeelHeardCheck: false,
-        invitationMessage: null,
-      };
+      console.warn('[AI Orchestrator] Parsed JSON missing response field, attempting direct extraction');
+      return extractResponseFallback(rawResponse);
     }
 
     return {
@@ -335,15 +377,51 @@ function parseStructuredResponse(rawResponse: string): ParsedStructuredResponse 
       analysis: typeof parsed.analysis === 'string' ? parsed.analysis : undefined,
     };
   } catch (error) {
-    // Fallback: treat as plain text response
-    console.log('[AI Orchestrator] JSON extraction failed, treating as plain text:', error);
-    const strippedResponse = stripAnalysisTags(rawResponse);
+    // Fallback: try direct extraction methods
+    console.log('[AI Orchestrator] JSON extraction failed, trying fallback:', error);
+    return extractResponseFallback(rawResponse);
+  }
+}
+
+/**
+ * Fallback extraction when normal JSON parsing fails.
+ * Tries multiple strategies to avoid returning raw JSON to the user.
+ */
+function extractResponseFallback(rawResponse: string): ParsedStructuredResponse {
+  // Strategy 1: Try to find "response": "..." pattern directly using regex
+  // This handles cases where the JSON structure is broken but the response field exists
+  const responseMatch = rawResponse.match(/"response"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (responseMatch) {
+    // Unescape the extracted string
+    const extracted = responseMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+    console.log('[AI Orchestrator] Extracted response via regex fallback');
     return {
-      response: strippedResponse,
+      response: extracted,
       offerFeelHeardCheck: false,
       invitationMessage: null,
     };
   }
+
+  // Strategy 2: Strip analysis tags and check if result looks like JSON
+  const strippedResponse = stripAnalysisTags(rawResponse);
+
+  // If the stripped response looks like JSON, use a generic fallback
+  // This prevents raw JSON from being shown to the user
+  if (strippedResponse.trim().startsWith('{') || strippedResponse.trim().startsWith('[')) {
+    console.warn('[AI Orchestrator] Response looks like JSON after fallback, using generic message');
+    return {
+      response: "I understand. Can you tell me more about what you're experiencing?",
+      offerFeelHeardCheck: false,
+      invitationMessage: null,
+    };
+  }
+
+  // Strategy 3: The stripped response is plain text, use it
+  return {
+    response: strippedResponse,
+    offerFeelHeardCheck: false,
+    invitationMessage: null,
+  };
 }
 
 /**

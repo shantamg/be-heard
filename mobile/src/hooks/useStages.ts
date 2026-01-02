@@ -13,6 +13,7 @@ import {
   UseMutationOptions,
 } from '@tanstack/react-query';
 import { get, post, ApiClientError } from '../lib/api';
+import { messageKeys } from './useMessages';
 import {
   // Response types
   SignCompactResponse,
@@ -197,9 +198,13 @@ export function useConfirmFeelHeard(
         feedback,
       });
     },
-    onSuccess: (_, { sessionId }) => {
+    onSuccess: (data, { sessionId }) => {
       queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
       queryClient.invalidateQueries({ queryKey: sessionKeys.detail(sessionId) });
+      // Invalidate messages to fetch the transition message if one was generated
+      if (data.transitionMessage) {
+        queryClient.invalidateQueries({ queryKey: messageKeys.all });
+      }
     },
     ...options,
   });

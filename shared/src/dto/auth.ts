@@ -110,3 +110,44 @@ export interface UpdateBiometricPreferenceResponse {
   biometricEnabled: boolean;
   biometricEnrolledAt: string | null;
 }
+
+// ============================================================================
+// Memory Preferences
+// ============================================================================
+
+/**
+ * User preferences for AI memory and pattern recognition.
+ * Controls how the AI remembers and surfaces information across sessions.
+ */
+export interface MemoryPreferencesDTO {
+  /** Remember context within the same relationship (default: true) */
+  sessionContinuity: boolean;
+  /** Recall patterns across different relationships (default: false) */
+  crossSessionRecall: boolean;
+  /** Allow AI to surface pattern insights (Level 2 disclosure, default: false) */
+  patternInsights: boolean;
+  /** Remember agreements and commitments (default: true) */
+  rememberAgreements: boolean;
+}
+
+export const DEFAULT_MEMORY_PREFERENCES: MemoryPreferencesDTO = {
+  sessionContinuity: true,
+  crossSessionRecall: false,
+  patternInsights: false,
+  rememberAgreements: true,
+};
+
+export interface GetMemoryPreferencesResponse {
+  preferences: MemoryPreferencesDTO;
+}
+
+export interface UpdateMemoryPreferencesRequest {
+  sessionContinuity?: boolean;
+  crossSessionRecall?: boolean;
+  patternInsights?: boolean;
+  rememberAgreements?: boolean;
+}
+
+export interface UpdateMemoryPreferencesResponse {
+  preferences: MemoryPreferencesDTO;
+}
