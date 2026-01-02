@@ -8,7 +8,7 @@
 // Authentication
 // ============================================================================
 
-export { useAuth, useAuthProvider, AuthContext } from './useAuth';
+export { useAuth, useAuthProvider, AuthContext, useUpdateMood, authKeys } from './useAuth';
 export type { User, AuthContextValue } from './useAuth';
 
 // ============================================================================
@@ -247,3 +247,21 @@ export {
   type UseRouterChatOptions,
   type UseRouterChatReturn,
 } from './useRouterChat';
+
+// ============================================================================
+// Inner Work (Solo Self-Reflection)
+// ============================================================================
+
+export {
+  // Query keys
+  innerWorkKeys,
+  // Types
+  type ListInnerWorkParams,
+  // Hooks
+  useInnerWorkSessions,
+  useInnerWorkSession,
+  useCreateInnerWorkSession,
+  useSendInnerWorkMessage,
+  useUpdateInnerWorkSession,
+  useArchiveInnerWorkSession,
+} from './useInnerWork';

@@ -342,3 +342,77 @@ export async function isEmbeddingEnabled(): Promise<boolean> {
   const testEmbedding = await getEmbedding('test');
   return testEmbedding !== null;
 }
+
+// ============================================================================
+// Inner Work Message Embeddings
+// ============================================================================
+
+/**
+ * Generate and store embedding for an inner work message.
+ */
+export async function embedInnerWorkMessage(messageId: string): Promise<boolean> {
+  const message = await prisma.innerWorkMessage.findUnique({
+    where: { id: messageId },
+    select: { id: true, content: true },
+  });
+
+  if (!message) {
+    console.warn(`[Embedding] Inner work message ${messageId} not found`);
+    return false;
+  }
+
+  const embedding = await getEmbedding(message.content);
+  if (!embedding) {
+    console.warn(`[Embedding] Failed to generate embedding for inner work message ${messageId}`);
+    return false;
+  }
+
+  await prisma.$executeRaw`
+    UPDATE "InnerWorkMessage"
+    SET embedding = ${vectorToSql(embedding)}::vector
+    WHERE id = ${messageId}
+  `;
+
+  return true;
+}
+
+/**
+ * Find inner work messages similar to the given query text.
+ * Searches across all of a user's inner work sessions.
+ */
+export async function findSimilarInnerWorkMessages(
+  userId: string,
+  queryText: string,
+  limit: number = 5,
+  threshold: number = 0.6
+): Promise<Array<{ messageId: string; sessionId: string; content: string; similarity: number }>> {
+  const queryEmbedding = await getEmbedding(queryText);
+  if (!queryEmbedding) {
+    return [];
+  }
+
+  const results = await prisma.$queryRaw<
+    Array<{ id: string; session_id: string; content: string; distance: number }>
+  >`
+    SELECT
+      m.id,
+      m."sessionId" as session_id,
+      m.content,
+      m.embedding <=> ${vectorToSql(queryEmbedding)}::vector as distance
+    FROM "InnerWorkMessage" m
+    JOIN "InnerWorkSession" s ON m."sessionId" = s.id
+    WHERE s."userId" = ${userId}
+      AND m.embedding IS NOT NULL
+    ORDER BY distance ASC
+    LIMIT ${limit}
+  `;
+
+  return results
+    .map((r) => ({
+      messageId: r.id,
+      sessionId: r.session_id,
+      content: r.content,
+      similarity: 1 - r.distance / 2,
+    }))
+    .filter((r) => r.similarity >= threshold);
+}

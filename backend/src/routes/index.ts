@@ -3,6 +3,7 @@ import authRoutes from './auth';
 import chatRoutes from './chat';
 import consentRoutes from './consent';
 import emotionsRoutes from './emotions';
+import innerWorkRoutes from './inner-work';
 import invitationsRoutes from './invitations';
 import sessionsRoutes from './sessions';
 import stage0Routes from './stage0';
@@ -16,6 +17,7 @@ const router = Router();
 // Mount all route modules
 router.use('/auth', authRoutes);
 router.use(chatRoutes); // Unified chat router
+router.use(innerWorkRoutes); // Inner work (solo self-reflection)
 router.use(invitationsRoutes);
 router.use(sessionsRoutes);
 router.use(consentRoutes);

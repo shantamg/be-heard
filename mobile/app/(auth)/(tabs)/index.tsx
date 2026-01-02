@@ -78,8 +78,8 @@ export default function HomeScreen() {
   };
 
   const handleInnerWork = () => {
-    // Navigate to inner work / self-session flow
-    router.push('/session/new?mode=inner');
+    // Navigate to inner work list
+    router.push('/inner-work');
   };
 
   // Get the user's display name

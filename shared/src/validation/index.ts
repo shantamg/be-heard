@@ -14,6 +14,7 @@ export * from './messages';
 export * from './barometer';
 export * from './invitations';
 export * from './stages';
+export * from './inner-work';
 
 // Re-export zod for convenience
 export { z } from 'zod';
