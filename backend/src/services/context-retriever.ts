@@ -183,6 +183,7 @@ async function searchAcrossSessions(
 
   let results: MessageResult[];
 
+  // Data isolation: Only return user's own messages and AI responses TO them
   if (excludeSessionId) {
     results = await prisma.$queryRaw<MessageResult[]>`
       SELECT
@@ -200,7 +201,7 @@ async function searchAcrossSessions(
       LEFT JOIN "RelationshipMember" partner_member ON r.id = partner_member."relationshipId" AND partner_member."userId" != ${userId}
       LEFT JOIN "User" partner_user ON partner_member."userId" = partner_user.id
       WHERE m.embedding IS NOT NULL
-        AND (m."senderId" = ${userId} OR m.role = 'AI')
+        AND (m."senderId" = ${userId} OR (m.role = 'AI' AND m."forUserId" = ${userId}))
         AND m."sessionId" != ${excludeSessionId}
       ORDER BY distance ASC
       LIMIT ${limit * 2}
@@ -222,7 +223,7 @@ async function searchAcrossSessions(
       LEFT JOIN "RelationshipMember" partner_member ON r.id = partner_member."relationshipId" AND partner_member."userId" != ${userId}
       LEFT JOIN "User" partner_user ON partner_member."userId" = partner_user.id
       WHERE m.embedding IS NOT NULL
-        AND (m."senderId" = ${userId} OR m.role = 'AI')
+        AND (m."senderId" = ${userId} OR (m.role = 'AI' AND m."forUserId" = ${userId}))
       ORDER BY distance ASC
       LIMIT ${limit * 2}
     `;
@@ -248,9 +249,11 @@ async function searchAcrossSessions(
 
 /**
  * Search within a specific session.
+ * Data isolation: Only returns user's own messages and AI responses to them.
  */
 async function searchWithinSession(
   sessionId: string,
+  userId: string,
   queryText: string,
   limit: number = 5,
   threshold: number = 0.5
@@ -262,6 +265,7 @@ async function searchWithinSession(
 
   const vectorSql = `[${queryEmbedding.join(',')}]`;
 
+  // Data isolation: Only return user's own messages and AI responses TO them
   const results = await prisma.$queryRaw<
     Array<{
       id: string;
@@ -280,6 +284,7 @@ async function searchWithinSession(
     FROM "Message" m
     WHERE m."sessionId" = ${sessionId}
       AND m.embedding IS NOT NULL
+      AND (m."senderId" = ${userId} OR (m.role = 'AI' AND m."forUserId" = ${userId}))
     ORDER BY distance ASC
     LIMIT ${limit * 2}
   `;
@@ -474,7 +479,7 @@ export async function retrieveContext(options: RetrievalOptions): Promise<Retrie
           ? searchAcrossSessions(userId, query, currentSessionId, effectiveMaxCrossSession, effectiveThreshold)
           : Promise.resolve([]),
         currentSessionId
-          ? searchWithinSession(currentSessionId, query, 5, effectiveThreshold)
+          ? searchWithinSession(currentSessionId, userId, query, 5, effectiveThreshold)
           : Promise.resolve([]),
       ]);
       return { crossSession, withinSession };
