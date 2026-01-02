@@ -17,8 +17,8 @@ const router = Router();
 // Mount all route modules
 router.use('/auth', authRoutes);
 router.use(chatRoutes); // Unified chat router
+router.use(invitationsRoutes); // Must be before innerWorkRoutes (has public endpoints)
 router.use(innerWorkRoutes); // Inner work (solo self-reflection)
-router.use(invitationsRoutes);
 router.use(sessionsRoutes);
 router.use(consentRoutes);
 router.use(emotionsRoutes);
