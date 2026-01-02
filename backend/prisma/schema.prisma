@@ -24,6 +24,7 @@ model User {
   biometricEnabled    Boolean   @default(false)
   biometricEnrolledAt DateTime?
   memoryPreferences   Json?     // MemoryPreferencesDTO - AI memory settings
+  lastMoodIntensity   Int?      // Last mood intensity (1-10) for session entry default
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
@@ -213,6 +214,10 @@ model UserVessel {
   identifiedNeeds   IdentifiedNeed[]
   boundaries        Boundary[]
   documents         UserDocument[]
+
+  // Rolling conversation summary for long sessions
+  // Stores JSON with: text, keyThemes, emotionalJourney, unresolvedTopics
+  conversationSummary String? @db.Text
 
   // Embedding for semantic search within user's own content
   embedding Unsupported("vector(1024)")?
