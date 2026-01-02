@@ -18,6 +18,7 @@ import {
   updateBiometricPreference,
   getMemoryPreferences,
   updateMemoryPreferences,
+  updateMood,
 } from '../controllers/auth';
 
 const router = Router();
@@ -124,5 +125,16 @@ router.get('/me/memory-preferences', getMemoryPreferences);
  * - preferences: MemoryPreferencesDTO
  */
 router.put('/me/memory-preferences', updateMemoryPreferences);
+
+/**
+ * PATCH /auth/me/mood
+ *
+ * Update the user's last mood intensity (used as default for new sessions).
+ *
+ * Request: { intensity: number } (1-10)
+ *
+ * Response: { lastMoodIntensity: number }
+ */
+router.patch('/me/mood', updateMood);
 
 export default router;

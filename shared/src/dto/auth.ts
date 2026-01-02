@@ -15,6 +15,7 @@ export interface UserDTO {
   firstName: string | null;
   lastName: string | null;
   biometricEnabled: boolean;
+  lastMoodIntensity: number | null;
   createdAt: string;
 }
 

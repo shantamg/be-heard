@@ -38,6 +38,7 @@ function toUserDTO(user: AuthUser) {
     firstName: user.firstName,
     lastName: user.lastName,
     biometricEnabled: user.biometricEnabled,
+    lastMoodIntensity: user.lastMoodIntensity,
     createdAt: user.createdAt.toISOString(),
   };
 }
@@ -108,6 +109,7 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response): P
         firstName: updatedUser.firstName,
         lastName: updatedUser.lastName,
         biometricEnabled: updatedUser.biometricEnabled,
+        lastMoodIntensity: updatedUser.lastMoodIntensity,
         createdAt: updatedUser.createdAt.toISOString(),
       },
     },
@@ -395,6 +397,41 @@ export const updateMemoryPreferences = asyncHandler(async (req: Request, res: Re
     success: true,
     data: {
       preferences: newPreferences,
+    },
+  };
+
+  res.json(response);
+});
+
+// ============================================================================
+// PATCH /auth/me/mood
+// ============================================================================
+
+interface UpdateMoodResponse {
+  lastMoodIntensity: number;
+}
+
+export const updateMood = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const user = getUser(req);
+
+  // Validate intensity
+  const { intensity } = req.body;
+  if (typeof intensity !== 'number' || intensity < 1 || intensity > 10 || !Number.isInteger(intensity)) {
+    throw new ValidationError('Invalid mood intensity', {
+      errors: { intensity: ['Intensity must be an integer between 1 and 10'] },
+    });
+  }
+
+  // Update user's lastMoodIntensity
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastMoodIntensity: intensity },
+  });
+
+  const response: ApiResponse<UpdateMoodResponse> = {
+    success: true,
+    data: {
+      lastMoodIntensity: intensity,
     },
   };
 

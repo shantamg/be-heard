@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { useAuth as useClerkAuth, useUser as useClerkUser } from '@clerk/clerk-expo';
-import { apiClient } from '../lib/api';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiClient, patch, ApiClientError } from '../lib/api';
 import type { ApiResponse, GetMeResponse, UserDTO } from '@meet-without-fear/shared';
 
 /**
@@ -20,6 +21,7 @@ export interface AuthContextValue {
   isAuthenticated: boolean;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | null>;
+  updateUser: (updates: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -76,6 +78,7 @@ export function useAuthProvider(): AuthContextValue {
             firstName: backendUser.firstName,
             lastName: backendUser.lastName,
             biometricEnabled: backendUser.biometricEnabled,
+            lastMoodIntensity: backendUser.lastMoodIntensity,
             createdAt: backendUser.createdAt,
           });
         }
@@ -89,6 +92,7 @@ export function useAuthProvider(): AuthContextValue {
           firstName: clerkUser.firstName || null,
           lastName: clerkUser.lastName || null,
           biometricEnabled: false,
+          lastMoodIntensity: null,
           createdAt: clerkUser.createdAt?.toISOString() || new Date().toISOString(),
         });
       } finally {
@@ -110,13 +114,57 @@ export function useAuthProvider(): AuthContextValue {
     return getToken();
   }, [getToken]);
 
+  const updateUser = useCallback((updates: Partial<User>) => {
+    setUser((prev) => (prev ? { ...prev, ...updates } : null));
+  }, []);
+
   return {
     user,
     isLoading: !isLoaded || isLoadingProfile,
     isAuthenticated: isSignedIn ?? false,
     signOut,
     getToken: getTokenFn,
+    updateUser,
   };
 }
 
 export { AuthContext };
+
+// ============================================================================
+// Query Keys
+// ============================================================================
+
+export const authKeys = {
+  all: ['auth'] as const,
+  me: () => [...authKeys.all, 'me'] as const,
+};
+
+// ============================================================================
+// Update Mood Hook
+// ============================================================================
+
+interface UpdateMoodResponse {
+  lastMoodIntensity: number;
+}
+
+interface UpdateMoodRequest {
+  intensity: number;
+}
+
+/**
+ * Update the user's default mood intensity.
+ * This is called from the session entry mood check to persist the preference.
+ */
+export function useUpdateMood() {
+  const queryClient = useQueryClient();
+
+  return useMutation<UpdateMoodResponse, ApiClientError, UpdateMoodRequest>({
+    mutationFn: async ({ intensity }) => {
+      return patch<UpdateMoodResponse>('/auth/me/mood', { intensity });
+    },
+    onSuccess: () => {
+      // Invalidate user data to refetch lastMoodIntensity
+      queryClient.invalidateQueries({ queryKey: authKeys.me() });
+    },
+  });
+}

@@ -24,6 +24,7 @@ export interface AuthUser {
   pushToken: string | null;
   biometricEnabled: boolean;
   biometricEnrolledAt: Date | null;
+  lastMoodIntensity: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
