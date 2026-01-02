@@ -294,6 +294,7 @@ function AuthRequiredState({
       </div>
 
       <SignIn
+        routing="hash"
         appearance={{
           elements: {
             formButtonPrimary: "bg-accent hover:bg-accent/90",
