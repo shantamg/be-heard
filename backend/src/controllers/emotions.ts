@@ -96,15 +96,21 @@ export async function recordEmotion(req: Request, res: Response): Promise<void> 
       orderBy: { stage: 'desc' },
     });
 
-    // Create emotional reading
-    const reading = await prisma.emotionalReading.create({
-      data: {
-        vesselId: vessel.id,
-        intensity,
-        context: context ?? null,
-        stage: progress?.stage ?? 0,
-      },
-    });
+    // Create emotional reading and update user's lastMoodIntensity
+    const [reading] = await prisma.$transaction([
+      prisma.emotionalReading.create({
+        data: {
+          vesselId: vessel.id,
+          intensity,
+          context: context ?? null,
+          stage: progress?.stage ?? 0,
+        },
+      }),
+      prisma.user.update({
+        where: { id: userId },
+        data: { lastMoodIntensity: intensity },
+      }),
+    ]);
 
     // Check if intervention is needed (intensity >= 8)
     const needsIntervention = intensity >= 8;

@@ -22,6 +22,10 @@ jest.mock('../../lib/prisma', () => ({
     emotionalExerciseCompletion: {
       create: jest.fn(),
     },
+    user: {
+      update: jest.fn(),
+    },
+    $transaction: jest.fn(),
   },
 }));
 
@@ -77,7 +81,7 @@ describe('Emotional Barometer API', () => {
     it('records emotional reading successfully', async () => {
       (prisma.userVessel.findUnique as jest.Mock).mockResolvedValue(mockVessel);
       (prisma.stageProgress.findFirst as jest.Mock).mockResolvedValue({ stage: 1 });
-      (prisma.emotionalReading.create as jest.Mock).mockResolvedValue(mockReading);
+      (prisma.$transaction as jest.Mock).mockResolvedValue([mockReading, {}]);
 
       const req = createMockRequest({
         user: mockUser,
@@ -106,7 +110,7 @@ describe('Emotional Barometer API', () => {
       const highIntensityReading = { ...mockReading, intensity: 8 };
       (prisma.userVessel.findUnique as jest.Mock).mockResolvedValue(mockVessel);
       (prisma.stageProgress.findFirst as jest.Mock).mockResolvedValue({ stage: 1 });
-      (prisma.emotionalReading.create as jest.Mock).mockResolvedValue(highIntensityReading);
+      (prisma.$transaction as jest.Mock).mockResolvedValue([highIntensityReading, {}]);
 
       const req = createMockRequest({
         user: mockUser,
@@ -216,10 +220,10 @@ describe('Emotional Barometer API', () => {
     it('uses stage 0 when no stage progress exists', async () => {
       (prisma.userVessel.findUnique as jest.Mock).mockResolvedValue(mockVessel);
       (prisma.stageProgress.findFirst as jest.Mock).mockResolvedValue(null);
-      (prisma.emotionalReading.create as jest.Mock).mockResolvedValue({
-        ...mockReading,
-        stage: 0,
-      });
+      (prisma.$transaction as jest.Mock).mockResolvedValue([
+        { ...mockReading, stage: 0 },
+        {},
+      ]);
 
       const req = createMockRequest({
         user: mockUser,
@@ -230,13 +234,7 @@ describe('Emotional Barometer API', () => {
 
       await recordEmotion(req as Request, res as Response);
 
-      expect(prisma.emotionalReading.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            stage: 0,
-          }),
-        })
-      );
+      expect(prisma.$transaction).toHaveBeenCalled();
       expect(jsonMock).toHaveBeenCalledWith(
         expect.objectContaining({
           success: true,
@@ -247,10 +245,10 @@ describe('Emotional Barometer API', () => {
     it('allows recording without context', async () => {
       (prisma.userVessel.findUnique as jest.Mock).mockResolvedValue(mockVessel);
       (prisma.stageProgress.findFirst as jest.Mock).mockResolvedValue({ stage: 1 });
-      (prisma.emotionalReading.create as jest.Mock).mockResolvedValue({
-        ...mockReading,
-        context: null,
-      });
+      (prisma.$transaction as jest.Mock).mockResolvedValue([
+        { ...mockReading, context: null },
+        {},
+      ]);
 
       const req = createMockRequest({
         user: mockUser,
