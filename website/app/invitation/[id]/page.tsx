@@ -282,35 +282,44 @@ function AuthRequiredState({
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-background p-6">
       <div className="text-center max-w-md mb-8">
-        <h1 className="text-2xl font-bold mb-3">You&apos;re Invited!</h1>
-        {inviterName && (
-          <p className="text-muted-foreground mb-2">
-            <span className="text-accent font-semibold">{inviterName}</span> has invited you to a conversation.
-          </p>
-        )}
-        <p className="text-muted-foreground text-sm">
-          Create an account or sign in to accept this invitation.
+        <h1 className="font-bold mb-3">
+          <span className="text-xl block mb-1">
+            {inviterName ? `${inviterName} has invited you to` : "You've been invited to"}
+          </span>
+          <span className="text-3xl block whitespace-nowrap">Meet Without Fear</span>
+        </h1>
+        <p className="text-muted-foreground">
+          A safe space for real conversations.
+        </p>
+        <p className="text-muted-foreground text-sm mt-2">
+          Sign in to begin.
         </p>
       </div>
 
       <SignIn
         routing="hash"
         appearance={{
+          variables: {
+            colorPrimary: "#10b981",
+          },
           elements: {
-            formButtonPrimary: "bg-accent hover:bg-accent/90",
-            card: "bg-card border border-border shadow-xl",
-            headerTitle: "text-foreground",
-            headerSubtitle: "text-muted-foreground",
-            socialButtonsBlockButton: "border-border hover:bg-card",
-            dividerLine: "bg-border",
-            dividerText: "text-muted-foreground",
-            formFieldLabel: "text-foreground",
-            formFieldInput: "bg-background border-border text-foreground",
-            footerActionLink: "text-accent hover:text-accent/80",
+            card: "bg-card border border-border shadow-xl py-6",
+            // Hide Clerk's header (we have our own above)
+            header: "hidden",
+            socialButtonsBlockButton: "border-border hover:bg-card text-foreground",
+            // Hide email form and divider (social-only login)
+            form: "hidden",
+            dividerRow: "hidden",
+            // Hide sign up link and footer
+            footerAction: "hidden",
+            footer: "hidden",
+          },
+          layout: {
+            socialButtonsPlacement: "top",
+            socialButtonsVariant: "blockButton",
           },
         }}
         forceRedirectUrl={`/invitation/${invitationId}`}
-        signUpForceRedirectUrl={`/invitation/${invitationId}`}
       />
     </main>
   );
