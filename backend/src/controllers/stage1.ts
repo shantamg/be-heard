@@ -234,11 +234,14 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
       console.warn('[sendMessage] Failed to embed user message:', err)
     );
 
-    // Get conversation history for context
+    // Get conversation history for context (only this user's messages and AI responses to them)
     const history = await prisma.message.findMany({
       where: {
         sessionId,
-        OR: [{ senderId: user.id }, { role: 'AI', senderId: null }],
+        OR: [
+          { senderId: user.id },
+          { role: 'AI', forUserId: user.id },
+        ],
       },
       orderBy: { timestamp: 'asc' },
       take: 20, // Limit context window
@@ -378,6 +381,7 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
       data: {
         sessionId,
         senderId: null,
+        forUserId: user.id, // Track which user this AI response is for (data isolation)
         role: 'AI',
         content: aiResponseContent,
         stage: currentStage,
@@ -606,6 +610,7 @@ Respond in JSON format:
           data: {
             sessionId,
             senderId: null,
+            forUserId: user.id, // Track which user this AI response is for (data isolation)
             role: 'AI',
             content: transitionContent,
             stage: 1, // Still Stage 1, but this is the transition message
@@ -725,13 +730,13 @@ export async function getConversationHistory(
       cursorCondition.timestamp = { gt: new Date(after) };
     }
 
-    // Get messages - only user's own messages and AI responses
+    // Get messages - only user's own messages and AI responses to them (data isolation)
     const messages = await prisma.message.findMany({
       where: {
         sessionId,
         OR: [
           { senderId: user.id },
-          { role: 'AI', senderId: null },
+          { role: 'AI', forUserId: user.id },
         ],
         ...cursorCondition,
       },
@@ -801,11 +806,14 @@ export async function getInitialMessage(
       return;
     }
 
-    // Check if there are already messages in this session for this user
+    // Check if there are already messages in this session for this user (data isolation)
     const existingMessages = await prisma.message.findFirst({
       where: {
         sessionId,
-        OR: [{ senderId: user.id }, { role: 'AI', senderId: null }],
+        OR: [
+          { senderId: user.id },
+          { role: 'AI', forUserId: user.id },
+        ],
       },
     });
 
@@ -892,6 +900,7 @@ export async function getInitialMessage(
       data: {
         sessionId,
         senderId: null,
+        forUserId: user.id, // Track which user this AI response is for (data isolation)
         role: 'AI',
         content: responseContent,
         stage: currentStage,

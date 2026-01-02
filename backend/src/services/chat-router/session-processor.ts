@@ -121,11 +121,14 @@ export async function processSessionMessage(
     console.warn('[SessionProcessor] Failed to embed user message:', err)
   );
 
-  // Get conversation history
+  // Get conversation history (only this user's messages and AI responses to them - data isolation)
   const history = await prisma.message.findMany({
     where: {
       sessionId,
-      OR: [{ senderId: userId }, { role: 'AI', senderId: null }],
+      OR: [
+        { senderId: userId },
+        { role: 'AI', forUserId: userId },
+      ],
     },
     orderBy: { timestamp: 'asc' },
     take: 20,
@@ -227,6 +230,7 @@ export async function processSessionMessage(
     data: {
       sessionId,
       senderId: null,
+      forUserId: userId, // Track which user this AI response is for (data isolation)
       role: 'AI',
       content: orchestratorResult.response,
       stage: currentStage,

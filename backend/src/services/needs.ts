@@ -169,13 +169,13 @@ export async function extractNeedsFromConversation(
     });
   }
 
-  // Get the user's conversation history from stages 1-2
+  // Get the user's conversation history from stages 1-2 (data isolation)
   const messages = await prisma.message.findMany({
     where: {
       sessionId,
       OR: [
         { senderId: userId },
-        { role: 'AI', senderId: null },
+        { role: 'AI', forUserId: userId },
       ],
       stage: { in: [1, 2] },
     },

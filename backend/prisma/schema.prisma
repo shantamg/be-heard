@@ -449,6 +449,7 @@ model Message {
   sessionId String
   sender    User?       @relation(fields: [senderId], references: [id], onDelete: SetNull)
   senderId  String? // null for AI messages
+  forUserId String? // Which user the AI was responding to (for data isolation)
   role      MessageRole
   content   String      @db.Text
   stage     Int
@@ -463,6 +464,7 @@ model Message {
 
   @@index([sessionId, timestamp])
   @@index([senderId])
+  @@index([forUserId])
 }
 
 enum MessageRole {

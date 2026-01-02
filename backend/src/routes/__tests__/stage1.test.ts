@@ -700,14 +700,14 @@ describe('Stage 1 API', () => {
 
       await getConversationHistory(req as Request, res as Response);
 
-      // Verify the query filters by user
+      // Verify the query filters by user (data isolation: only user's messages and AI responses TO them)
       expect(prisma.message.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             sessionId: mockSessionId,
             OR: expect.arrayContaining([
               expect.objectContaining({ senderId: mockUser.id }),
-              expect.objectContaining({ role: 'AI', senderId: null }),
+              expect.objectContaining({ role: 'AI', forUserId: mockUser.id }),
             ]),
           }),
         })

@@ -959,11 +959,14 @@ export async function confirmInvitationMessage(req: Request, res: Response): Pro
     });
 
     // Generate proactive transition message from AI
-    // Get conversation history from Stage 0 (invitation phase)
+    // Get conversation history from Stage 0 (invitation phase) - only this user's messages (data isolation)
     const history = await prisma.message.findMany({
       where: {
         sessionId,
-        OR: [{ senderId: user.id }, { role: 'AI', senderId: null }],
+        OR: [
+          { senderId: user.id },
+          { role: 'AI', forUserId: user.id },
+        ],
       },
       orderBy: { timestamp: 'asc' },
       take: 20,
@@ -1021,6 +1024,7 @@ export async function confirmInvitationMessage(req: Request, res: Response): Pro
         data: {
           sessionId,
           senderId: null,
+          forUserId: user.id, // Track which user this AI response is for (data isolation)
           role: 'AI',
           content: aiResponseContent,
           stage: 1,

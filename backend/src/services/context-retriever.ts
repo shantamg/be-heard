@@ -308,6 +308,7 @@ async function searchWithinSession(
 /**
  * Get full conversation history for current session.
  * No arbitrary limits - we trust the model's context window.
+ * Data isolation: only returns this user's messages and AI responses to them.
  */
 async function getSessionHistory(
   sessionId: string,
@@ -316,7 +317,10 @@ async function getSessionHistory(
   const messages = await prisma.message.findMany({
     where: {
       sessionId,
-      OR: [{ senderId: userId }, { role: 'AI' }],
+      OR: [
+        { senderId: userId },
+        { role: 'AI', forUserId: userId },
+      ],
     },
     orderBy: { timestamp: 'asc' },
     select: {

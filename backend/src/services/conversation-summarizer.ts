@@ -174,13 +174,16 @@ export async function updateSessionSummary(
   userId: string
 ): Promise<ConversationSummary | null> {
   try {
-    // Get session with messages and vessel
+    // Get session with messages and vessel (only this user's messages - data isolation)
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
       include: {
         messages: {
           where: {
-            OR: [{ senderId: userId }, { role: 'AI' }],
+            OR: [
+              { senderId: userId },
+              { role: 'AI', forUserId: userId },
+            ],
           },
           orderBy: { timestamp: 'asc' },
         },
