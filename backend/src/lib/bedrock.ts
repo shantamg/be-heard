@@ -309,7 +309,7 @@ export async function getSonnetResponse(
 /**
  * Embedding dimensions for vector storage.
  * Titan v2 supports 256, 512, or 1024 dimensions.
- * We use 1024 for best quality (matches schema: vector(1536) but Titan v2 max is 1024).
+ * We use 1024 for best quality - matches schema: vector(1024).
  */
 export const EMBEDDING_DIMENSIONS = 1024;
 

@@ -822,9 +822,10 @@ export async function getInitialMessage(
     // Get AI response
     let responseContent: string;
     try {
+      // AWS Bedrock requires conversations to start with a user message
       const aiResponse = await getSonnetResponse({
         systemPrompt: prompt,
-        messages: [],
+        messages: [{ role: 'user', content: 'Please generate an initial greeting.' }],
         maxTokens: 512,
       });
 

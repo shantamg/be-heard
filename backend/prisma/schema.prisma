@@ -155,7 +155,7 @@ model InnerWorkMessage {
   timestamp DateTime         @default(now())
 
   // Embedding for semantic search and cross-session retrieval
-  embedding Unsupported("vector(1536)")?
+  embedding Unsupported("vector(1024)")?
 
   @@index([sessionId, timestamp])
 }
@@ -215,7 +215,7 @@ model UserVessel {
   documents         UserDocument[]
 
   // Embedding for semantic search within user's own content
-  embedding Unsupported("vector(1536)")?
+  embedding Unsupported("vector(1024)")?
 
   @@unique([userId, sessionId])
   @@index([userId])
@@ -232,7 +232,7 @@ model UserEvent {
   timestamp    DateTime    @default(now())
 
   // Embedding for semantic search
-  embedding Unsupported("vector(1536)")?
+  embedding Unsupported("vector(1024)")?
 
   @@index([vesselId, timestamp])
 }
@@ -450,7 +450,7 @@ model Message {
   timestamp DateTime    @default(now())
 
   // Embedding for semantic search
-  embedding Unsupported("vector(1536)")?
+  embedding Unsupported("vector(1024)")?
 
   // Extracted memory references
   extractedNeeds    String[]
@@ -639,7 +639,7 @@ model GlobalLibraryItem {
   updatedAt   DateTime            @updatedAt
 
   // Embedding for semantic search
-  embedding Unsupported("vector(1536)")?
+  embedding Unsupported("vector(1024)")?
 
   // For user-contributed items only
   contributedBy       String? // User ID if contributed (anonymized in results)
