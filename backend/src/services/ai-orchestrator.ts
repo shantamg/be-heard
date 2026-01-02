@@ -39,6 +39,11 @@ import {
   countPatternEvidence,
 } from './surfacing-policy';
 import { DEFAULT_MEMORY_PREFERENCES, type MemoryPreferencesDTO } from '@meet-without-fear/shared';
+import {
+  buildBudgetedContext,
+  estimateTokens,
+  getRecommendedLimits,
+} from '../utils/token-budget';
 
 // ============================================================================
 // Types
@@ -219,7 +224,7 @@ export async function orchestrateResponse(
     }
   );
 
-  // Step 5: Get response from Sonnet
+  // Step 5: Get response from Sonnet with token budget management
   const formattedContextBundle = formatContextForPrompt(contextBundle);
 
   // Merge retrieved context with context bundle
@@ -234,10 +239,23 @@ export async function orchestrateResponse(
     }
   }
 
-  const messagesWithContext = buildMessagesWithContext(
+  // Apply token budget management to avoid exceeding context limits
+  const budgetedContext = buildBudgetedContext(
+    systemPrompt,
     context.conversationHistory,
-    context.userMessage,
     fullContext
+  );
+
+  if (budgetedContext.truncated > 0) {
+    console.log(
+      `[AI Orchestrator] Token budget applied: included ${budgetedContext.conversationMessages.length} of ${context.conversationHistory.length} messages, ${budgetedContext.truncated} truncated`
+    );
+  }
+
+  const messagesWithContext = buildMessagesWithContext(
+    budgetedContext.conversationMessages,
+    context.userMessage,
+    budgetedContext.retrievedContext
   );
 
   let response: string;
@@ -255,7 +273,7 @@ export async function orchestrateResponse(
     const sonnetResponse = await getSonnetResponse({
       systemPrompt,
       messages: messagesWithContext,
-      maxTokens: 2048,
+      maxTokens: 4096,
       // thinkingBudget: 1024, // Disabled - not supported on Bedrock Sonnet v2
     });
 
