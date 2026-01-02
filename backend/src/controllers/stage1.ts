@@ -129,11 +129,13 @@ export async function sendMessage(req: Request, res: Response): Promise<void> {
     }
 
     // Get user's current stage progress
+    // Include both IN_PROGRESS and GATE_PENDING statuses since users can still message
+    // while waiting for partner to complete a gate (e.g., after confirming feel-heard)
     let progress = await prisma.stageProgress.findFirst({
       where: {
         sessionId,
         userId: user.id,
-        status: 'IN_PROGRESS',
+        status: { in: ['IN_PROGRESS', 'GATE_PENDING'] },
       },
       orderBy: { stage: 'desc' },
     });

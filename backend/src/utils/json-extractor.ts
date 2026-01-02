@@ -19,11 +19,50 @@ export interface ExtractJsonOptions {
 // ============================================================================
 
 /**
+ * Escape unescaped newlines inside JSON string values.
+ * LLMs often output literal newlines instead of \n in strings.
+ *
+ * Uses a state machine approach to properly handle nested quotes and escapes.
+ */
+function escapeNewlinesInStrings(jsonStr: string): string {
+  let result = '';
+  let inString = false;
+  let i = 0;
+
+  while (i < jsonStr.length) {
+    const char = jsonStr[i];
+    const prevChar = i > 0 ? jsonStr[i - 1] : '';
+
+    if (char === '"' && prevChar !== '\\') {
+      // Toggle string state on unescaped quotes
+      inString = !inString;
+      result += char;
+    } else if (inString && (char === '\n' || char === '\r')) {
+      // Replace literal newlines inside strings with escaped versions
+      if (char === '\r' && jsonStr[i + 1] === '\n') {
+        result += '\\n';
+        i++; // Skip the \n that follows \r
+      } else {
+        result += '\\n';
+      }
+    } else {
+      result += char;
+    }
+    i++;
+  }
+
+  return result;
+}
+
+/**
  * Clean and parse JSON string, handling common LLM quirks.
  */
 function parseCleanJson(jsonStr: string): unknown {
-  // Replace undefined with null to make it valid JSON
-  const cleanedJson = jsonStr
+  // Step 1: Escape unescaped newlines in string values
+  let cleanedJson = escapeNewlinesInStrings(jsonStr);
+
+  // Step 2: Handle other common LLM quirks
+  cleanedJson = cleanedJson
     .replace(/:\s*undefined\b/g, ': null')
     .replace(/,\s*}/g, '}')  // Remove trailing commas before }
     .replace(/,\s*]/g, ']'); // Remove trailing commas before ]
