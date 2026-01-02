@@ -16,6 +16,13 @@ import { prisma } from '../lib/prisma';
 import { getEmbedding, getHaikuJson } from '../lib/bedrock';
 import { MemoryIntentResult } from './memory-intent';
 import { MemoryPreferencesDTO } from '@meet-without-fear/shared';
+import {
+  getTimeContext,
+  formatMessageWithTimeContext,
+  getRecencyGuidance,
+  type TimeContext,
+} from '../utils/time-language';
+import { CONTEXT_LIMITS } from '../utils/token-budget';
 
 // ============================================================================
 // Types
@@ -39,6 +46,9 @@ export interface RetrievedContext {
 
   /** Summary of what was retrieved */
   retrievalSummary: string;
+
+  /** AI guidance for how to reference retrieved content based on recency */
+  recencyGuidance?: string;
 }
 
 export interface ConversationMessage {
@@ -56,6 +66,8 @@ export interface RelevantMessage {
   similarity: number;
   timestamp: string;
   role: 'user' | 'assistant';
+  /** Time context for this message (how long ago, phrasing) */
+  timeContext?: TimeContext;
 }
 
 export interface DetectedReference {
@@ -216,16 +228,20 @@ async function searchAcrossSessions(
     `;
   }
 
-  // Convert distance to similarity and filter
+  // Convert distance to similarity, add time context, and filter
   return results
-    .map((r) => ({
-      content: r.content,
-      sessionId: r.session_id,
-      partnerName: r.partner_name,
-      similarity: 1 - r.distance / 2,
-      timestamp: r.timestamp.toISOString(),
-      role: r.role === 'USER' ? 'user' as const : 'assistant' as const,
-    }))
+    .map((r) => {
+      const timestamp = r.timestamp.toISOString();
+      return {
+        content: r.content,
+        sessionId: r.session_id,
+        partnerName: r.partner_name,
+        similarity: 1 - r.distance / 2,
+        timestamp,
+        role: r.role === 'USER' ? 'user' as const : 'assistant' as const,
+        timeContext: getTimeContext(timestamp),
+      };
+    })
     .filter((r) => r.similarity >= threshold)
     .slice(0, limit);
 }
@@ -269,14 +285,18 @@ async function searchWithinSession(
   `;
 
   return results
-    .map((r) => ({
-      content: r.content,
-      sessionId,
-      partnerName: '', // Will be filled by caller if needed
-      similarity: 1 - r.distance / 2,
-      timestamp: r.timestamp.toISOString(),
-      role: r.role === 'USER' ? 'user' as const : 'assistant' as const,
-    }))
+    .map((r) => {
+      const timestamp = r.timestamp.toISOString();
+      return {
+        content: r.content,
+        sessionId,
+        partnerName: '', // Will be filled by caller if needed
+        similarity: 1 - r.distance / 2,
+        timestamp,
+        role: r.role === 'USER' ? 'user' as const : 'assistant' as const,
+        timeContext: getTimeContext(timestamp),
+      };
+    })
     .filter((r) => r.similarity >= threshold)
     .slice(0, limit);
 }
@@ -510,6 +530,15 @@ export async function retrieveContext(options: RetrievalOptions): Promise<Retrie
   const duration = Date.now() - startTime;
   console.log(`[ContextRetriever] Retrieved in ${duration}ms: ${parts.join(', ') || 'no additional context'}`);
 
+  // Generate recency guidance for retrieved content
+  const allTimestamps = [
+    ...relevantFromOtherSessions.map((m) => m.timestamp),
+    ...relevantFromCurrentSession.map((m) => m.timestamp),
+  ];
+  const recencyGuidance = allTimestamps.length > 0
+    ? getRecencyGuidance(allTimestamps)
+    : undefined;
+
   return {
     conversationHistory,
     relevantFromOtherSessions,
@@ -517,6 +546,7 @@ export async function retrieveContext(options: RetrievalOptions): Promise<Retrie
     preSessionMessages,
     detectedReferences: referenceDetection.references,
     retrievalSummary: parts.join('; ') || 'No additional context retrieved',
+    recencyGuidance,
   };
 }
 
@@ -526,39 +556,60 @@ export async function retrieveContext(options: RetrievalOptions): Promise<Retrie
 
 /**
  * Format retrieved context for injection into prompts.
+ * Uses natural time language instead of formulaic headers.
  */
 export function formatRetrievedContext(context: RetrievedContext): string {
   const sections: string[] = [];
 
+  // Add recency guidance at the top if we have retrieved content
+  if (context.recencyGuidance && (
+    context.relevantFromOtherSessions.length > 0 ||
+    context.relevantFromCurrentSession.length > 0
+  )) {
+    sections.push(`[MEMORY CONTEXT GUIDANCE: ${context.recencyGuidance}]`);
+  }
+
   // Pre-session messages (if any and not in a session)
   if (context.preSessionMessages.length > 0) {
-    sections.push('=== Earlier in this conversation ===');
-    for (const msg of context.preSessionMessages.slice(-10)) {
+    sections.push('\n[Earlier in this conversation]');
+    for (const msg of context.preSessionMessages.slice(-CONTEXT_LIMITS.maxPreSessionMessages)) {
       sections.push(`${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`);
     }
   }
 
-  // Relevant messages from other sessions
+  // Relevant messages from other sessions - with time context
   if (context.relevantFromOtherSessions.length > 0) {
-    sections.push('\n=== Related content from other sessions ===');
+    sections.push('\n[Related content from previous sessions]');
     for (const msg of context.relevantFromOtherSessions) {
-      const when = new Date(msg.timestamp).toLocaleDateString();
-      sections.push(`[Session with ${msg.partnerName}, ${when}]`);
+      // Use the time context for natural phrasing
+      const timePhrase = msg.timeContext?.phrase ?? new Date(msg.timestamp).toLocaleDateString();
+      const useMemoryLanguage = msg.timeContext?.useRememberingLanguage ?? true;
+
+      if (useMemoryLanguage) {
+        sections.push(`[Session with ${msg.partnerName}, ${timePhrase}]`);
+      } else {
+        // For very recent content, minimal framing
+        sections.push(`[${msg.partnerName}]`);
+      }
       sections.push(`${msg.role === 'user' ? 'User' : 'AI'}: ${msg.content}`);
     }
   }
 
-  // Relevant from current session (older messages)
+  // Relevant from current session (older messages) - with time context
   if (context.relevantFromCurrentSession.length > 0) {
-    sections.push('\n=== Related content from earlier ===');
+    sections.push('\n[Related content from earlier in this session]');
     for (const msg of context.relevantFromCurrentSession) {
+      const timePhrase = msg.timeContext?.phrase;
+      if (timePhrase && msg.timeContext?.useRememberingLanguage) {
+        sections.push(`[${timePhrase}]`);
+      }
       sections.push(`${msg.role === 'user' ? 'User' : 'AI'}: ${msg.content}`);
     }
   }
 
   // Detected references (for AI awareness)
   if (context.detectedReferences.length > 0) {
-    sections.push('\n=== Detected references ===');
+    sections.push('\n[Detected references in user message]');
     for (const ref of context.detectedReferences) {
       sections.push(`- ${ref.type}: "${ref.text}" (${ref.confidence} confidence)`);
     }
