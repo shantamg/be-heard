@@ -176,11 +176,28 @@ export function usePendingInvitation() {
 }
 
 /**
- * Generate an invitation deep link URL
+ * Get the website base URL for sharing invitation links.
+ * In development: http://localhost:3001
+ * In production: https://meetwithoutfear.com
+ */
+function getWebsiteUrl(): string {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Constants = require('expo-constants').default;
+  return (
+    Constants.expoConfig?.extra?.websiteUrl ||
+    process.env.EXPO_PUBLIC_WEBSITE_URL ||
+    (__DEV__ ? 'http://localhost:3001' : 'https://meetwithoutfear.com')
+  );
+}
+
+/**
+ * Generate an invitation link URL for sharing.
+ * Uses website URLs (not deep links) so recipients can open in browser,
+ * then log in/sign up before being redirected to the app.
  */
 export function createInvitationLink(invitationId: string): string {
-  // Use Linking.createURL for proper scheme handling
-  return Linking.createURL(`invitation/${invitationId}`);
+  const websiteUrl = getWebsiteUrl();
+  return `${websiteUrl}/invitation/${invitationId}`;
 }
 
 // ============================================================================
