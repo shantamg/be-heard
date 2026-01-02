@@ -487,10 +487,11 @@ export async function confirmFeelHeard(
       return;
     }
 
-    // Build gates satisfied data
+    // Build gates satisfied data (use names that match Stage1Gates interface)
     const gatesSatisfied = {
-      feelHeard: confirmed,
-      confirmedAt: new Date().toISOString(),
+      feelHeardConfirmed: confirmed,
+      feelHeardConfirmedAt: new Date().toISOString(),
+      finalEmotionalReading: null, // Can be updated later with final barometer reading
       ...(feedback ? { feedback } : {}),
     } satisfies Prisma.InputJsonValue;
 
@@ -558,7 +559,7 @@ Respond in JSON format:
 
         const aiResponse = await getSonnetResponse({
           systemPrompt: transitionPrompt,
-          messages: [],
+          messages: [{ role: 'user', content: 'Generate the transition message.' }],
           maxTokens: 512,
         });
 

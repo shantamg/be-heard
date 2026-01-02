@@ -9,7 +9,7 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 import { View, Text, ActivityIndicator, TouchableOpacity, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stage, MessageRole, StrategyPhase, SessionStatus, Stage1Gates } from '@meet-without-fear/shared';
+import { Stage, MessageRole, StrategyPhase, SessionStatus } from '@meet-without-fear/shared';
 
 import { ChatInterface, ChatMessage, ChatIndicatorItem } from '../components/ChatInterface';
 import { SessionChatHeader } from '../components/SessionChatHeader';
@@ -35,7 +35,7 @@ import { RefineInvitationDrawer } from '../components/RefineInvitationDrawer';
 
 import { useUnifiedSession, InlineChatCard } from '../hooks/useUnifiedSession';
 import { createInvitationLink } from '../hooks/useInvitation';
-import { useAuth } from '../hooks/useAuth';
+import { useAuth, useUpdateMood } from '../hooks/useAuth';
 import { createStyles } from '../theme/styled';
 
 // ============================================================================
@@ -78,7 +78,8 @@ export function UnifiedSessionScreen({
   onStageComplete,
 }: UnifiedSessionScreenProps) {
   const styles = useStyles();
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
+  const { mutate: updateMood } = useUpdateMood();
 
   const {
     // Loading
@@ -91,12 +92,14 @@ export function UnifiedSessionScreen({
     partnerName,
     partnerProgress,
     myProgress,
+    milestones,
 
     // Messages
     messages,
     inlineCards,
     isSending,
     isSigningCompact,
+    isConfirmingFeelHeard,
     fetchMoreMessages,
     hasMoreMessages,
     isFetchingMoreMessages,
@@ -135,6 +138,7 @@ export function UnifiedSessionScreen({
     // Stage-specific actions
     handleBarometerChange,
     handleConfirmFeelHeard,
+    handleDismissFeelHeard,
     handleSignCompact,
     handleConfirmInvitationMessage,
     handleSaveEmpathyDraft,
@@ -222,21 +226,17 @@ export function UnifiedSessionScreen({
       });
     }
     // Show "Fully Heard" indicator if user confirmed they feel heard (Stage 1 completion)
-    // The timestamp is stored in the gates data and persists across session reloads
-    const gates = myProgress?.gates;
-    if (gates && gates.stage === Stage.WITNESS) {
-      const stage1Gates = gates as Stage1Gates;
-      if (stage1Gates.feelHeardConfirmedAt) {
-        items.push({
-          type: 'indicator',
-          indicatorType: 'feel-heard',
-          id: 'feel-heard',
-          timestamp: stage1Gates.feelHeardConfirmedAt,
-        });
-      }
+    // Milestones persist across stage transitions so this shows even after advancing to Stage 2+
+    if (milestones?.feelHeardConfirmedAt) {
+      items.push({
+        type: 'indicator',
+        indicatorType: 'feel-heard',
+        id: 'feel-heard',
+        timestamp: milestones.feelHeardConfirmedAt,
+      });
     }
     return items;
-  }, [invitationConfirmed, isConfirmingInvitation, invitation?.messageConfirmedAt, optimisticConfirmTimestamp, myProgress?.gates]);
+  }, [invitationConfirmed, isConfirmingInvitation, invitation?.messageConfirmedAt, optimisticConfirmTimestamp, milestones?.feelHeardConfirmedAt]);
 
   // -------------------------------------------------------------------------
   // Effective Stage (accounts for compact signed but stage not yet updated)
@@ -270,7 +270,7 @@ export function UnifiedSessionScreen({
                 onConfirm={() => {
                   handleConfirmFeelHeard(() => onStageComplete?.(Stage.WITNESS));
                 }}
-                onContinue={() => dismissCard(card.id)}
+                onContinue={handleDismissFeelHeard}
               />
             </View>
           );
@@ -783,7 +783,7 @@ export function UnifiedSessionScreen({
           messages={displayMessages}
           indicators={indicators}
           onSendMessage={sendMessage}
-          isLoading={isSending || isConfirmingInvitation || isFetchingInitialMessage}
+          isLoading={isSending || isConfirmingInvitation || isConfirmingFeelHeard || isFetchingInitialMessage}
           showEmotionSlider={effectiveStage === Stage.WITNESS && !isInvitationPhase && !isRefiningInvitation}
           emotionValue={barometerValue}
           onEmotionChange={handleBarometerChange}
@@ -892,8 +892,13 @@ export function UnifiedSessionScreen({
       {/* Session Entry Mood Check - asks how user is feeling on session entry */}
       <SessionEntryMoodCheck
         visible={shouldShowMoodCheck}
-        initialValue={barometerValue}
+        initialValue={user?.lastMoodIntensity ?? 5}
         onComplete={(intensity) => {
+          // Save to user profile (persists across sessions)
+          updateMood({ intensity });
+          // Update local user state immediately so next session uses it
+          updateUser({ lastMoodIntensity: intensity });
+          // Also update session-specific barometer
           handleBarometerChange(intensity);
           setHasCompletedMoodCheck(true);
         }}

@@ -412,7 +412,7 @@ export function useUnifiedSession(sessionId: string | undefined) {
   // -------------------------------------------------------------------------
   const { mutate: sendMessage, isPending: isSending } = useSendMessage();
   const { mutate: recordEmotion } = useRecordEmotion();
-  const { mutate: confirmHeard } = useConfirmFeelHeard();
+  const { mutate: confirmHeard, isPending: isConfirmingFeelHeard } = useConfirmFeelHeard();
   const { mutate: signCompact, isPending: isSigningCompact } = useSignCompact();
   const { mutate: confirmInvitationMessage } = useConfirmInvitationMessage();
   const { mutate: advanceStage } = useAdvanceStage();
@@ -474,14 +474,9 @@ export function useUnifiedSession(sessionId: string | undefined) {
   // Count user messages for barometer trigger
   const userMessageCount = messages.filter((m) => m.role === MessageRole.USER).length;
 
-  // Fallback: Also check text for backward compatibility
-  const lastAiMessage = [...messages].reverse().find((m) => m.role === MessageRole.AI);
-  const textBasedHeardDetection =
-    lastAiMessage?.content.toLowerCase().includes('feel heard') ||
-    lastAiMessage?.content.toLowerCase().includes('fully heard');
-
-  // Use AI recommendation OR fallback text detection
-  const isAskingAboutHeard = aiRecommendsFeelHeardCheck || textBasedHeardDetection;
+  // Show feel-heard UI when AI sets offerFeelHeardCheck: true in JSON response
+  // Once true, stays true until user confirms or dismisses (sticky state)
+  const showFeelHeardConfirmation = aiRecommendsFeelHeardCheck;
 
   // Needs confirmation state
   const needs = useMemo(() => needsData?.needs ?? [], [needsData?.needs]);
@@ -683,7 +678,7 @@ export function useUnifiedSession(sessionId: string | undefined) {
       }
 
       // Feel heard confirmation (only show if not already confirmed)
-      if (isAskingAboutHeard && !state.showFinalCheck && !state.showCoolingSuggestion && !state.hasConfirmedHeard) {
+      if (showFeelHeardConfirmation && !state.showFinalCheck && !state.showCoolingSuggestion && !state.hasConfirmedHeard) {
         cards.push({
           id: 'feel-heard-confirmation',
           type: 'feel-heard-confirmation',
@@ -830,7 +825,7 @@ export function useUnifiedSession(sessionId: string | undefined) {
   }, [
     currentStage,
     state,
-    isAskingAboutHeard,
+    showFeelHeardConfirmation,
     empathyDraftData,
     partnerEmpathyData,
     needs,
@@ -880,8 +875,10 @@ export function useUnifiedSession(sessionId: string | undefined) {
         {
           onSuccess: (data) => {
             // Update feel-heard check recommendation from AI
-            if (data.offerFeelHeardCheck !== undefined) {
-              setAiRecommendsFeelHeardCheck(data.offerFeelHeardCheck);
+            // Only set to true - once AI recommends feel-heard check, keep it sticky
+            // until user confirms or dismisses (prevents flashing card on/off)
+            if (data.offerFeelHeardCheck === true) {
+              setAiRecommendsFeelHeardCheck(true);
             }
             // Capture live invitation message from AI (for refinement flow)
             if (data.invitationMessage !== undefined) {
@@ -920,10 +917,18 @@ export function useUnifiedSession(sessionId: string | undefined) {
       if (!sessionId) return;
       // Mark as confirmed to prevent looping
       dispatch({ type: 'SET_HAS_CONFIRMED_HEARD', payload: true });
+      // Reset the AI recommendation state (cleanup)
+      setAiRecommendsFeelHeardCheck(false);
       confirmHeard({ sessionId, confirmed: true }, { onSuccess });
     },
     [sessionId, confirmHeard]
   );
+
+  // Dismiss feel-heard card without confirming (user clicks "Not yet")
+  // Resets the AI recommendation so it can be offered again later
+  const handleDismissFeelHeard = useCallback(() => {
+    setAiRecommendsFeelHeardCheck(false);
+  }, []);
 
   const handleSignCompact = useCallback(
     (onSuccess?: () => void) => {
@@ -1095,12 +1100,14 @@ export function useUnifiedSession(sessionId: string | undefined) {
     myProgress,
     canAdvance,
     gates: myProgress?.gates,
+    milestones: progressData?.milestones,
 
     // Messages and cards
     messages,
     inlineCards,
     isSending,
     isSigningCompact,
+    isConfirmingFeelHeard,
 
     // Pagination for loading older messages
     fetchMoreMessages: fetchNextPage,
@@ -1157,6 +1164,7 @@ export function useUnifiedSession(sessionId: string | undefined) {
     // Stage-specific actions
     handleBarometerChange,
     handleConfirmFeelHeard,
+    handleDismissFeelHeard,
     handleSignCompact,
     handleConfirmInvitationMessage,
     handleSaveEmpathyDraft,

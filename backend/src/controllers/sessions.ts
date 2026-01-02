@@ -311,6 +311,11 @@ export async function getProgress(req: Request, res: Response): Promise<void> {
       .filter((sp) => sp.userId === user.id)
       .sort((a, b) => b.stage - a.stage)[0];
 
+    // Get user's Stage 1 progress for milestone tracking (feelHeardConfirmedAt)
+    const myStage1Record = session.stageProgress.find(
+      (sp) => sp.userId === user.id && sp.stage === 1
+    );
+
     // Get partner's latest stage progress
     const partnerProgressRecord = partnerId
       ? session.stageProgress
@@ -347,10 +352,19 @@ export async function getProgress(req: Request, res: Response): Promise<void> {
         }
       : defaultProgress;
 
+    // Extract milestones from stage progress records
+    const stage1Gates = myStage1Record?.gatesSatisfied as {
+      feelHeardConfirmedAt?: string;
+    } | null;
+    const milestones = {
+      feelHeardConfirmedAt: stage1Gates?.feelHeardConfirmedAt ?? null,
+    };
+
     successResponse(res, {
       myProgress,
       partnerProgress,
       sessionStatus: session.status,
+      milestones,
     });
   } catch (error) {
     console.error('[getProgress] Error:', error);
@@ -481,7 +495,7 @@ export async function resolveSession(req: Request, res: Response): Promise<void>
  */
 const STAGE_GATES: Record<number, string[]> = {
   0: ['compactSigned'],
-  1: ['feelHeard'],
+  1: ['feelHeardConfirmed'],
   2: ['empathyValidated'],
   3: ['needsConfirmed', 'needsShared', 'commonGroundConfirmed'],
   4: ['rankingSubmitted', 'agreementCreated'],

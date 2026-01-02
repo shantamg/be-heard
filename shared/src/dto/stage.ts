@@ -102,12 +102,18 @@ export enum StageBlockedReason {
 // Stage Progress (API Responses)
 // ============================================================================
 
+/** Milestone timestamps that persist across stage transitions */
+export interface SessionMilestonesDTO {
+  feelHeardConfirmedAt: string | null;
+}
+
 export interface GetProgressResponse {
   sessionId: string;
   myProgress: StageProgressDetailDTO;
   partnerProgress: PartnerStageStatusDTO;
   canAdvance: boolean;
   advanceBlockedReason?: StageBlockedReason;
+  milestones?: SessionMilestonesDTO;
 }
 
 // ============================================================================

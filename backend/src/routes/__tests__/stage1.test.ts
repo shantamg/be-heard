@@ -436,7 +436,7 @@ describe('Stage 1 API', () => {
           },
           data: expect.objectContaining({
             gatesSatisfied: expect.objectContaining({
-              feelHeard: true,
+              feelHeardConfirmed: true,
             }),
           }),
         })
