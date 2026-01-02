@@ -172,6 +172,8 @@ export function useRealtime(config: RealtimeConfig): RealtimeState & RealtimeAct
 
     try {
       // Create real Ably client with token-based authentication
+      // Note: Don't set clientId here - Ably will use the clientId from the token
+      // Setting it explicitly can cause mismatch errors if the token is cached
       const ably = new Ably.Realtime({
         authCallback: async (_, callback) => {
           console.log('[Realtime] Auth callback triggered, fetching token...');
@@ -189,7 +191,6 @@ export function useRealtime(config: RealtimeConfig): RealtimeState & RealtimeAct
             callback(err instanceof Error ? err.message : 'Token fetch failed', null);
           }
         },
-        clientId: user.id,
         autoConnect: true,
       });
       ablyRef.current = ably;
