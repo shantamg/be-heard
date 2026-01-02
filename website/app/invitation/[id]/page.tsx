@@ -270,6 +270,8 @@ function DeclinedState({ inviterName }: { inviterName: string | null }) {
   );
 }
 
+const PENDING_INVITATION_KEY = "pending_invitation_id";
+
 function AuthRequiredState({
   invitation,
   invitationId,
@@ -278,6 +280,11 @@ function AuthRequiredState({
   invitationId: string;
 }) {
   const inviterName = invitation?.invitedBy.name;
+
+  // Store invitation ID before sign-in so we can redirect back after OAuth
+  useEffect(() => {
+    sessionStorage.setItem(PENDING_INVITATION_KEY, invitationId);
+  }, [invitationId]);
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-background p-6">
