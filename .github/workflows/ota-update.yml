@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # eas-cli reads the latest commit subject as a default message.
           fetch-depth: 1
@@ -60,7 +60,7 @@ jobs:
         run: npm ci
 
       - name: Setup EAS
-        uses: expo/expo-github-action@v8
+        uses: expo/expo-github-action@v9
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
