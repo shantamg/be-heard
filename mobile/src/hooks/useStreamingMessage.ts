@@ -5,7 +5,7 @@
  * Uses react-native-sse for proper SSE support in React Native.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useQueryClient, InfiniteData } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import EventSource from 'react-native-sse';
@@ -142,6 +142,25 @@ export function useStreamingMessage(
   const SOFT_RECOVERY_TIMEOUT = 15000; // 15 seconds
   const HARD_STREAM_TIMEOUT = 90000; // 90 seconds
   const reconciliationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Unmount cleanup: an in-flight stream must not outlive the component.
+  // Closes the EventSource and clears every pending timer so no socket,
+  // timer, or stale identity alias survives (Phase 4 exit criterion; this
+  // was a real leak before the chat-modernization work).
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      for (const timerRef of [fallbackTimerRef, hardTimeoutTimerRef, reconciliationTimerRef, pendingUpdateRef]) {
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+      }
+    };
+  }, []);
 
   /**
    * Add a message to the cache

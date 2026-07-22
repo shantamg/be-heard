@@ -437,3 +437,32 @@ describe('useStreamingMessage characterization', () => {
     queryClient.clear();
   });
 });
+
+describe('useStreamingMessage unmount cleanup (defect fix)', () => {
+  it('closes the transport and clears all timers when the component unmounts mid-stream', async () => {
+    const queryClient = createQueryClient();
+    const { result, unmount } = renderHook(() => useStreamingMessage(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await act(async () => {
+      await result.current.sendMessage({
+        sessionId: SESSION_ID,
+        content: 'in-flight at unmount',
+        currentStage: Stage.WITNESS,
+      });
+    });
+    const es = mockEventSourceInstances[0];
+    act(() => {
+      emit(es, 'chunk', { text: 'partial' }); // schedules the throttle timer
+    });
+
+    unmount();
+
+    // No socket, no timers survive the unmount.
+    expect(es.close).toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(0);
+
+    queryClient.clear();
+  });
+});
