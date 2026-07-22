@@ -18,7 +18,7 @@ import {
   type StreamMetadata,
   type StreamEventName,
 } from '@meet-without-fear/shared';
-import { messageKeys, sessionKeys, stageKeys } from './queryKeys';
+import { messageKeys } from './queryKeys';
 import { getPersistedMessageRefreshQueryKeys } from '../utils/realtimeInvalidation';
 import { bridgeAnimatedId } from '../utils/animationBridge';
 import {
@@ -38,9 +38,12 @@ import { createStreamTimers } from '../lib/chat/streamTimers';
 import {
   hardTimeoutInvalidationKeys,
   softTimeoutInvalidationKeys,
-  successInvalidationKeys,
   textCompleteInvalidationKeys,
 } from '../lib/chat/streamInvalidation';
+import {
+  metadataInvalidationKeys,
+  streamMetadataCacheWrites,
+} from '../lib/chat/streamMetadataCache';
 
 // ============================================================================
 // Types
@@ -276,81 +279,23 @@ export function useStreamingMessage(
    */
   const handleMetadata = useCallback(
     (sessionId: string, metadata: StreamMetadata) => {
-      // Update session state cache for feel-heard check
-      // Must update nested path: progress.myProgress.gatesSatisfied.feelHeardCheckOffered
-      if (metadata.offerFeelHeardCheck) {
-        queryClient.setQueryData(
-          sessionKeys.state(sessionId),
-          (old: Record<string, unknown> | undefined) => {
-            if (!old) return old;
-            const progress = old.progress as Record<string, unknown> | undefined;
-            const myProgress = progress?.myProgress as Record<string, unknown> | undefined;
-            const gates = (myProgress?.gatesSatisfied as Record<string, unknown>) ?? {};
-            return {
-              ...old,
-              progress: {
-                ...progress,
-                myProgress: {
-                  ...myProgress,
-                  gatesSatisfied: {
-                    ...gates,
-                    feelHeardCheckOffered: true,
-                  },
-                },
-              },
-            };
-          }
-        );
+      // Direct writes first, so panels open while text is still streaming.
+      for (const { queryKey, update } of streamMetadataCacheWrites(sessionId, metadata)) {
+        queryClient.setQueryData(queryKey, update);
       }
 
-      // Update empathy draft cache (must use stageKeys to match useEmpathyDraft reader)
-      if (metadata.proposedEmpathyStatement) {
-        queryClient.setQueryData(
-          stageKeys.empathyDraft(sessionId),
-          (old: Record<string, unknown> | undefined) => ({
-            ...old,
-            draft: {
-              ...(old as Record<string, unknown>)?.draft as Record<string, unknown> | undefined,
-              content: metadata.proposedEmpathyStatement,
-              readyToShare: false,
-            },
-            canConsent: true,
-            alreadyConsented: false,
-          })
-        );
-      }
-
-      if (metadata.proposedNeeds && metadata.proposedNeeds.length > 0) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-        queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
-      }
-
-      if (
-        metadata.stage4Proposals ||
-        metadata.stage4WalkthroughAction ||
-        metadata.stage4Capture
-      ) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.stage4(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.strategies(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.agreements(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-      }
-
-      // NOTE: We intentionally avoid broad invalidation here.
-      // Invalidating sessionKeys.state or other queries during streaming causes race conditions:
-      // - Optimistic updates (e.g., invitation.messageConfirmedAt) get overwritten
-      // - UI elements (indicators, messages) briefly disappear during refetch
-      // - The cache-first pattern is violated, causing visual glitches
+      // Then the narrow refetch set, for state only the server can produce.
       //
-      // Instead, most updates are done via setQueryData above. Stage 3 needs are
-      // an exception because the structured card is persisted server-side.
-      // If fresh data is needed, the mutation's onSuccess handler should handle it,
-      // or the component can trigger a refetch on mount.
+      // Broad invalidation here would be a bug, not a convenience: it races the
+      // optimistic writes (invitation.messageConfirmedAt gets overwritten),
+      // makes indicators and messages blink out during refetch, and breaks the
+      // cache-first contract. Anything writable directly is written above;
+      // see streamInvalidation.ts for what genuinely needs the server.
+      invalidateKeys(metadataInvalidationKeys(sessionId, metadata));
 
-      // Call the onMetadata callback if provided
       onMetadata?.(sessionId, metadata);
     },
-    [queryClient, onMetadata]
+    [queryClient, invalidateKeys, onMetadata]
   );
 
   /**
