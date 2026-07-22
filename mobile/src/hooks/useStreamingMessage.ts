@@ -8,15 +8,12 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import Constants from 'expo-constants';
-import EventSource from 'react-native-sse';
 import { getAuthToken, isE2EAuthMode, getE2EAuthHeaders } from '../lib/api';
 import {
   MessageDTO,
   MessageRole,
   Stage,
-  parseStreamEventData,
   type StreamMetadata,
-  type StreamEventName,
 } from '@meet-without-fear/shared';
 import { messageKeys } from './queryKeys';
 import { getPersistedMessageRefreshQueryKeys } from '../utils/realtimeInvalidation';
@@ -44,6 +41,10 @@ import {
   metadataInvalidationKeys,
   streamMetadataCacheWrites,
 } from '../lib/chat/streamMetadataCache';
+import {
+  openStreamTransport,
+  type StreamTransport,
+} from '../lib/chat/streamTransport';
 
 // ============================================================================
 // Types
@@ -129,7 +130,7 @@ const RECONCILIATION_REFETCH_DELAY = 1200;
  * - Real-time text chunk updates for AI message
  * - Metadata handling from AI tool calls
  * - Error handling with retry support
- * - EventSource for cancellation
+ * - Cancellable transport
  *
  * @param options - Optional callbacks for metadata, error, and completion
  */
@@ -161,7 +162,7 @@ export function useStreamingMessage(
   const sendGenerationRef = useRef(0);
 
   // Refs for cleanup and retry
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const transportRef = useRef<StreamTransport | null>(null);
   const lastParamsRef = useRef<SendStreamingMessageParams | null>(null);
 
   // Ref to track accumulated text for AI message updates
@@ -182,7 +183,7 @@ export function useStreamingMessage(
   const timers = useMemo(() => createStreamTimers(), []);
 
   // Unmount cleanup: an in-flight stream must not outlive the component.
-  // Closes the EventSource and clears every pending timer so no socket,
+  // Closes the transport and clears every pending timer so no socket,
   // timer, or stale identity alias survives (Phase 4 exit criterion; this
   // was a real leak before the chat-modernization work).
   //
@@ -195,9 +196,9 @@ export function useStreamingMessage(
     return () => {
       isMountedRef.current = false;
       sendGenerationRef.current += 1;
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+      if (transportRef.current) {
+        transportRef.current.close();
+        transportRef.current = null;
       }
       timers.clearAll();
     };
@@ -313,10 +314,10 @@ export function useStreamingMessage(
       // Store params for retry
       lastParamsRef.current = params;
 
-      // Close any existing EventSource
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+      // Close any existing transport
+      if (transportRef.current) {
+        transportRef.current.close();
+        transportRef.current = null;
       }
 
       // Reset state
@@ -370,47 +371,6 @@ export function useStreamingMessage(
           return;
         }
 
-        const url = `${API_BASE_URL}/sessions/${sessionId}/messages/stream`;
-
-        // Create EventSource with POST method
-        const es = new EventSource<StreamEventName>(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...authHeaders,
-          },
-          body: JSON.stringify({ content, refiningNeedId: refiningNeedId ?? undefined }),
-          pollingInterval: 0, // Disable polling, use SSE
-        });
-
-        eventSourceRef.current = es;
-
-        // Start a soft recovery timer for slow streams. Some model calls take
-        // longer than 15s before the first visible token; do not close the SSE
-        // connection here or the final response can be lost after it persists.
-        timers.set(
-          'softRecovery',
-          () => {
-            if (!eventSourceRef.current) return;
-            console.warn('[useStreamingMessage] 15s soft recovery - refetching persisted messages while stream remains open');
-            reconcilePersistedMessages(sessionId);
-            invalidateKeys(softTimeoutInvalidationKeys(sessionId, currentStage));
-          },
-          SOFT_RECOVERY_TIMEOUT
-        );
-
-        timers.set(
-          'hardTimeout',
-          () => {
-            if (!eventSourceRef.current) return;
-            console.warn('[useStreamingMessage] 90s hard timeout - closing stream and recovering persisted messages');
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
-            recoverTimedOutStream(sessionId, currentStage);
-          },
-          HARD_STREAM_TIMEOUT
-        );
-
         // Create placeholder AI message once streaming starts
         let placeholderCreated = false;
         const createPlaceholder = () => {
@@ -431,16 +391,27 @@ export function useStreamingMessage(
           cache.add(sessionId, placeholderAIMessage, currentStage);
         };
 
-        // Handle user_message event - update optimistic message with server data
-        // We keep the same ID to avoid React key changes that cause visual jumps
-        es.addEventListener('user_message', (event) => {
-          if (!event.data) return;
+        // Close this turn's transport. The shared ref is cleared only if it
+        // still points here: a newer send may already own it, and a late frame
+        // from this turn must not tear down the turn that replaced it.
+        function closeTransport() {
+          transport.close();
+          if (transportRef.current === transport) {
+            transportRef.current = null;
+          }
+        }
+
+        const transport = openStreamTransport(
           {
-            const data = parseStreamEventData('user_message', event.data);
-            if (!data) {
-              console.error('[useStreamingMessage] Dropping invalid user_message frame');
-              return;
-            }
+            url: `${API_BASE_URL}/sessions/${sessionId}/messages/stream`,
+            headers: authHeaders,
+            body: JSON.stringify({ content, refiningNeedId: refiningNeedId ?? undefined }),
+          },
+          {
+        // Update the optimistic message with server data, keeping the same ID
+        // so React does not remount the row and make it visually jump.
+        user_message: (data) => {
+          {
             realUserIdRef.current = data.id; // Store for ID bridging at completion
             // Update optimistic message with server timestamp (keep same ID for React key stability)
             if (optimisticUserIdRef.current) {
@@ -466,18 +437,21 @@ export function useStreamingMessage(
               cache.add(sessionId, realUserMessage, currentStage);
             }
           }
-        });
+        },
 
-        // Handle chunk event with throttled cache updates
-        es.addEventListener('chunk', (event) => {
-          if (!event.data) return;
+        // Throttled cache updates, to keep the reveal from stuttering.
+        //
+        // BEHAVIOUR CHANGE (deliberate, flagged for review): the placeholder
+        // used to be created before the frame was validated, so a frame that
+        // was about to be dropped still pushed an empty AI bubble into the
+        // cache and moved the lifecycle to `streaming`. That is unvalidated
+        // data mutating state, which this program explicitly disallows. The
+        // placeholder now appears only once a frame has passed the schema.
+        // Observable only if every chunk of a turn is invalid; a single valid
+        // chunk produces the same result as before.
+        chunk: (data) => {
           createPlaceholder();
           {
-            const data = parseStreamEventData('chunk', event.data);
-            if (!data) {
-              console.error('[useStreamingMessage] Dropping invalid chunk frame');
-              return;
-            }
             accumulatedTextRef.current += data.text;
 
             // Throttle cache updates to reduce stuttering
@@ -514,32 +488,29 @@ export function useStreamingMessage(
               );
             }
           }
-        });
+        },
 
-        // Handle metadata event - tool call received during streaming
-        // This allows UI to show panels (invitation, empathy) immediately while text continues
-        es.addEventListener('metadata', (event) => {
-          if (!event.data) return;
-
+        // Tool call received mid-stream. Applied immediately so panels
+        // (invitation, empathy) open while text is still arriving.
+        metadata: (data) => {
           {
-            const data = parseStreamEventData('metadata', event.data);
-            if (!data) {
-              console.error('[useStreamingMessage] Dropping invalid metadata frame');
-              return;
-            }
             console.log(`[useStreamingMessage] [TIMING] metadata event received at ${Date.now()}`);
 
             // Handle metadata for UI panels immediately
             handleMetadata(sessionId, data.metadata);
           }
-        });
+        },
 
-        // Handle text_complete event - streaming text is done (before DB saves)
-        // This allows the UI to stop showing the blinking cursor immediately
-        es.addEventListener('text_complete', (event) => {
-          const receiveTime = Date.now();
-          console.log(`[useStreamingMessage] [TIMING] text_complete received at ${receiveTime}`);
-          if (!event.data) return;
+        // Streaming text is done, but the DB writes are not. Stops the blinking
+        // cursor without waiting for persistence to confirm.
+        //
+        // BEHAVIOUR CHANGE (deliberate, flagged for review): the recovery
+        // timers used to be cleared before this frame was validated, so an
+        // invalid text_complete disarmed recovery for a turn that had not
+        // actually completed. They are now cleared only once the frame parses,
+        // which is what recovery is for.
+        text_complete: (data) => {
+          console.log(`[useStreamingMessage] [TIMING] text_complete received at ${Date.now()}`);
 
           // Streaming completed, so the soft recovery timer and any pending
           // throttled write are moot. The hard timeout stays armed until the
@@ -547,11 +518,6 @@ export function useStreamingMessage(
           timers.clear('softRecovery', 'throttledCacheUpdate');
 
           {
-            const data = parseStreamEventData('text_complete', event.data);
-            if (!data) {
-              console.error('[useStreamingMessage] Dropping invalid text_complete frame');
-              return;
-            }
             console.log(`[useStreamingMessage] [TIMING] text_complete parsed`);
 
             // Update cache with final content
@@ -586,20 +552,17 @@ export function useStreamingMessage(
             onComplete?.();
             console.log(`[useStreamingMessage] [TIMING] text_complete handler done at ${Date.now()}`);
           }
-        });
+        },
 
-        // Handle complete event - DB saves finished, close connection
-        // The streaming UI has already stopped via text_complete
-        es.addEventListener('complete', (event) => {
+        // DB saves finished; close the connection. The streaming UI already
+        // stopped at text_complete. `data` is null when the frame carried no
+        // valid payload — the turn still has to be closed out either way.
+        complete: (data) => {
           // The turn is done. Reconciliation is deliberately left alone: the
           // reconcilePersistedMessages call below re-arms it, and clearing it
           // here would only cancel a timer we are about to replace.
           timers.clear('softRecovery', 'hardTimeout', 'throttledCacheUpdate');
 
-          const data = event.data ? parseStreamEventData('complete', event.data) : null;
-          if (event.data && !data) {
-            console.error('[useStreamingMessage] Dropping invalid complete frame');
-          }
           if (data) {
             // Read the fallback decision before the terminal transition below.
             const needsFallback = needsCompletionFallback(lifecycleRef.current);
@@ -649,39 +612,58 @@ export function useStreamingMessage(
           // Terminal: further frames on this turn are late and must not apply.
           dispatch({ type: 'complete' });
 
-          // Close the EventSource
-          es.close();
-          eventSourceRef.current = null;
-        });
+          closeTransport();
+        },
 
-        // Handle error event from SSE
-        // react-native-sse error events have: ErrorEvent (message, xhrState, xhrStatus),
-        // TimeoutEvent (type only), or ExceptionEvent (message, error)
-        es.addEventListener('error', (event) => {
+        // Transport failure (ErrorEvent / TimeoutEvent / ExceptionEvent), not a
+        // protocol error frame.
+        error: (errorMsg) => {
           // The turn failed; nothing scheduled for it should still run.
           timers.clearAll();
 
-          const errorMsg = 'message' in event ? event.message : 'Connection error';
           console.error('[useStreamingMessage] SSE error:', errorMsg);
           cleanupFailedStream(sessionId, currentStage);
           setErrorMessage(errorMsg);
           dispatch({ type: 'error' });
           onError?.(new Error(errorMsg));
-          es.close();
-          eventSourceRef.current = null;
-        });
+          closeTransport();
+        },
+          }
+        );
 
-        // Handle open event
-        es.addEventListener('open', () => {
-          // Connection opened, waiting for events
-        });
+        transportRef.current = transport;
+
+        // Start a soft recovery timer for slow streams. Some model calls take
+        // longer than 15s before the first visible token; do not close the SSE
+        // connection here or the final response can be lost after it persists.
+        timers.set(
+          'softRecovery',
+          () => {
+            if (!transportRef.current) return;
+            console.warn('[useStreamingMessage] 15s soft recovery - refetching persisted messages while stream remains open');
+            reconcilePersistedMessages(sessionId);
+            invalidateKeys(softTimeoutInvalidationKeys(sessionId, currentStage));
+          },
+          SOFT_RECOVERY_TIMEOUT
+        );
+
+        timers.set(
+          'hardTimeout',
+          () => {
+            if (!transportRef.current) return;
+            console.warn('[useStreamingMessage] 90s hard timeout - closing stream and recovering persisted messages');
+            closeTransport();
+            recoverTimedOutStream(sessionId, currentStage);
+          },
+          HARD_STREAM_TIMEOUT
+        );
 
       } catch (error) {
         // BEHAVIOUR CHANGE (deliberate, called out for review): the original
         // cleared only the reconciliation and hard-timeout timers here, leaving
         // the soft-recovery timer and any pending throttled write armed. Since
-        // this path does not null `eventSourceRef`, a surviving soft timer
-        // would see a live EventSource 15s later and fire a reconcile for a
+        // this path does not null `transportRef`, a surviving soft timer
+        // would see a live transport 15s later and fire a reconcile for a
         // turn that already failed. Reaching that state requires a throw after
         // the timers are armed, which is why it was never observed. Clearing
         // all of them is the same thing every other terminal path does.
@@ -702,9 +684,9 @@ export function useStreamingMessage(
   const cancel = useCallback(() => {
     timers.clearAll();
 
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
+    if (transportRef.current) {
+      transportRef.current.close();
+      transportRef.current = null;
     }
     dispatch({ type: 'cancel' });
   }, [timers, dispatch]);
