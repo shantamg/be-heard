@@ -22,6 +22,7 @@ import {
   SESSION_STATE_TOOL_NAME,
   type SessionStateToolInput,
 } from '../services/stage-tools';
+import { StreamTagSanitizer } from '../services/stream-tag-sanitizer';
 import {
   sendMessageRequestSchema,
   feelHeardRequestSchema,
@@ -2058,25 +2059,13 @@ export async function sendMessageStream(req: Request, res: Response): Promise<vo
     let metadata: SessionStateToolInput = {};
     let streamError: Error | null = null;
 
-    // Tag trap state - Claude USUALLY outputs <thinking>...</thinking> first, which we hide.
-    // After thinking, there may be <draft>, <dispatch>, or <needs> tags that we also hide.
-    // The model occasionally skips the leading <thinking> and goes straight to visible prose
-    // (more often on deep, long-context turns). We start in the thinking trap optimistically,
-    // but the first chunk decides: if the output does not actually begin with <thinking>, we
-    // bail out of the trap immediately so the reply is not swallowed and hidden.
-    let isInsideThinking = true;
-    let sawThinkingOpener = false; // Becomes true only once we confirm a real <thinking> opener
-    let isTrappingTags = false; // After thinking, buffer to check for hidden semantic tags
-    let thinkingBuffer = '';
-    let tagTrapBuffer = ''; // Buffer for checking semantic tags after thinking
-    let thinkingContent = ''; // Store hidden thinking for logging
-    let draftContent = ''; // Store draft content for metadata
-    let needTagContent = ''; // Store structured single Stage 3 need metadata
-    let needActionTagContent = ''; // Store structured Stage 3 need action metadata
-    let needsTagContent = ''; // Store structured Stage 3 needs metadata
-    let stage4ProposalsTagContent = ''; // Store structured Stage 4 proposal metadata
-    let stage4WalkthroughTagContent = ''; // Store structured Stage 4 walkthrough metadata
-    let dispatchTagContent = ''; // Store dispatch tag content for handling
+    // The three-phase hidden-tag trap (thinking trap → tag trap → normal
+    // streaming with late-tag buffering) lives in StreamTagSanitizer; the
+    // controller only routes deltas through it and emits what it returns.
+    const sanitizer = new StreamTagSanitizer({
+      info: (message) => logger.info(`[sendMessageStream:${requestId}] ${message}`),
+      warn: (message) => logger.warn(`[sendMessageStream:${requestId}] ${message}`),
+    });
     let isDispatchMessage = false; // Track if this is a dispatch response (skip processing)
 
     try {
@@ -2201,214 +2190,14 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
         }
       };
 
-      /**
-       * Process the tag trap buffer - extract draft/dispatch and return clean response text
-       */
-      const processTagTrapBuffer = (buffer: string): string => {
-        // Extract draft content if present
-        const draftMatch = buffer.match(/<draft>([\s\S]*?)<\/draft>/i);
-        if (draftMatch) {
-          draftContent = draftMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN DRAFT]: {length: ${draftContent.length}}`);
-        }
-
-        // Extract structured Stage 3 needs if present.
-        const needMatch = buffer.match(/<need>([\s\S]*?)<\/need>/i);
-        if (needMatch) {
-          needTagContent = needMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN NEED]:`, needTagContent.substring(0, 160) + (needTagContent.length > 160 ? '...' : ''));
-        }
-
-        const needActionMatch = buffer.match(/<need-action\b[^>]*>[\s\S]*?<\/need-action>|<need-action\b[^>]*\/>/i);
-        if (needActionMatch) {
-          needActionTagContent = needActionMatch[0].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN NEED ACTION]:`, needActionTagContent.substring(0, 160) + (needActionTagContent.length > 160 ? '...' : ''));
-        }
-
-        const needsMatch = buffer.match(/<needs>([\s\S]*?)<\/needs>/i);
-        if (needsMatch) {
-          needsTagContent = needsMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN NEEDS]: {length: ${needsTagContent.length}}`);
-        }
-
-        const stage4ProposalsMatch = buffer.match(/<stage4_proposals>([\s\S]*?)<\/stage4_proposals>/i);
-        if (stage4ProposalsMatch) {
-          stage4ProposalsTagContent = stage4ProposalsMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN STAGE 4 PROPOSALS]: {length: ${stage4ProposalsTagContent.length}}`);
-        }
-
-        const stage4WalkthroughMatch = buffer.match(/<stage4_walkthrough>([\s\S]*?)<\/stage4_walkthrough>/i);
-        if (stage4WalkthroughMatch) {
-          stage4WalkthroughTagContent = stage4WalkthroughMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN STAGE 4 WALKTHROUGH]:`, stage4WalkthroughTagContent.substring(0, 160) + (stage4WalkthroughTagContent.length > 160 ? '...' : ''));
-        }
-
-        // Extract dispatch tag if present - store for handling after streaming
-        const dispatchMatch = buffer.match(/<dispatch>([\s\S]*?)<\/dispatch>/i);
-        if (dispatchMatch) {
-          dispatchTagContent = dispatchMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [DISPATCH TAG]: {length: ${dispatchTagContent.length}}`);
-        }
-
-        // Return text with all tags stripped
-        // Do NOT use .trim() - it breaks word spacing between chunks
-        return buffer
-          .replace(/<draft>[\s\S]*?<\/draft>/gi, '')
-          .replace(/<need>[\s\S]*?<\/need>/gi, '')
-          .replace(/<need-action\b[^>]*>[\s\S]*?<\/need-action>/gi, '')
-          .replace(/<need-action\b[^>]*\/>/gi, '')
-          .replace(/<needs>[\s\S]*?<\/needs>/gi, '')
-          .replace(/<stage4_proposals>[\s\S]*?<\/stage4_proposals>/gi, '')
-          .replace(/<stage4_walkthrough>[\s\S]*?<\/stage4_walkthrough>/gi, '')
-          .replace(/<dispatch>[\s\S]*?<\/dispatch>/gi, '');
-      };
-
       for await (const event of streamGenerator) {
         if (event.type === 'text') {
           lastChunkTime = Date.now();
-
-          // PHASE 1: THINKING TRAP - Buffer until </thinking> is found
-          if (isInsideThinking) {
-            thinkingBuffer += event.text;
-
-            // The model is supposed to open with <thinking>, but it sometimes skips
-            // straight to the visible reply (more often on deep, long-context turns).
-            // Decide as soon as we have a non-whitespace prefix: if it cannot become a
-            // "<thinking>" opener, bail out of the trap so the reply is streamed instead
-            // of being swallowed and hidden (which would surface as an empty-response error).
-            if (!sawThinkingOpener) {
-              const trimmedStart = thinkingBuffer.replace(/^\s+/, '');
-              const opener = '<thinking';
-              if (trimmedStart.length > 0) {
-                if (trimmedStart.startsWith(opener)) {
-                  sawThinkingOpener = true;
-                } else if (!opener.startsWith(trimmedStart.slice(0, opener.length))) {
-                  // Definitely not a <thinking> opener — treat everything as visible output.
-                  logger.warn(`[sendMessageStream:${requestId}] Response did not open with <thinking>; routing ${thinkingBuffer.length} buffered chars as visible response.`);
-                  isInsideThinking = false;
-                  isTrappingTags = true; // Run it through the tag trap so any hidden tags are still caught
-                  tagTrapBuffer = thinkingBuffer;
-                  thinkingBuffer = '';
-                  continue;
-                }
-                // else: still ambiguous (e.g. "<th") — keep buffering.
-              }
-            }
-
-            // Check for closing tag
-            const closingTagIndex = thinkingBuffer.indexOf('</thinking>');
-            if (closingTagIndex !== -1) {
-              // Thinking phase complete
-              isInsideThinking = false;
-              isTrappingTags = true; // Start tag trap phase
-              thinkingEndTime = Date.now();
-
-              // Extract and log the hidden thinking
-              thinkingContent = thinkingBuffer.substring(0, closingTagIndex);
-              logger.info(`[sendMessageStream:${requestId}] [TIMING] Thinking phase complete at ${thinkingEndTime - streamStartTime}ms`);
-              logger.info(`[sendMessageStream:${requestId}] [HIDDEN THINKING]: {length: ${thinkingContent.length}}`);
-
-              // Put remaining text into tag trap buffer
-              tagTrapBuffer = thinkingBuffer.substring(closingTagIndex + 11); // 11 = '</thinking>'.length
-              thinkingBuffer = '';
-            }
-            // Safety: if the hidden preamble is long, keep waiting for the
-            // closing tag. Flushing here can expose chain-of-thought or tool
-            // planning to the user and persist it as a real AI message.
-            else if (thinkingBuffer.length > 2000) {
-              logger.warn(`[sendMessageStream:${requestId}] Thinking buffer exceeded 2000 chars without closing tag; continuing to trap hidden text`);
-            }
-          }
-          // PHASE 2: TAG TRAP - Buffer to catch hidden semantic tags before streaming
-          // The draft tag typically comes right after </thinking>, before response text
-          else if (isTrappingTags) {
-            tagTrapBuffer += event.text;
-
-            // Check for complete tags
-            const hasDraftStart = tagTrapBuffer.includes('<draft>');
-            const hasDraftEnd = tagTrapBuffer.includes('</draft>');
-            const hasNeedStart = tagTrapBuffer.includes('<need>');
-            const hasNeedEnd = tagTrapBuffer.includes('</need>');
-            const hasNeedActionStart = /<need-action\b/i.test(tagTrapBuffer);
-            const hasNeedActionEnd = /<\/need-action>|<need-action\b[^>]*\/>/i.test(tagTrapBuffer);
-            const hasNeedsStart = tagTrapBuffer.includes('<needs>');
-            const hasNeedsEnd = tagTrapBuffer.includes('</needs>');
-            const hasStage4ProposalsStart = tagTrapBuffer.includes('<stage4_proposals>');
-            const hasStage4ProposalsEnd = tagTrapBuffer.includes('</stage4_proposals>');
-            const hasStage4WalkthroughStart = tagTrapBuffer.includes('<stage4_walkthrough>');
-            const hasStage4WalkthroughEnd = tagTrapBuffer.includes('</stage4_walkthrough>');
-            const hasDispatchStart = tagTrapBuffer.includes('<dispatch>');
-            const hasDispatchEnd = tagTrapBuffer.includes('</dispatch>');
-
-            // Check for partial tag starts at the end of buffer
-            // Matches: <d..., <n..., </d..., </n..., etc. - anything that could become
-            // <draft>, </draft>, <dispatch>, </dispatch>, <need>, <need-action>, <needs>, </needs>,
-            // <stage4_proposals>, or </stage4_proposals>.
-            const hasPotentialTagStart = /<\/?(d|n|s)[a-z0-9_-]*$/i.test(tagTrapBuffer);
-
-            // If we see opening tags, wait for closing tags
-            const waitingForDraft = hasDraftStart && !hasDraftEnd;
-            const waitingForNeed = hasNeedStart && !hasNeedEnd;
-            const waitingForNeedAction = hasNeedActionStart && !hasNeedActionEnd;
-            const waitingForNeeds = hasNeedsStart && !hasNeedsEnd;
-            const waitingForStage4Proposals = hasStage4ProposalsStart && !hasStage4ProposalsEnd;
-            const waitingForStage4Walkthrough = hasStage4WalkthroughStart && !hasStage4WalkthroughEnd;
-            const waitingForDispatch = hasDispatchStart && !hasDispatchEnd;
-
-            // Process buffer and check if we can exit:
-            // 1. Strip any complete tags from buffer
-            // 2. Check if remaining content looks like response text (not starting with <)
-            const strippedBuffer = tagTrapBuffer
-              .replace(/<draft>[\s\S]*?<\/draft>/gi, '')
-              .replace(/<need>[\s\S]*?<\/need>/gi, '')
-              .replace(/<need-action\b[^>]*>[\s\S]*?<\/need-action>/gi, '')
-              .replace(/<need-action\b[^>]*\/>/gi, '')
-              .replace(/<needs>[\s\S]*?<\/needs>/gi, '')
-              .replace(/<stage4_proposals>[\s\S]*?<\/stage4_proposals>/gi, '')
-              .replace(/<stage4_walkthrough>[\s\S]*?<\/stage4_walkthrough>/gi, '')
-              .replace(/<dispatch>[\s\S]*?<\/dispatch>/gi, '');
-            const trimmedStripped = strippedBuffer.trim();
-
-            // Exit conditions:
-            // - Not waiting for any tags to complete
-            // - Have substantial response content (>50 chars that doesn't start with <)
-            // - No partial tag at the end that might become a hidden semantic tag
-            // OR buffer is too big (safety limit)
-            const hasResponseContent = trimmedStripped.length > 50 && !trimmedStripped.startsWith('<');
-            const safeToExit = !waitingForDraft && !waitingForNeed && !waitingForNeedAction && !waitingForNeeds && !waitingForStage4Proposals && !waitingForStage4Walkthrough && !waitingForDispatch && hasResponseContent && !hasPotentialTagStart;
-
-            if (safeToExit || tagTrapBuffer.length > 2000) {
-              isTrappingTags = false;
-              const cleanText = processTagTrapBuffer(tagTrapBuffer);
-              sendCleanText(cleanText);
-              tagTrapBuffer = '';
-            }
-          }
-          // PHASE 3: NORMAL STREAMING - Stream with safety buffer for late tags
-          else {
-            const combined = tagTrapBuffer + event.text;
-
-            // Check if we have unclosed tags that need buffering
-            const hasUnclosedDispatch = combined.includes('<dispatch>') && !combined.includes('</dispatch>');
-            const hasUnclosedDraft = combined.includes('<draft>') && !combined.includes('</draft>');
-            const hasUnclosedNeed = combined.includes('<need>') && !combined.includes('</need>');
-            const hasUnclosedNeedAction = /<need-action\b/i.test(combined) && !(/<\/need-action>|<need-action\b[^>]*\/>/i.test(combined));
-            const hasUnclosedNeeds = combined.includes('<needs>') && !combined.includes('</needs>');
-            const hasUnclosedStage4Proposals = combined.includes('<stage4_proposals>') && !combined.includes('</stage4_proposals>');
-            const hasUnclosedStage4Walkthrough = combined.includes('<stage4_walkthrough>') && !combined.includes('</stage4_walkthrough>');
-            const hasPotentialTagStart = /<\/?(d|n|s)[a-z0-9_-]*$/i.test(combined);
-
-            if (hasUnclosedDispatch || hasUnclosedDraft || hasUnclosedNeed || hasUnclosedNeedAction || hasUnclosedNeeds || hasUnclosedStage4Proposals || hasUnclosedStage4Walkthrough || hasPotentialTagStart) {
-              // Buffer and wait for closing tag
-              tagTrapBuffer = combined;
-            } else {
-              // Process any buffered content + new text (extract draft/dispatch before stripping)
-              const toProcess = combined;
-              tagTrapBuffer = '';
-
-              const cleanText = processTagTrapBuffer(toProcess);
-              sendCleanText(cleanText);
-            }
+          const wasInsideThinking = sanitizer.insideThinking;
+          sendCleanText(sanitizer.push(event.text));
+          if (wasInsideThinking && !sanitizer.insideThinking && thinkingEndTime === null) {
+            thinkingEndTime = Date.now();
+            logger.info(`[sendMessageStream:${requestId}] [TIMING] Thinking phase complete at ${thinkingEndTime - streamStartTime}ms`);
           }
         }
         if (event.type === 'tool_use') {
@@ -2442,30 +2231,9 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
       // keep that content hidden. It is more important to avoid leaking
       // internal reasoning/tool planning than to salvage malformed output.
       // =========================================================================
-      if (isInsideThinking && thinkingBuffer.length > 0) {
-        if (sawThinkingOpener) {
-          // A genuine <thinking> block was opened but never closed. Keep it hidden:
-          // avoiding leaked chain-of-thought matters more than salvaging malformed output.
-          logger.warn(`[sendMessageStream:${requestId}] Stream ended while still in thinking trap. Buffer has ${thinkingBuffer.length} chars. Keeping it hidden.`);
-          processTagTrapBuffer(thinkingBuffer);
-          thinkingContent = thinkingBuffer;
-        } else {
-          // We never confirmed a <thinking> opener, so the buffered text is the visible
-          // reply — flush it rather than throwing an empty-response error. (Belt-and-suspenders:
-          // PHASE 1 normally bails out of the trap before we reach here.)
-          logger.warn(`[sendMessageStream:${requestId}] Stream ended with no <thinking> opener; flushing ${thinkingBuffer.length} buffered chars as visible response.`);
-          const cleanText = processTagTrapBuffer(thinkingBuffer);
-          sendCleanText(cleanText);
-        }
-        thinkingBuffer = '';
-        isInsideThinking = false;
-      }
-
-      // Flush any remaining buffer (safety for tags split across final chunks)
-      if (tagTrapBuffer.length > 0) {
-        const cleanText = processTagTrapBuffer(tagTrapBuffer);
-        sendCleanText(cleanText);
-      }
+      // (Unterminated-thinking hiding vs. visible flush is decided inside the
+      // sanitizer; a hidden buffer yields '' here and stays in captured.thinking.)
+      sendCleanText(sanitizer.flush());
 
       const streamEndTime = Date.now();
       logger.info(`[sendMessageStream:${requestId}] [TIMING] Stream complete:`,
@@ -2479,12 +2247,13 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
       // The thinking content has flags like FeelHeardCheck:Y, ReadyShare:Y
       // The accumulated text may contain <draft>...</draft> that needs stripping
       // =========================================================================
-      const needsBlock = needsTagContent ? `<needs>${needsTagContent}</needs>\n` : '';
-      const needBlock = needTagContent ? `<need>${needTagContent}</need>\n` : '';
-      const needActionBlock = needActionTagContent ? `${needActionTagContent}\n` : '';
-      const stage4ProposalsBlock = stage4ProposalsTagContent ? `<stage4_proposals>${stage4ProposalsTagContent}</stage4_proposals>\n` : '';
-      const stage4WalkthroughBlock = stage4WalkthroughTagContent ? `<stage4_walkthrough>${stage4WalkthroughTagContent}</stage4_walkthrough>\n` : '';
-      const fullResponse = `<thinking>${thinkingContent}</thinking>\n${needBlock}${needActionBlock}${needsBlock}${stage4ProposalsBlock}${stage4WalkthroughBlock}${accumulatedText}`;
+      const captured = sanitizer.captured;
+      const needsBlock = captured.needs ? `<needs>${captured.needs}</needs>\n` : '';
+      const needBlock = captured.need ? `<need>${captured.need}</need>\n` : '';
+      const needActionBlock = captured.needAction ? `${captured.needAction}\n` : '';
+      const stage4ProposalsBlock = captured.stage4Proposals ? `<stage4_proposals>${captured.stage4Proposals}</stage4_proposals>\n` : '';
+      const stage4WalkthroughBlock = captured.stage4Walkthrough ? `<stage4_walkthrough>${captured.stage4Walkthrough}</stage4_walkthrough>\n` : '';
+      const fullResponse = `<thinking>${captured.thinking}</thinking>\n${needBlock}${needActionBlock}${needsBlock}${stage4ProposalsBlock}${stage4WalkthroughBlock}${accumulatedText}`;
       const parsed = parseMicroTagResponse(fullResponse);
 
       // Extract metadata from parsed response
@@ -2516,8 +2285,8 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
         metadata.needParseError = parsed.needParseError;
       }
 
-      // Use draftContent captured during streaming (more reliable than re-parsing)
-      const draft = draftContent || parsed.draft;
+      // Use the draft captured during streaming (more reliable than re-parsing)
+      const draft = captured.draft || parsed.draft;
       if (draft && currentStage === 2 && !metadata.proposedEmpathyStatement) {
         // Draft is used for empathy statement (stage 2).
         metadata.proposedEmpathyStatement = draft;
@@ -2535,7 +2304,7 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
         needAction: metadata.needAction?.type ?? null,
         needParseError: metadata.needParseError ?? null,
         stage4ProposalCount: metadata.stage4Proposals?.length ?? 0,
-        dispatchTag: dispatchTagContent || parsed.dispatchTag,
+        dispatchTag: captured.dispatch || parsed.dispatchTag,
       });
 
       // Clean accumulated text (strip <draft> and <dispatch> tags if they leaked through)
@@ -2563,9 +2332,9 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
       // =========================================================================
       // DISPATCH HANDLING: If dispatch tag detected, get and stream dispatched response
       // Dispatch messages are system responses - skip classifier/embeddings
-      // Use dispatchTagContent captured during streaming (more reliable than re-parsing)
+      // Use the dispatch tag captured during streaming (more reliable than re-parsing)
       // =========================================================================
-      const dispatchTag = dispatchTagContent || parsed.dispatchTag;
+      const dispatchTag = captured.dispatch || parsed.dispatchTag;
       if (dispatchTag) {
         logger.info(`[sendMessageStream:${requestId}] Dispatch detected: ${dispatchTag}`);
         isDispatchMessage = true;
