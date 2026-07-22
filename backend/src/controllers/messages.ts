@@ -11,7 +11,6 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { logger } from '../lib/logger';
 import { prisma } from '../lib/prisma';
-import { getOrchestratedResponse, type FullAIContext } from '../services/ai';
 import { getModelCompletionWithTools, getSonnetResponse, getSonnetStreamingResponse, BrainActivityCallType, isMockLLMEnabled } from '../lib/bedrock';
 import { brainService } from '../services/brain-service';
 import { buildInitialMessagePrompt, buildStagePrompt, buildStagePromptString } from '../services/stage-prompts';
@@ -23,16 +22,16 @@ import {
   type SessionStateToolInput,
 } from '../services/stage-tools';
 import { StreamTagSanitizer } from '../services/stream-tag-sanitizer';
+import { applyStage3NeedActions, persistTurnState } from '../services/stream-turn-actions';
 import {
   sendMessageRequestSchema,
   feelHeardRequestSchema,
   getMessagesQuerySchema,
-  MessageRole,
   DEFAULT_PRIVACY_PREFERENCES,
   PrivacyPreferencesDTO,
   type StreamEvent,
 } from '@meet-without-fear/shared';
-import { notifyPartner, publishSessionEvent, notifySessionMembers, publishMessageAIResponse, publishMessageError, publishTopicFrameUpdated } from '../services/realtime';
+import { notifyPartner, publishSessionEvent, publishMessageError } from '../services/realtime';
 import { successResponse, errorResponse } from '../utils/response';
 import { getPartnerUserId, isSessionCreator, touchUserSessionActivity } from '../utils/session';
 import { embedSessionContent } from '../services/embedding';
@@ -47,19 +46,13 @@ import { handleDispatch, type DispatchContext } from '../services/dispatch-handl
 import { getMilestoneContext, getSharedContentContext } from '../services/shared-context';
 import { CONTEXT_WINDOW, trimConversationHistory } from '../utils/token-budget';
 import { estimateContextSizes, finalizeTurnMetrics, recordContextSizes } from '../services/llm-telemetry';
-import { captureProposedNeedsForUser, captureSingleNeedForUser } from '../services/needs';
-import { applyNeedAction, applyNeedEdits } from '../services/needs-edit-applier.service';
-import { interpretNeedEditRequest } from '../services/needs-edit-interpreter.service';
 import { cleanVisibleAIText } from '../utils/visible-text';
-import { captureStage4Turn } from '../services/stage4-capture.service';
-import { applyStage4AutoClosureFromSignal } from '../services/stage4-auto-closure.service';
 import {
   buildTendingConversationPrompt,
   isExplicitAskForInput,
   type TendingConversationPromptContext,
 } from '../services/stage4-prompts';
 import { getStage4State as buildStage4State, Stage4StateNotFoundError } from '../services/stage4-state';
-import type { ParsedStage4WalkthroughAction } from '../utils/micro-tag-parser';
 
 // ============================================================================
 // Helpers
@@ -187,114 +180,6 @@ async function getStage4WalkthroughPromptContext(
     logger.warn('[getStage4WalkthroughPromptContext] failed', { error });
     return null;
   }
-}
-
-async function applyStage4WalkthroughAction(
-  sessionId: string,
-  userId: string,
-  action: ParsedStage4WalkthroughAction
-): Promise<boolean> {
-  if (action.action === 'NONE') return false;
-
-  const before = await buildStage4State(sessionId, userId);
-  const currentNeed = before.walkthrough.currentNeed;
-  if (!currentNeed) return false;
-  if (before.walkthrough.phase !== 'MY_NEEDS' && before.walkthrough.phase !== 'PARTNER_NEEDS') {
-    return false;
-  }
-  if (currentNeed.status === 'covered' || currentNeed.status === 'skipped') return false;
-  if (action.needId && action.needId !== currentNeed.id) {
-    logger.warn('[applyStage4WalkthroughAction] Ignoring action for non-current need', {
-      sessionId,
-      userId,
-      actionNeedId: action.needId,
-      currentNeedId: currentNeed.id,
-    });
-    return false;
-  }
-
-  const progress = await prisma.stageProgress.findUnique({
-    where: { sessionId_userId_stage: { sessionId, userId, stage: 4 } },
-    select: { gatesSatisfied: true },
-  });
-  const gates = (progress?.gatesSatisfied as Record<string, unknown> | null) ?? {};
-  const existing =
-    gates.stage4Walkthrough &&
-    typeof gates.stage4Walkthrough === 'object' &&
-    !Array.isArray(gates.stage4Walkthrough)
-      ? (gates.stage4Walkthrough as Record<string, unknown>)
-      : {};
-  const covered = new Set(
-    Array.isArray(existing.coveredNeedIds)
-      ? existing.coveredNeedIds.filter((id): id is string => typeof id === 'string')
-      : []
-  );
-  const skipped = new Set(
-    Array.isArray(existing.skippedNeedIds)
-      ? existing.skippedNeedIds.filter((id): id is string => typeof id === 'string')
-      : []
-  );
-  if (action.action === 'COVERED') {
-    covered.add(currentNeed.id);
-    skipped.delete(currentNeed.id);
-  } else {
-    skipped.add(currentNeed.id);
-    covered.delete(currentNeed.id);
-  }
-
-  const remainingOwn = before.walkthrough.ownNeeds.find(
-    (need) => !covered.has(need.id) && !skipped.has(need.id)
-  );
-  const remainingPartner = before.walkthrough.partnerNeeds.find(
-    (need) => !covered.has(need.id) && !skipped.has(need.id)
-  );
-  const phase =
-    before.walkthrough.phase === 'MY_NEEDS' && remainingOwn
-      ? 'MY_NEEDS'
-      : before.walkthrough.phase === 'MY_NEEDS' && remainingPartner
-        ? 'PARTNER_NEEDS'
-        : before.walkthrough.phase === 'PARTNER_NEEDS' && remainingPartner
-          ? 'PARTNER_NEEDS'
-          : remainingOwn
-            ? 'MY_NEEDS'
-            : remainingPartner
-              ? 'PARTNER_NEEDS'
-              : 'QUALITY_REVIEW';
-  const currentNeedId =
-    phase === 'MY_NEEDS'
-      ? remainingOwn?.id ?? null
-      : phase === 'PARTNER_NEEDS'
-        ? remainingPartner?.id ?? null
-        : null;
-
-  await prisma.stageProgress.update({
-    where: { sessionId_userId_stage: { sessionId, userId, stage: 4 } },
-    data: {
-      gatesSatisfied: {
-        ...gates,
-        stage4Walkthrough: {
-          phase,
-          currentNeedId,
-          coveredNeedIds: [...covered],
-          skippedNeedIds: [...skipped],
-          updatedAt: new Date().toISOString(),
-          updatedFrom: 'ai_walkthrough_action',
-          lastAction: action.action,
-          lastReason: action.reason ?? null,
-        },
-      } satisfies Prisma.InputJsonValue,
-    },
-  });
-
-  logger.info('[applyStage4WalkthroughAction] Advanced Stage 4 walkthrough from model action', {
-    sessionId,
-    userId,
-    needId: currentNeed.id,
-    action: action.action,
-    nextPhase: phase,
-    nextNeedId: currentNeedId,
-  });
-  return true;
 }
 
 /**
@@ -2429,102 +2314,16 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
       return;
     }
 
-    if (currentStage === 3 && metadata.needParseError) {
-      logger.warn(`[sendMessageStream:${requestId}] Ignoring invalid Stage 3 need tag: ${metadata.needParseError}`);
-    }
-
-    if (
-      currentStage === 3 &&
-      refiningNeedContext &&
-      !metadata.proposedNeed &&
-      !metadata.needAction &&
-      (!metadata.proposedNeeds || metadata.proposedNeeds.length === 0)
-    ) {
-      try {
-        const interpretedEdit = await interpretNeedEditRequest(sessionId, user.id, {
-          targetNeedId: refiningNeedContext.id,
-          request: [
-            `The user is refining this need: "${refiningNeedContext.need}".`,
-            `Their message was: "${content}".`,
-            `The assistant response was: "${accumulatedText.trim()}".`,
-            'If the assistant response contains a clearer wording for this same need, return an updateNeedText operation for the target need. If it does not contain a clear revision, ask for clarification.',
-          ].join('\n'),
-        });
-
-        if (interpretedEdit.plan?.operations?.length) {
-          const applied = await applyNeedEdits(sessionId, user.id, interpretedEdit.plan.operations);
-          metadata.needsCaptured = true;
-          logger.info(`[sendMessageStream:${requestId}] Applied ${applied.applied.length} fallback need refinement operation(s) for ${refiningNeedContext.id}`);
-
-          for (const affected of applied.applied) {
-            const updatedNeed = affected.needId
-              ? applied.needs.find((need) => need.id === affected.needId)
-              : undefined;
-            const eventType = affected.operation === 'remove'
-              ? 'need.deleted'
-              : affected.operation === 'add'
-                ? 'need.captured'
-                : 'need.refined';
-            await publishSessionEvent(sessionId, eventType, {
-              forUserId: user.id,
-              userId: user.id,
-              need: updatedNeed,
-              affectedNeed: affected,
-            }).catch((err) =>
-              logger.warn(`[sendMessageStream:${requestId}] Failed to publish ${eventType}:`, err)
-            );
-          }
-        }
-      } catch (error) {
-        logger.warn(`[sendMessageStream:${requestId}] Fallback need refinement did not apply`, error);
-      }
-    }
-
-    if (currentStage === 3 && metadata.proposedNeed) {
-      const captured = await captureSingleNeedForUser(sessionId, user.id, metadata.proposedNeed);
-      metadata.needsCaptured = true;
-      logger.info(`[sendMessageStream:${requestId}] Captured single need ${captured.need.id} for user ${user.id}`);
-
-      await publishSessionEvent(sessionId, 'need.captured', {
-        forUserId: user.id,
-        userId: user.id,
-        need: captured.need,
-        capturedAt: captured.capturedAt.toISOString(),
-      }).catch((err) =>
-        logger.warn(`[sendMessageStream:${requestId}] Failed to publish need.captured:`, err)
-      );
-    } else if (currentStage === 3 && metadata.needAction) {
-      const applied = await applyNeedAction(sessionId, user.id, metadata.needAction);
-      metadata.needsCaptured = applied.action === 'refine';
-      const eventType = applied.action === 'refine'
-        ? 'need.refined'
-        : applied.action === 'delete'
-          ? 'need.deleted'
-          : 'need.locked';
-      await publishSessionEvent(sessionId, eventType, {
-        forUserId: user.id,
-        userId: user.id,
-        oldId: applied.oldNeed?.id,
-        oldNeed: applied.oldNeed,
-        newId: applied.action === 'refine' ? applied.need?.id : undefined,
-        need: applied.need,
-      }).catch((err) =>
-        logger.warn(`[sendMessageStream:${requestId}] Failed to publish ${eventType}:`, err)
-      );
-    } else if (currentStage === 3 && metadata.proposedNeeds && metadata.proposedNeeds.length > 0) {
-      const captured = await captureProposedNeedsForUser(sessionId, user.id, metadata.proposedNeeds);
-      metadata.needsCaptured = captured.needs.length > 0;
-      logger.info(`[sendMessageStream:${requestId}] Captured ${captured.needs.length} proposed needs for user ${user.id}`);
-
-      await publishSessionEvent(sessionId, 'session.needs_extracted', {
-        forUserId: user.id,
-        userId: user.id,
-        needsCount: captured.needs.length,
-        capturedAt: captured.capturedAt.toISOString(),
-      }).catch((err) =>
-        logger.warn(`[sendMessageStream:${requestId}] Failed to publish needs_extracted:`, err)
-      );
-    }
+    await applyStage3NeedActions({
+      requestId,
+      sessionId,
+      userId: user.id,
+      currentStage,
+      refiningNeedContext,
+      userContent: content,
+      aiResponseText: accumulatedText,
+      metadata,
+    });
 
     // =========================================================================
     // Signal that text streaming is complete (before DB saves for faster UX)
@@ -2555,127 +2354,23 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
     brainService.broadcastMessage(aiMessage);
 
     // =========================================================================
-    // Process metadata (persist to database)
+    // Process metadata (persist to database): stage gates, topic frame,
+    // empathy draft, Stage 4 capture/walkthrough/auto-closure.
     // =========================================================================
-    if (currentStage === 1 && progress?.id && metadata.offerFeelHeardCheck) {
-      const currentGates = (progress.gatesSatisfied as Record<string, unknown>) ?? {};
-      await prisma.stageProgress.update({
-        where: { id: progress.id },
-        data: {
-          gatesSatisfied: {
-            ...currentGates,
-            feelHeardCheckOffered: true,
-          },
-        },
-      });
-    }
-
-    // Save topic frame (Stage 0 / invitation phase) - only if not already confirmed
-    if ((currentStage === 0 || isInvitationPhase) && metadata.topicFrame) {
-      try {
-        const newTopicFrame = metadata.topicFrame.trim();
-        if (newTopicFrame && !session.topicFrameConfirmedAt && newTopicFrame !== session.topicFrame) {
-          await prisma.session.update({
-            where: { id: sessionId },
-            data: { topicFrame: newTopicFrame },
-          });
-          logger.info(`[sendMessageStream:${requestId}] Stage 0: Persisted topic frame "${newTopicFrame}"`);
-          publishTopicFrameUpdated(sessionId, newTopicFrame, false).catch((err) =>
-            logger.warn(`[sendMessageStream:${requestId}] Failed to publish topic_frame_updated:`, err)
-          );
-        }
-      } catch (err) {
-        logger.error(`[sendMessageStream:${requestId}] Failed to persist topic frame:`, err);
-      }
-    }
-
-    // Save empathy draft (Stage 2 or Stage 2B)
-    if ((effectiveStage === 2 || effectiveStage === 21) && metadata.offerReadyToShare && metadata.proposedEmpathyStatement) {
-      await prisma.empathyDraft.upsert({
-        where: {
-          sessionId_userId: { sessionId, userId: user.id },
-        },
-        create: {
-          sessionId,
-          userId: user.id,
-          content: metadata.proposedEmpathyStatement,
-          readyToShare: false,
-          version: 1,
-        },
-        update: {
-          content: metadata.proposedEmpathyStatement,
-          version: { increment: 1 },
-        },
-      });
-    }
-
-    // Stage 4 structured capture. ProposedStrategy micro-tags remain only as a
-    // compatibility fallback feeding the same capture/apply path.
-    if (currentStage === 4) {
-      const captureResult = await captureStage4Turn({
-        sessionId,
-        userId: user.id,
-        messageId: userMessage.id,
-        userMessage: content,
-        aiResponse: aiMessage.content,
-        structuredProposals: metadata.stage4Proposals,
-        compatibilityProposedStrategies: metadata.proposedStrategies,
-        topicFrame: session.topicFrame || undefined,
-      });
-      const stage4CaptureMetadata: NonNullable<SessionStateToolInput['stage4Capture']> = {
-        appliedOperationCount: captureResult.appliedOperationCount,
-        skippedOperationCount: captureResult.skippedOperationCount,
-        selectionCaptured: Boolean(captureResult.selection),
-        closureSignalCaptured: Boolean(captureResult.closureSignal?.readyToClose),
-        confidence: captureResult.confidence,
-      };
-      metadata.stage4Capture = stage4CaptureMetadata;
-
-      if (captureResult.appliedOperationCount > 0 || captureResult.selection) {
-        logger.info(`[sendMessageStream:${requestId}] Stage 4 capture applied`, {
-          appliedOperationCount: captureResult.appliedOperationCount,
-          skippedOperationCount: captureResult.skippedOperationCount,
-          selectionCaptured: Boolean(captureResult.selection),
-        });
-
-        await publishSessionEvent(sessionId, 'session.strategies_updated', {
-          stage: 4,
-          updatedBy: user.id,
-          appliedOperationCount: captureResult.appliedOperationCount,
-          skippedOperationCount: captureResult.skippedOperationCount,
-          selectionCaptured: Boolean(captureResult.selection),
-        });
-      }
-
-      if (metadata.stage4WalkthroughAction) {
-        const advanced = await applyStage4WalkthroughAction(
-          sessionId,
-          user.id,
-          metadata.stage4WalkthroughAction
-        );
-        if (advanced) {
-          await publishSessionEvent(sessionId, 'session.strategies_updated', {
-            stage: 4,
-            updatedBy: user.id,
-            walkthroughUpdated: true,
-            action: metadata.stage4WalkthroughAction.action,
-            needId: metadata.stage4WalkthroughAction.needId ?? null,
-          });
-        }
-      }
-
-      const autoClosure = await applyStage4AutoClosureFromSignal({
-        sessionId,
-        userId: user.id,
-        signal: captureResult.closureSignal,
-      });
-      if (autoClosure.closed) {
-        stage4CaptureMetadata.autoClosed = true;
-        logger.info(`[sendMessageStream:${requestId}] Stage 4 closed from conversation signal`, {
-          reason: autoClosure.reason,
-        });
-      }
-    }
+    await persistTurnState({
+      requestId,
+      sessionId,
+      userId: user.id,
+      currentStage,
+      effectiveStage,
+      isInvitationPhase,
+      session,
+      progress,
+      userMessageId: userMessage.id,
+      userContent: content,
+      aiMessageContent: aiMessage.content,
+      metadata,
+    });
 
     // =========================================================================
     // Send complete event (streamError case is handled above with early return)
