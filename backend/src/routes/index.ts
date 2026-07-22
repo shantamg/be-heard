@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import brainRoutes from './brain';
 import authRoutes from './auth';
-import chatRoutes from './chat';
 import consentRoutes from './consent';
 import emotionsRoutes from './emotions';
 import gratitudeRoutes from './gratitude';
@@ -40,7 +39,6 @@ router.use(voiceRoutes); // Voice transcription token endpoint
 if (process.env.NODE_ENV !== 'production') {
   router.use('/e2e', e2eRoutes); // E2E testing helpers - must be BEFORE routers with global auth middleware
 }
-router.use(chatRoutes); // Unified chat router
 router.use(invitationsRoutes); // Must be before innerWorkRoutes (has public endpoints)
 router.use(innerThoughtsRoutes); // Inner Thoughts (solo self-reflection, optionally linked to partner sessions)
 router.use('/memories', memoriesRoutes); // Things to Always Remember

@@ -10,11 +10,9 @@ import React from 'react';
 import {
   useMessages,
   useInfiniteMessages,
-  useSendMessage,
   useEmotionalHistory,
   useRecordEmotion,
   useCompleteExercise,
-  useOptimisticMessage,
   messageKeys,
 } from '../useMessages';
 import { MessageRole, Stage, EmotionalSupportType } from '@meet-without-fear/shared';
@@ -208,90 +206,6 @@ describe('useMessages', () => {
     });
   });
 
-  describe('useSendMessage hook', () => {
-    it('sends message successfully', async () => {
-      mockPost.mockResolvedValueOnce({
-        userMessage: mockMessage,
-        aiResponse: mockAiMessage,
-      });
-
-      const { result } = renderHook(() => useSendMessage(), {
-        wrapper: createWrapper(),
-      });
-
-      const mutationPromise = result.current.mutateAsync({
-        sessionId: 'session-123',
-        content: 'Test message content',
-      });
-
-      await act(async () => {
-        await mutationPromise;
-      });
-
-      expect(mockPost).toHaveBeenCalledWith('/sessions/session-123/messages', {
-        sessionId: 'session-123',
-        content: 'Test message content',
-        emotionalIntensity: undefined,
-        emotionalContext: undefined,
-      });
-      const mutationResult = await mutationPromise;
-      expect(mutationResult.userMessage.content).toBe('Test message content');
-      expect(mutationResult.aiResponse.role).toBe(MessageRole.AI);
-    });
-
-    it('sends message with emotional context', async () => {
-      mockPost.mockResolvedValueOnce({
-        userMessage: mockMessage,
-        aiResponse: mockAiMessage,
-      });
-
-      const { result } = renderHook(() => useSendMessage(), {
-        wrapper: createWrapper(),
-      });
-
-      await act(async () => {
-        await result.current.mutateAsync({
-          sessionId: 'session-123',
-          content: 'I feel overwhelmed',
-          emotionalIntensity: 8,
-          emotionalContext: 'Very stressed about this',
-        });
-      });
-
-      expect(mockPost).toHaveBeenCalledWith('/sessions/session-123/messages', {
-        sessionId: 'session-123',
-        content: 'I feel overwhelmed',
-        emotionalIntensity: 8,
-        emotionalContext: 'Very stressed about this',
-      });
-    });
-
-    it('handles error when sending message', async () => {
-      const error = new (api.ApiClientError as any)(
-        { code: 'VALIDATION_ERROR', message: 'Message content is required' },
-        400
-      );
-      mockPost.mockRejectedValueOnce(error);
-
-      const { result } = renderHook(() => useSendMessage(), {
-        wrapper: createWrapper(),
-      });
-
-      let caughtError: Error | undefined;
-      await act(async () => {
-        try {
-          await result.current.mutateAsync({
-            sessionId: 'session-123',
-            content: '',
-          });
-        } catch (e) {
-          caughtError = e as Error;
-        }
-      });
-
-      expect(caughtError?.message).toBe('Message content is required');
-    });
-  });
 
   describe('useEmotionalHistory hook', () => {
     it('fetches emotional history for a session', async () => {
@@ -427,43 +341,6 @@ describe('useMessages', () => {
     });
   });
 
-  describe('useOptimisticMessage hook', () => {
-    it('adds and removes optimistic message', async () => {
-      const queryClient = new QueryClient();
-      const wrapper = ({ children }: { children: React.ReactNode }) =>
-        React.createElement(QueryClientProvider, { client: queryClient }, children);
-
-      const { result } = renderHook(() => useOptimisticMessage(), { wrapper });
-
-      // Add optimistic message
-      let optimisticId: string | undefined;
-      act(() => {
-        optimisticId = result.current.addOptimisticMessage('session-123', {
-          content: 'Optimistic message',
-          stage: Stage.ONBOARDING,
-        });
-      });
-
-      expect(optimisticId).toBeDefined();
-      expect(optimisticId).toContain('optimistic-');
-
-      // Check message was added to cache
-      const cachedMessages = queryClient.getQueryData(messageKeys.list('session-123'));
-      expect(cachedMessages).toBeDefined();
-
-      // Remove optimistic message
-      act(() => {
-        result.current.removeOptimisticMessage('session-123', optimisticId!);
-      });
-
-      // Message should be removed from cache
-      const updatedCache = queryClient.getQueryData(messageKeys.list('session-123'));
-      if (updatedCache && typeof updatedCache === 'object' && 'messages' in updatedCache) {
-        const messages = (updatedCache as { messages: { id: string }[] }).messages;
-        expect(messages.find((m) => m.id === optimisticId)).toBeUndefined();
-      }
-    });
-  });
 
   describe('messageKeys', () => {
     it('generates correct query keys', () => {

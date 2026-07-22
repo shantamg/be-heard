@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MessageRole, Stage } from '@meet-without-fear/shared';
 import { useStreamingMessage } from '../useStreamingMessage';
-import { messageKeys, sessionKeys, stageKeys, timelineKeys } from '../queryKeys';
+import { messageKeys, sessionKeys, stageKeys } from '../queryKeys';
 import { getAnimationIdentity } from '../../utils/animationBridge';
 
 jest.mock('../../lib/api', () => ({
@@ -99,7 +99,6 @@ describe('useStreamingMessage', () => {
 
     expect(refetchSpy).toHaveBeenCalledWith({ queryKey: messageKeys.list('session-123') });
     expect(refetchSpy).toHaveBeenCalledWith({ queryKey: messageKeys.infinite('session-123') });
-    expect(refetchSpy).toHaveBeenCalledWith({ queryKey: timelineKeys.infinite('session-123') });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: sessionKeys.state('session-123') });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: stageKeys.empathyStatus('session-123') });
     expect(warnSpy).toHaveBeenCalledWith('[useStreamingMessage] 15s soft recovery - refetching persisted messages while stream remains open');

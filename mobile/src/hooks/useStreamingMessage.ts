@@ -19,7 +19,7 @@ import {
   type StreamMetadata,
   type StreamEventName,
 } from '@meet-without-fear/shared';
-import { messageKeys, sessionKeys, stageKeys, timelineKeys } from './queryKeys';
+import { messageKeys, sessionKeys, stageKeys } from './queryKeys';
 import { getPersistedMessageRefreshQueryKeys } from '../utils/realtimeInvalidation';
 import { bridgeAnimatedId } from '../utils/animationBridge';
 
@@ -392,7 +392,6 @@ export function useStreamingMessage(
 
       queryClient.invalidateQueries({ queryKey: messageKeys.list(sessionId) });
       queryClient.invalidateQueries({ queryKey: messageKeys.infinite(sessionId) });
-      queryClient.invalidateQueries({ queryKey: timelineKeys.infinite(sessionId) });
     },
     [queryClient, removeMessagesFromCache]
   );
@@ -401,7 +400,6 @@ export function useStreamingMessage(
     (sessionId: string, stage?: Stage) => {
       queryClient.invalidateQueries({ queryKey: messageKeys.list(sessionId) });
       queryClient.invalidateQueries({ queryKey: messageKeys.infinite(sessionId) });
-      queryClient.invalidateQueries({ queryKey: timelineKeys.infinite(sessionId) });
       queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
       if (stage === Stage.PERSPECTIVE_STRETCH) {
         queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
@@ -454,7 +452,6 @@ export function useStreamingMessage(
       // forcing the user to manually reload the chat.
       reconcilePersistedMessages(sessionId);
       queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
-      queryClient.invalidateQueries({ queryKey: timelineKeys.infinite(sessionId) });
       if (stage === Stage.PERSPECTIVE_STRETCH) {
         queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
       }

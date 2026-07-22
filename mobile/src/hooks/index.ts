@@ -63,17 +63,13 @@ export {
   messageKeys,
   // Types
   type GetMessagesParams,
-  type SendMessageParams,
   // Hooks
   useMessages,
   useInfiniteMessages,
-  useSendMessage,
   // Emotional barometer
   useEmotionalHistory,
   useRecordEmotion,
   useCompleteExercise,
-  // Optimistic updates
-  useOptimisticMessage,
 } from './useMessages';
 
 export {
@@ -229,16 +225,6 @@ export {
   type InlineCardType,
   type InlineChatCard,
 } from './useUnifiedSession';
-
-// ============================================================================
-// Router Chat (Chat-First Session Creation)
-// ============================================================================
-
-export {
-  useRouterChat,
-  type UseRouterChatOptions,
-  type UseRouterChatReturn,
-} from './useRouterChat';
 
 // ============================================================================
 // Inner Thoughts (Solo Self-Reflection, optionally linked to partner sessions)

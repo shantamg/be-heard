@@ -22,7 +22,6 @@ export * from './dto/strategy';
 export * from './dto/auth';
 export * from './dto/empathy';
 export * from './dto/realtime';
-export * from './dto/chat-router';
 export * from './dto/inner-work';
 export * from './dto/distillation';
 export * from './dto/reconciler';
@@ -33,7 +32,6 @@ export * from './dto/knowledge-base';
 export * from './dto/gratitude';
 export * from './dto/meditation';
 export * from './dto/cross-feature';
-export * from './dto/chat-item';
 export * from './dto/voice';
 export * from './dto/version';
 

@@ -1,4 +1,4 @@
-import { messageKeys, notificationKeys, sessionKeys, stageKeys, timelineKeys } from '../../hooks/queryKeys';
+import { messageKeys, notificationKeys, sessionKeys, stageKeys } from '../../hooks/queryKeys';
 import {
   getPersistedMessageRefreshQueryKeys,
   getStage2RealtimeInvalidationQueryKeys,
@@ -13,7 +13,6 @@ describe('realtime invalidation key sets', () => {
     expect(getPersistedMessageRefreshQueryKeys(sessionId)).toEqual([
       messageKeys.infinite(sessionId),
       messageKeys.list(sessionId),
-      timelineKeys.infinite(sessionId),
       sessionKeys.state(sessionId),
     ]);
   });
@@ -26,7 +25,6 @@ describe('realtime invalidation key sets', () => {
       stageKeys.progress(sessionId),
       messageKeys.infinite(sessionId),
       messageKeys.list(sessionId),
-      timelineKeys.infinite(sessionId),
       sessionKeys.state(sessionId),
       stageKeys.pendingActions(sessionId),
       notificationKeys.badgeCount(),
@@ -40,7 +38,6 @@ describe('realtime invalidation key sets', () => {
       stageKeys.progress(sessionId),
       messageKeys.infinite(sessionId),
       messageKeys.list(sessionId),
-      timelineKeys.infinite(sessionId),
       sessionKeys.state(sessionId),
       stageKeys.pendingActions(sessionId),
       notificationKeys.badgeCount(),
@@ -56,7 +53,6 @@ describe('realtime invalidation key sets', () => {
       stageKeys.progress(sessionId),
       messageKeys.infinite(sessionId),
       messageKeys.list(sessionId),
-      timelineKeys.infinite(sessionId),
       sessionKeys.state(sessionId),
       stageKeys.pendingActions(sessionId),
       notificationKeys.badgeCount(),

@@ -9,8 +9,6 @@ export { ChatBubble } from './ChatBubble';
 export type { ChatBubbleMessage } from './ChatBubble';
 export { ChatInput } from './ChatInput';
 export { ChatInterface } from './ChatInterface';
-export { ChatTimeline } from './ChatTimeline';
-export type { ChatTimelineProps } from './ChatTimeline';
 export { TypingIndicator } from './TypingIndicator';
 export { SimpleChatHeader } from './SimpleChatHeader';
 export { EmotionSlider } from './EmotionSlider';
