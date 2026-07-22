@@ -29,6 +29,7 @@ import {
   MessageRole,
   DEFAULT_PRIVACY_PREFERENCES,
   PrivacyPreferencesDTO,
+  type StreamEvent,
 } from '@meet-without-fear/shared';
 import { notifyPartner, publishSessionEvent, notifySessionMembers, publishMessageAIResponse, publishMessageError, publishTopicFrameUpdated } from '../services/realtime';
 import { successResponse, errorResponse } from '../utils/response';
@@ -1533,20 +1534,13 @@ export async function getInitialMessage(
 // ============================================================================
 
 /**
- * SSE event type definitions
+ * Send SSE event to client.
+ *
+ * The event vocabulary and payload shapes are defined once in
+ * `shared/src/contracts/stream.ts` (`StreamEvent`); both this emitter and the
+ * mobile consumer compile against that contract.
  */
-type SSEEvent =
-  | { event: 'user_message'; data: { id: string; content: string; timestamp: string; refiningNeedId?: string | null } }
-  | { event: 'chunk'; data: { text: string } }
-  | { event: 'metadata'; data: { metadata: SessionStateToolInput } }
-  | { event: 'text_complete'; data: { metadata: SessionStateToolInput } }
-  | { event: 'complete'; data: { messageId: string; metadata: SessionStateToolInput } }
-  | { event: 'error'; data: { message: string; retryable: boolean } };
-
-/**
- * Send SSE event to client
- */
-function sendSSE(res: Response, event: SSEEvent): void {
+function sendSSE(res: Response, event: StreamEvent): void {
   res.write(`event: ${event.event}\n`);
   res.write(`data: ${JSON.stringify(event.data)}\n\n`);
 }

@@ -7,83 +7,16 @@
  * characterization tests both import from this file so that the two sides can
  * never drift apart silently.
  *
- * Phase 0 (characterization): the types below intentionally mirror the
- * currently-inline definitions in `backend/src/controllers/messages.ts`
- * (`SSEEvent`) and `mobile/src/hooks/useStreamingMessage.ts`. They document
- * today's protocol; they are not yet the canonical runtime contract.
- * Phase 1 replaces both inline definitions with shared zod-validated schemas —
- * at that point these fixtures become conformance fixtures for the schemas.
+ * The canonical runtime contract lives in `shared/src/contracts/stream.ts`;
+ * this module only re-exports its types and provides recorded fixtures plus
+ * wire-framing helpers for tests.
  */
 
-// ============================================================================
-// Wire types (documenting the current protocol)
-// ============================================================================
+import type { StreamEvent, StreamMetadata, StreamEventName } from '../contracts/stream';
+import { NeedCategory, Stage4ProposalKind } from '../enums';
 
-/** Metadata payload attached to metadata / text_complete / complete events. */
-export interface StreamMetadataWire {
-  offerFeelHeardCheck?: boolean;
-  offerReadyToShare?: boolean;
-  proposedEmpathyStatement?: string | null;
-  proposedStrategies?: string[];
-  stage4Proposals?: Array<Record<string, unknown>>;
-  stage4WalkthroughAction?: {
-    action: 'COVERED' | 'SKIP' | 'NONE';
-    needId?: string;
-    reason?: string;
-  };
-  stage4Capture?: {
-    appliedOperationCount?: number;
-    skippedOperationCount?: number;
-    selectionCaptured?: boolean;
-    closureSignalCaptured?: boolean;
-    confidence?: number;
-    autoClosed?: boolean;
-  };
-  proposedNeed?: {
-    need: string;
-    category: string;
-    description: string;
-    evidence: string[];
-  };
-  proposedNeeds?: Array<{
-    need: string;
-    category: string;
-    description: string;
-    evidence: string[];
-  }>;
-  needAction?: {
-    type: 'refine' | 'delete' | 'lock';
-    needId?: string;
-    supersedes?: string;
-  };
-  needParseError?: string;
-  needsCaptured?: boolean;
-  topicFrame?: string | null;
-  analysis?: string;
-}
-
-export type StreamEventWire =
-  | {
-      event: 'user_message';
-      data: { id: string; content: string; timestamp: string; refiningNeedId?: string | null };
-    }
-  | { event: 'chunk'; data: { text: string } }
-  | { event: 'metadata'; data: { metadata: StreamMetadataWire } }
-  | { event: 'text_complete'; data: { metadata: StreamMetadataWire } }
-  | { event: 'complete'; data: { messageId: string; metadata: StreamMetadataWire } }
-  | { event: 'error'; data: { message: string; retryable: boolean } };
-
-export type StreamEventName = StreamEventWire['event'];
-
-/** Every event name the streaming endpoint can emit, in no particular order. */
-export const STREAM_EVENT_NAMES: readonly StreamEventName[] = [
-  'user_message',
-  'chunk',
-  'metadata',
-  'text_complete',
-  'complete',
-  'error',
-] as const;
+export { STREAM_EVENT_NAMES } from '../contracts/stream';
+export type { StreamEvent, StreamMetadata, StreamEventName } from '../contracts/stream';
 
 // ============================================================================
 // Wire framing helpers
@@ -91,15 +24,15 @@ export const STREAM_EVENT_NAMES: readonly StreamEventName[] = [
 
 /**
  * Serialize an event exactly the way the backend's `sendSSE` does:
- * `event: <name>\n` + `data: <json>\n\n`, written as two separate writes.
+ * `event: <name>\n` + `data: <json>\n\n`.
  */
-export function serializeStreamEvent(event: StreamEventWire): string {
+export function serializeStreamEvent(event: StreamEvent): string {
   return `event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`;
 }
 
 /** Parse a raw SSE payload (concatenated writes) back into events. */
-export function parseStreamEvents(raw: string): StreamEventWire[] {
-  const events: StreamEventWire[] = [];
+export function parseStreamEvents(raw: string): StreamEvent[] {
+  const events: StreamEvent[] = [];
   const blocks = raw.split('\n\n');
   for (const block of blocks) {
     const eventMatch = block.match(/(?:^|\n)event: (.+)/);
@@ -108,7 +41,7 @@ export function parseStreamEvents(raw: string): StreamEventWire[] {
     events.push({
       event: eventMatch[1] as StreamEventName,
       data: JSON.parse(dataMatch[1]),
-    } as StreamEventWire);
+    } as StreamEvent);
   }
   return events;
 }
@@ -150,7 +83,7 @@ export const streamEventFixtures = {
       retryable: true,
     },
   },
-} as const satisfies Record<string, StreamEventWire>;
+} as const satisfies Record<string, StreamEvent>;
 
 /**
  * Structured metadata shape variants, as they appear inside metadata /
@@ -171,7 +104,7 @@ export const streamMetadataFixtures = {
   stage3ProposedNeed: {
     proposedNeed: {
       need: 'To feel like a partner in planning',
-      category: 'CONNECTION',
+      category: NeedCategory.CONNECTION,
       description: 'Wants planning to be shared, not delegated',
       evidence: ['I always end up doing it alone'],
     },
@@ -185,7 +118,7 @@ export const streamMetadataFixtures = {
         action: 'ADD',
         classification: 'PROPOSAL',
         description: 'Alternate who plans each weekend',
-        kind: 'SHARED_PROPOSAL',
+        kind: Stage4ProposalKind.SHARED_PROPOSAL,
         needsAddressed: ['Partnership'],
       },
     ],
@@ -200,13 +133,13 @@ export const streamMetadataFixtures = {
       confidence: 0.9,
     },
   },
-} as const satisfies Record<string, StreamMetadataWire>;
+} as const satisfies Record<string, StreamMetadata>;
 
 /**
  * The event sequence of a normal successful turn, in emission order.
  * (Chunk count varies; this fixture uses two.)
  */
-export function normalTurnSequence(): StreamEventWire[] {
+export function normalTurnSequence(): StreamEvent[] {
   return [
     streamEventFixtures.userMessage,
     { event: 'chunk', data: { text: 'I hear you — ' } },

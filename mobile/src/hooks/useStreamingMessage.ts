@@ -15,8 +15,9 @@ import {
   MessageRole,
   GetMessagesResponse,
   Stage,
-  CapturedNeedInput,
-  IdentifiedNeedDTO,
+  parseStreamEventData,
+  type StreamMetadata,
+  type StreamEventName,
 } from '@meet-without-fear/shared';
 import { messageKeys, sessionKeys, stageKeys, timelineKeys } from './queryKeys';
 import { getPersistedMessageRefreshQueryKeys } from '../utils/realtimeInvalidation';
@@ -26,63 +27,12 @@ import { bridgeAnimatedId } from '../utils/animationBridge';
 // Types
 // ============================================================================
 
-/** SSE event types from the streaming endpoint */
-interface UserMessageEvent {
-  id: string;
-  content: string;
-  timestamp: string;
-  refiningNeedId?: string | null;
-}
-
-interface ChunkEvent {
-  text: string;
-}
-
-interface MetadataEvent {
-  metadata: StreamMetadata;
-}
-
-interface TextCompleteEvent {
-  metadata: StreamMetadata;
-}
-
-interface CompleteEvent {
-  messageId: string;
-  metadata: StreamMetadata;
-}
-
-/** Metadata from the AI's tool call */
-export interface StreamMetadata {
-  offerFeelHeardCheck?: boolean;
-  offerReadyToShare?: boolean;
-  proposedEmpathyStatement?: string | null;
-  proposedStrategies?: string[];
-  stage4Proposals?: Array<Record<string, unknown>>;
-  proposedNeeds?: CapturedNeedInput[];
-  proposedNeed?: CapturedNeedInput;
-  needAction?: {
-    type: 'refine' | 'delete' | 'lock';
-    needId?: string;
-    supersedes?: string;
-  };
-  needParseError?: string;
-  needsCaptured?: boolean;
-  stage4WalkthroughAction?: {
-    action: 'COVERED' | 'SKIP' | 'NONE';
-    needId?: string;
-    reason?: string;
-  };
-  stage4Capture?: {
-    appliedOperationCount?: number;
-    skippedOperationCount?: number;
-    selectionCaptured?: boolean;
-    closureSignalCaptured?: boolean;
-    confidence?: number;
-    autoClosed?: boolean;
-  };
-  topicFrame?: string | null;
-  analysis?: string;
-}
+/**
+ * Structured metadata from the AI's tool call. Defined once in the shared
+ * streaming contract (shared/src/contracts/stream.ts); re-exported here for
+ * existing consumers of this hook.
+ */
+export type { StreamMetadata } from '@meet-without-fear/shared';
 
 /** Status of a streaming message */
 export type StreamStatus = 'idle' | 'sending' | 'streaming' | 'complete' | 'error';
@@ -674,7 +624,7 @@ export function useStreamingMessage(
         const url = `${API_BASE_URL}/sessions/${sessionId}/messages/stream`;
 
         // Create EventSource with POST method
-        const es = new EventSource<'user_message' | 'chunk' | 'metadata' | 'text_complete' | 'complete' | 'error'>(url, {
+        const es = new EventSource<StreamEventName>(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -744,8 +694,12 @@ export function useStreamingMessage(
         // We keep the same ID to avoid React key changes that cause visual jumps
         es.addEventListener('user_message', (event) => {
           if (!event.data) return;
-          try {
-            const data = JSON.parse(event.data) as UserMessageEvent;
+          {
+            const data = parseStreamEventData('user_message', event.data);
+            if (!data) {
+              console.error('[useStreamingMessage] Dropping invalid user_message frame');
+              return;
+            }
             realUserIdRef.current = data.id; // Store for ID bridging at completion
             // Update optimistic message with server timestamp (keep same ID for React key stability)
             if (optimisticUserIdRef.current) {
@@ -770,8 +724,6 @@ export function useStreamingMessage(
               };
               addMessageToCache(sessionId, realUserMessage, currentStage);
             }
-          } catch (e) {
-            console.error('[useStreamingMessage] Error parsing user_message:', e);
           }
         });
 
@@ -779,8 +731,12 @@ export function useStreamingMessage(
         es.addEventListener('chunk', (event) => {
           if (!event.data) return;
           createPlaceholder();
-          try {
-            const data = JSON.parse(event.data) as ChunkEvent;
+          {
+            const data = parseStreamEventData('chunk', event.data);
+            if (!data) {
+              console.error('[useStreamingMessage] Dropping invalid chunk frame');
+              return;
+            }
             accumulatedTextRef.current += data.text;
 
             // Throttle cache updates to reduce stuttering
@@ -819,8 +775,6 @@ export function useStreamingMessage(
                 CACHE_UPDATE_INTERVAL - timeSinceLastUpdate
               );
             }
-          } catch (e) {
-            console.error('[useStreamingMessage] Error parsing chunk:', e);
           }
         });
 
@@ -829,16 +783,16 @@ export function useStreamingMessage(
         es.addEventListener('metadata', (event) => {
           if (!event.data) return;
 
-          try {
-            const data = JSON.parse(event.data) as MetadataEvent;
+          {
+            const data = parseStreamEventData('metadata', event.data);
+            if (!data) {
+              console.error('[useStreamingMessage] Dropping invalid metadata frame');
+              return;
+            }
             console.log(`[useStreamingMessage] [TIMING] metadata event received at ${Date.now()}`);
 
             // Handle metadata for UI panels immediately
-            if (data.metadata) {
-              handleMetadata(sessionId, data.metadata);
-            }
-          } catch (e) {
-            console.error('[useStreamingMessage] Error parsing metadata:', e);
+            handleMetadata(sessionId, data.metadata);
           }
         });
 
@@ -861,8 +815,12 @@ export function useStreamingMessage(
             pendingUpdateRef.current = null;
           }
 
-          try {
-            const data = JSON.parse(event.data) as TextCompleteEvent;
+          {
+            const data = parseStreamEventData('text_complete', event.data);
+            if (!data) {
+              console.error('[useStreamingMessage] Dropping invalid text_complete frame');
+              return;
+            }
             console.log(`[useStreamingMessage] [TIMING] text_complete parsed`);
 
             // Update cache with final content
@@ -901,8 +859,6 @@ export function useStreamingMessage(
             setStatus('complete');
             onComplete?.();
             console.log(`[useStreamingMessage] [TIMING] text_complete handler done at ${Date.now()}`);
-          } catch (e) {
-            console.error('[useStreamingMessage] Error parsing text_complete:', e);
           }
         });
 
@@ -923,13 +879,13 @@ export function useStreamingMessage(
             pendingUpdateRef.current = null;
           }
 
-          if (event.data) {
-            try {
-              const data = JSON.parse(event.data) as CompleteEvent;
-
-              if (data.metadata) {
-                handleMetadata(sessionId, data.metadata);
-              }
+          const data = event.data ? parseStreamEventData('complete', event.data) : null;
+          if (event.data && !data) {
+            console.error('[useStreamingMessage] Dropping invalid complete frame');
+          }
+          if (data) {
+            {
+              handleMetadata(sessionId, data.metadata);
 
               // Bridge temporary IDs to real server IDs before reconciliation.
               // This prevents ChatInterface from re-animating messages whose IDs
@@ -974,8 +930,6 @@ export function useStreamingMessage(
                 setStatus('complete');
                 onComplete?.();
               }
-            } catch (e) {
-              console.error('[useStreamingMessage] Error parsing complete:', e);
             }
           }
 

@@ -24,8 +24,9 @@ import {
   serializeStreamEvent,
   streamEventFixtures,
   STREAM_EVENT_NAMES,
-  type StreamEventWire,
+  type StreamEvent,
 } from '../../../../shared/src/testing/sse-fixtures';
+import { streamEventSchema } from '../../../../shared/src/contracts/stream';
 
 jest.mock('../../lib/prisma');
 
@@ -155,7 +156,7 @@ interface MockResponseHandle {
   /** Everything written to the SSE stream, concatenated. */
   raw: () => string;
   /** Parsed SSE events, in emission order. */
-  events: () => StreamEventWire[];
+  events: () => StreamEvent[];
 }
 
 function createMockResponse(): MockResponseHandle {
@@ -320,14 +321,14 @@ describe('sendMessageStream characterization', () => {
       }
 
       // Payload shapes.
-      const userMessage = events[0] as Extract<StreamEventWire, { event: 'user_message' }>;
+      const userMessage = events[0] as Extract<StreamEvent, { event: 'user_message' }>;
       expect(userMessage.data).toEqual({
         id: savedUserMessage.id,
         content: savedUserMessage.content,
         timestamp: savedUserMessage.timestamp.toISOString(),
         refiningNeedId: null,
       });
-      const complete = events[events.length - 1] as Extract<StreamEventWire, { event: 'complete' }>;
+      const complete = events[events.length - 1] as Extract<StreamEvent, { event: 'complete' }>;
       expect(complete.data.messageId).toBe('msg-ai-1');
       expect(complete.data.metadata).toBeDefined();
 
@@ -342,6 +343,39 @@ describe('sendMessageStream characterization', () => {
       expect(handle.endMock).toHaveBeenCalled();
     });
 
+    it('every emitted frame validates against the shared runtime schema (contract conformance)', async () => {
+      stubDb(2);
+      (getModelCompletionWithTools as jest.Mock).mockResolvedValue({
+        text: null,
+        toolInvocations: [
+          {
+            name: 'update_session_state',
+            input: {
+              offerReadyToShare: true,
+              proposedEmpathyStatement: 'I imagine you felt alone.',
+            },
+          },
+        ],
+      });
+      stubStream([
+        { type: 'text', text: '<thinking>t</thinking>\n' },
+        { type: 'text', text: 'Here is one way to say it.' },
+      ]);
+
+      const handle = await runTurn();
+
+      const events = handle.events();
+      expect(events.length).toBeGreaterThanOrEqual(4);
+      for (const event of events) {
+        const result = streamEventSchema.safeParse(event);
+        if (!result.success) {
+          throw new Error(
+            `frame "${event.event}" failed contract validation: ${result.error.message}`
+          );
+        }
+      }
+    });
+
     it('streams visible text through chunk events and never emits thinking content', async () => {
       stubDb(1);
       stubStream([
@@ -353,7 +387,7 @@ describe('sendMessageStream characterization', () => {
 
       const chunks = handle
         .events()
-        .filter((e): e is Extract<StreamEventWire, { event: 'chunk' }> => e.event === 'chunk');
+        .filter((e): e is Extract<StreamEvent, { event: 'chunk' }> => e.event === 'chunk');
       const streamedText = chunks.map((c) => c.data.text).join('');
       expect(streamedText).toBe('Visible reply text.');
       expect(handle.raw()).not.toContain('secret planner reasoning');
@@ -383,7 +417,7 @@ describe('sendMessageStream characterization', () => {
       const metadataEvents = handle
         .events()
         .filter(
-          (e): e is Extract<StreamEventWire, { event: 'metadata' | 'text_complete' | 'complete' }> =>
+          (e): e is Extract<StreamEvent, { event: 'metadata' | 'text_complete' | 'complete' }> =>
             e.event === 'metadata' || e.event === 'text_complete' || e.event === 'complete'
         );
       expect(metadataEvents.length).toBe(3);
@@ -422,7 +456,7 @@ describe('sendMessageStream characterization', () => {
 
       const textComplete = handle
         .events()
-        .find((e): e is Extract<StreamEventWire, { event: 'text_complete' }> => e.event === 'text_complete');
+        .find((e): e is Extract<StreamEvent, { event: 'text_complete' }> => e.event === 'text_complete');
       expect(textComplete?.data.metadata.offerReadyToShare).toBe(true);
       expect(textComplete?.data.metadata.proposedEmpathyStatement).toBe(
         'I imagine you felt alone with the planning.'
@@ -464,7 +498,7 @@ describe('sendMessageStream characterization', () => {
       expect(names.slice(-3)).toEqual(['metadata', 'text_complete', 'complete']);
       const textComplete = handle
         .events()
-        .find((e): e is Extract<StreamEventWire, { event: 'text_complete' }> => e.event === 'text_complete');
+        .find((e): e is Extract<StreamEvent, { event: 'text_complete' }> => e.event === 'text_complete');
       expect(textComplete?.data.metadata.needAction).toBeUndefined();
       expect(textComplete?.data.metadata.proposedNeed).toBeUndefined();
       // Current behavior: the invalid boolean is dropped by the tool parser and
@@ -523,7 +557,7 @@ describe('sendMessageStream characterization', () => {
 
       const chunkText = handle
         .events()
-        .filter((e): e is Extract<StreamEventWire, { event: 'chunk' }> => e.event === 'chunk')
+        .filter((e): e is Extract<StreamEvent, { event: 'chunk' }> => e.event === 'chunk')
         .map((c) => c.data.text)
         .join('');
       expect(chunkText).not.toContain('<draft');
@@ -532,7 +566,7 @@ describe('sendMessageStream characterization', () => {
 
       const textComplete = handle
         .events()
-        .find((e): e is Extract<StreamEventWire, { event: 'text_complete' }> => e.event === 'text_complete');
+        .find((e): e is Extract<StreamEvent, { event: 'text_complete' }> => e.event === 'text_complete');
       expect(textComplete?.data.metadata.proposedEmpathyStatement).toBe('I imagine you felt dismissed.');
     });
 
@@ -549,7 +583,7 @@ describe('sendMessageStream characterization', () => {
 
       const chunkText = handle
         .events()
-        .filter((e): e is Extract<StreamEventWire, { event: 'chunk' }> => e.event === 'chunk')
+        .filter((e): e is Extract<StreamEvent, { event: 'chunk' }> => e.event === 'chunk')
         .map((c) => c.data.text)
         .join('');
       expect(chunkText).not.toContain('hidden draft text');
@@ -571,7 +605,7 @@ describe('sendMessageStream characterization', () => {
       // Turn failed safely: retryable SSE error, user message deleted, error published, no AI persist.
       const errorEvent = handle
         .events()
-        .find((e): e is Extract<StreamEventWire, { event: 'error' }> => e.event === 'error');
+        .find((e): e is Extract<StreamEvent, { event: 'error' }> => e.event === 'error');
       expect(errorEvent?.data.retryable).toBe(true);
       expect(prisma.message.delete).toHaveBeenCalledWith({ where: { id: savedUserMessage.id } });
       expect(publishMessageError).toHaveBeenCalled();
@@ -613,7 +647,7 @@ describe('sendMessageStream characterization', () => {
       expect(handleDispatch).toHaveBeenCalledWith('generate_invitation', expect.any(Object));
       const chunkText = handle
         .events()
-        .filter((e): e is Extract<StreamEventWire, { event: 'chunk' }> => e.event === 'chunk')
+        .filter((e): e is Extract<StreamEvent, { event: 'chunk' }> => e.event === 'chunk')
         .map((c) => c.data.text)
         .join('');
       expect(chunkText).toBe('Here is your invitation preview.');
@@ -650,7 +684,7 @@ describe('sendMessageStream characterization', () => {
       );
       const errorEvent = handle
         .events()
-        .find((e): e is Extract<StreamEventWire, { event: 'error' }> => e.event === 'error');
+        .find((e): e is Extract<StreamEvent, { event: 'error' }> => e.event === 'error');
       expect(errorEvent).toEqual(streamEventFixtures.errorRetryable);
       // No AI message persisted, and no complete event after an error.
       const names = handle.events().map((e) => e.event);
@@ -700,7 +734,7 @@ describe('sendMessageStream characterization', () => {
       // No chunk/complete frames were written for post-disconnect text.
       const chunkText = handle
         .events()
-        .filter((e): e is Extract<StreamEventWire, { event: 'chunk' }> => e.event === 'chunk')
+        .filter((e): e is Extract<StreamEvent, { event: 'chunk' }> => e.event === 'chunk')
         .map((c) => c.data.text)
         .join('');
       expect(chunkText).not.toContain('Second part after disconnect.');
