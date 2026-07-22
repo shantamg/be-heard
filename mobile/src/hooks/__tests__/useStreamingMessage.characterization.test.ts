@@ -17,6 +17,7 @@ import { act, renderHook } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MessageDTO, MessageRole, Stage } from '@meet-without-fear/shared';
 import { useStreamingMessage } from '../useStreamingMessage';
+import { getAuthToken } from '../../lib/api';
 import { messageKeys, stageKeys } from '../queryKeys';
 import { getAnimationIdentity } from '../../utils/animationBridge';
 import {
@@ -439,7 +440,22 @@ describe('useStreamingMessage characterization', () => {
 });
 
 describe('useStreamingMessage unmount cleanup (defect fix)', () => {
-  it('closes the transport and clears all timers when the component unmounts mid-stream', async () => {
+  // Own setup/teardown: without fake timers and a clean instance list this
+  // suite would inspect the previous suite's EventSource and measure real
+  // timers, so it would pass even if cleanup regressed.
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.clearAllMocks();
+    mockEventSourceInstances.length = 0;
+  });
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  it('closes the transport and leaves no timer that can still fire after unmount', async () => {
     const queryClient = createQueryClient();
     const { result, unmount } = renderHook(() => useStreamingMessage(), {
       wrapper: createWrapper(queryClient),
@@ -457,11 +473,70 @@ describe('useStreamingMessage unmount cleanup (defect fix)', () => {
       emit(es, 'chunk', { text: 'partial' }); // schedules the throttle timer
     });
 
+    // Watch for the effects the hook's timers would produce if they survived:
+    // soft recovery refetches, and the hard timeout's warn + close.
+    const refetchSpy = jest.spyOn(queryClient, 'refetchQueries');
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    unmount();
+    expect(es.close).toHaveBeenCalled();
+
+    // Well past both the 15s soft and 90s hard timeouts.
+    act(() => {
+      jest.advanceTimersByTime(120_000);
+    });
+
+    expect(refetchSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    queryClient.clear();
+  });
+
+  it('does not create a stream when the component unmounts while auth is still pending', async () => {
+    // The MAJOR case: cleanup can only release refs that exist when it runs,
+    // and the transport is built only after the auth await resolves.
+    let releaseToken: (token: string) => void = () => undefined;
+    (getAuthToken as jest.Mock).mockImplementationOnce(
+      () => new Promise<string>((resolve) => {
+        releaseToken = resolve;
+      })
+    );
+
+    const queryClient = createQueryClient();
+    const { result, unmount } = renderHook(() => useStreamingMessage(), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    let sendPromise: Promise<void> = Promise.resolve();
+    act(() => {
+      sendPromise = result.current.sendMessage({
+        sessionId: SESSION_ID,
+        content: 'sent, then navigated away',
+        currentStage: Stage.WITNESS,
+      });
+    });
+
+    // Auth has not resolved yet, so no transport exists to clean up.
+    expect(mockEventSourceInstances).toHaveLength(0);
+
     unmount();
 
-    // No socket, no timers survive the unmount.
-    expect(es.close).toHaveBeenCalled();
-    expect(jest.getTimerCount()).toBe(0);
+    await act(async () => {
+      releaseToken('test-token');
+      await sendPromise;
+    });
+
+    // The resumed callback must abandon rather than build an orphan.
+    expect(mockEventSourceInstances).toHaveLength(0);
+
+    // And nothing it might have scheduled can fire later.
+    const refetchSpy = jest.spyOn(queryClient, 'refetchQueries');
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    act(() => {
+      jest.advanceTimersByTime(120_000);
+    });
+    expect(refetchSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
 
     queryClient.clear();
   });

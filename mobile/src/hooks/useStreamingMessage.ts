@@ -5,15 +5,14 @@
  * Uses react-native-sse for proper SSE support in React Native.
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { useQueryClient, InfiniteData } from '@tanstack/react-query';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import EventSource from 'react-native-sse';
 import { getAuthToken, isE2EAuthMode, getE2EAuthHeaders } from '../lib/api';
 import {
   MessageDTO,
   MessageRole,
-  GetMessagesResponse,
   Stage,
   parseStreamEventData,
   type StreamMetadata,
@@ -22,6 +21,19 @@ import {
 import { messageKeys, sessionKeys, stageKeys } from './queryKeys';
 import { getPersistedMessageRefreshQueryKeys } from '../utils/realtimeInvalidation';
 import { bridgeAnimatedId } from '../utils/animationBridge';
+import {
+  createMessageCacheAdapter,
+  type CachedStreamingMessage,
+} from '../lib/chat/messageCacheAdapter';
+import {
+  initialStreamLifecycleState,
+  needsCompletionFallback,
+  streamLifecycleReducer,
+  toPublicStatus,
+  type StreamLifecycleEvent,
+  type StreamLifecycleState,
+  type StreamStatus,
+} from '../lib/chat/streamLifecycle';
 
 // ============================================================================
 // Types
@@ -34,12 +46,8 @@ import { bridgeAnimatedId } from '../utils/animationBridge';
  */
 export type { StreamMetadata } from '@meet-without-fear/shared';
 
-/** Status of a streaming message */
-export type StreamStatus = 'idle' | 'sending' | 'streaming' | 'complete' | 'error';
-
-type CachedStreamingMessage = MessageDTO & {
-  status?: 'sending' | 'streaming' | 'sent' | 'error';
-};
+/** Status of a streaming message. Owned by the pure lifecycle module. */
+export type { StreamStatus } from '../lib/chat/streamLifecycle';
 
 /** Parameters for sending a streaming message */
 export interface SendStreamingMessageParams {
@@ -114,6 +122,25 @@ export function useStreamingMessage(
   const [status, setStatus] = useState<StreamStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Typed seam to the message caches (add/update/replaceId/remove).
+  const cache = useMemo(() => createMessageCacheAdapter(queryClient), [queryClient]);
+
+  // Lifecycle: the ref is the synchronous source of truth (handlers branch on
+  // it within the same tick), the state exists so React re-renders.
+  const lifecycleRef = useRef<StreamLifecycleState>(initialStreamLifecycleState);
+  const dispatch = useCallback((event: StreamLifecycleEvent): StreamLifecycleState => {
+    const next = streamLifecycleReducer(lifecycleRef.current, event);
+    lifecycleRef.current = next;
+    setStatus(toPublicStatus(next.phase));
+    return next;
+  }, []);
+
+  // Bumped on unmount and on each new send. Any async continuation that finds
+  // a stale generation must abandon quietly instead of creating a stream that
+  // nothing is left to close.
+  const isMountedRef = useRef(true);
+  const sendGenerationRef = useRef(0);
+
   // Refs for cleanup and retry
   const eventSourceRef = useRef<EventSource | null>(null);
   const lastParamsRef = useRef<SendStreamingMessageParams | null>(null);
@@ -133,9 +160,6 @@ export function useStreamingMessage(
   const pendingUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const CACHE_UPDATE_INTERVAL = 50; // Update cache every 50ms max
 
-  // Ref to track if text_complete was received (for complete event fallback)
-  const textCompleteReceivedRef = useRef<boolean>(false);
-
   // Ref for 15-second fallback timer to handle stuck connections
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hardTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,8 +171,16 @@ export function useStreamingMessage(
   // Closes the EventSource and clears every pending timer so no socket,
   // timer, or stale identity alias survives (Phase 4 exit criterion; this
   // was a real leak before the chat-modernization work).
+  //
+  // Releasing the refs is necessary but not sufficient: `sendMessage` awaits
+  // token retrieval before it has anything to release, so unmounting during
+  // that await would otherwise let the resumed callback build a stream after
+  // the component is gone. `isMountedRef` closes that race.
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
+      sendGenerationRef.current += 1;
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
@@ -162,243 +194,9 @@ export function useStreamingMessage(
     };
   }, []);
 
-  /**
-   * Add a message to the cache
-   */
-  const addMessageToCache = useCallback(
-    (sessionId: string, message: CachedStreamingMessage, stage?: Stage) => {
-      const updateCache = (old: GetMessagesResponse | undefined) => {
-        if (!old) {
-          return { messages: [message], hasMore: false };
-        }
-        // Check for duplicates
-        const existingIds = new Set((old.messages || []).map((m) => m.id));
-        if (existingIds.has(message.id)) {
-          // Update existing message (for streaming updates)
-          return {
-            ...old,
-            messages: (old.messages || []).map((m) =>
-              m.id === message.id ? message : m
-            ),
-          };
-        }
-        return {
-          ...old,
-          messages: [...(old.messages || []), message],
-        };
-      };
-
-      const updateInfiniteCache = (
-        old: InfiniteData<GetMessagesResponse> | undefined
-      ): InfiniteData<GetMessagesResponse> | undefined => {
-        if (!old || old.pages.length === 0) {
-          return {
-            pages: [{ messages: [message], hasMore: false }],
-            pageParams: [undefined],
-          };
-        }
-        const updatedPages = [...old.pages];
-        const firstPage = updatedPages[0];
-        const existingIds = new Set((firstPage.messages || []).map((m) => m.id));
-
-        if (existingIds.has(message.id)) {
-          // Update existing message (for streaming updates)
-          updatedPages[0] = {
-            ...firstPage,
-            messages: (firstPage.messages || []).map((m) =>
-              m.id === message.id ? message : m
-            ),
-          };
-        } else {
-          updatedPages[0] = {
-            ...firstPage,
-            messages: [...(firstPage.messages || []), message],
-          };
-        }
-        return { ...old, pages: updatedPages };
-      };
-
-      // Update caches
-      queryClient.setQueryData<GetMessagesResponse>(
-        messageKeys.list(sessionId),
-        updateCache
-      );
-      queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-        messageKeys.infinite(sessionId),
-        updateInfiniteCache
-      );
-
-      if (stage !== undefined) {
-        queryClient.setQueryData<GetMessagesResponse>(
-          messageKeys.list(sessionId, stage),
-          updateCache
-        );
-        queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-          messageKeys.infinite(sessionId, stage),
-          updateInfiniteCache
-        );
-      }
-    },
-    [queryClient]
-  );
-
-  /**
-   * Update a message in cache by ID without changing the ID.
-   * Used to update optimistic messages with server data while keeping
-   * the same ID for React's key reconciliation (prevents visual jumps).
-   */
-  const updateMessageInCache = useCallback(
-    (sessionId: string, messageId: string, updates: Partial<Omit<MessageDTO, 'id'>>, stage?: Stage) => {
-      const updateCache = (old: GetMessagesResponse | undefined) => {
-        if (!old) return old;
-        const messages = old.messages || [];
-        const index = messages.findIndex((m) => m.id === messageId);
-        if (index === -1) return old;
-
-        const updatedMessages = [...messages];
-        updatedMessages[index] = { ...updatedMessages[index], ...updates };
-        return { ...old, messages: updatedMessages };
-      };
-
-      const updateInfiniteCache = (
-        old: InfiniteData<GetMessagesResponse> | undefined
-      ): InfiniteData<GetMessagesResponse> | undefined => {
-        if (!old || old.pages.length === 0) return old;
-
-        const updatedPages = old.pages.map((page) => {
-          const index = (page.messages || []).findIndex((m) => m.id === messageId);
-          if (index === -1) return page;
-
-          const updatedMessages = [...(page.messages || [])];
-          updatedMessages[index] = { ...updatedMessages[index], ...updates };
-          return { ...page, messages: updatedMessages };
-        });
-
-        return { ...old, pages: updatedPages };
-      };
-
-      // Update caches
-      queryClient.setQueryData<GetMessagesResponse>(
-        messageKeys.list(sessionId),
-        updateCache
-      );
-      queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-        messageKeys.infinite(sessionId),
-        updateInfiniteCache
-      );
-
-      if (stage !== undefined) {
-        queryClient.setQueryData<GetMessagesResponse>(
-          messageKeys.list(sessionId, stage),
-          updateCache
-        );
-        queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-          messageKeys.infinite(sessionId, stage),
-          updateInfiniteCache
-        );
-      }
-    },
-    [queryClient]
-  );
-
-  /**
-   * Replace a message ID in cache. Used to bridge temporary streaming/optimistic
-   * IDs to real server UUIDs before reconciliation, so refetch matches by ID
-   * instead of treating messages as new.
-   */
-  const replaceMessageIdInCache = useCallback(
-    (sessionId: string, oldId: string, newId: string, stage?: Stage) => {
-      const replaceInPage = (page: GetMessagesResponse): GetMessagesResponse => ({
-        ...page,
-        messages: (page.messages || []).map((m) =>
-          m.id === oldId ? { ...m, id: newId } : m
-        ),
-      });
-
-      queryClient.setQueryData<GetMessagesResponse>(
-        messageKeys.list(sessionId),
-        (old) => old ? replaceInPage(old) : old
-      );
-      queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-        messageKeys.infinite(sessionId),
-        (old) => {
-          if (!old) return old;
-          return { ...old, pages: old.pages.map(replaceInPage) };
-        }
-      );
-
-      if (stage !== undefined) {
-        queryClient.setQueryData<GetMessagesResponse>(
-          messageKeys.list(sessionId, stage),
-          (old) => old ? replaceInPage(old) : old
-        );
-        queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-          messageKeys.infinite(sessionId, stage),
-          (old) => {
-            if (!old) return old;
-            return { ...old, pages: old.pages.map(replaceInPage) };
-          }
-        );
-      }
-    },
-    [queryClient]
-  );
-
-  /**
-   * Remove optimistic/placeholder messages from the cache after a failed stream.
-   */
-  const removeMessagesFromCache = useCallback(
-    (sessionId: string, messageIds: string[], stage?: Stage) => {
-      const ids = new Set(messageIds.filter(Boolean));
-      if (ids.size === 0) return;
-
-      const updateCache = (old: GetMessagesResponse | undefined) => {
-        if (!old) return old;
-        return {
-          ...old,
-          messages: (old.messages || []).filter((message) => !ids.has(message.id)),
-        };
-      };
-
-      const updateInfiniteCache = (
-        old: InfiniteData<GetMessagesResponse> | undefined
-      ): InfiniteData<GetMessagesResponse> | undefined => {
-        if (!old) return old;
-        return {
-          ...old,
-          pages: old.pages.map((page) => ({
-            ...page,
-            messages: (page.messages || []).filter((message) => !ids.has(message.id)),
-          })),
-        };
-      };
-
-      queryClient.setQueryData<GetMessagesResponse>(
-        messageKeys.list(sessionId),
-        updateCache
-      );
-      queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-        messageKeys.infinite(sessionId),
-        updateInfiniteCache
-      );
-
-      if (stage !== undefined) {
-        queryClient.setQueryData<GetMessagesResponse>(
-          messageKeys.list(sessionId, stage),
-          updateCache
-        );
-        queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-          messageKeys.infinite(sessionId, stage),
-          updateInfiniteCache
-        );
-      }
-    },
-    [queryClient]
-  );
-
   const cleanupFailedStream = useCallback(
     (sessionId: string, stage?: Stage) => {
-      removeMessagesFromCache(
+      cache.remove(
         sessionId,
         [activeUserMessageIdRef.current, optimisticUserIdRef.current, aiMessageIdRef.current],
         stage
@@ -412,7 +210,7 @@ export function useStreamingMessage(
       queryClient.invalidateQueries({ queryKey: messageKeys.list(sessionId) });
       queryClient.invalidateQueries({ queryKey: messageKeys.infinite(sessionId) });
     },
-    [queryClient, removeMessagesFromCache]
+    [queryClient, cache]
   );
 
   const invalidateAfterSuccessfulStream = useCallback(
@@ -489,7 +287,7 @@ export function useStreamingMessage(
       optimisticUserIdRef.current = '';
       activeUserMessageIdRef.current = '';
       realUserIdRef.current = '';
-      setStatus('idle');
+      dispatch({ type: 'hardTimeout' });
     },
     [queryClient, reconcilePersistedMessages]
   );
@@ -583,6 +381,11 @@ export function useStreamingMessage(
     async (params: SendStreamingMessageParams) => {
       const { sessionId, content, currentStage, refiningNeedId } = params;
 
+      // Claim this send. Unmount (and any later send) bumps the generation, so
+      // work resuming after an await can tell it has been superseded.
+      const generation = ++sendGenerationRef.current;
+      const isCurrentSend = () => isMountedRef.current && sendGenerationRef.current === generation;
+
       // Store params for retry
       lastParamsRef.current = params;
 
@@ -593,14 +396,13 @@ export function useStreamingMessage(
       }
 
       // Reset state
-      setStatus('sending');
+      dispatch({ type: 'send' });
       setErrorMessage(null);
       accumulatedTextRef.current = '';
       aiMessageIdRef.current = `streaming-${Date.now()}`;
       optimisticUserIdRef.current = `optimistic-user-${Date.now()}`;
       activeUserMessageIdRef.current = optimisticUserIdRef.current;
       realUserIdRef.current = '';
-      textCompleteReceivedRef.current = false;
 
       // Create optimistic user message
       const optimisticUserMessage: CachedStreamingMessage = {
@@ -616,7 +418,7 @@ export function useStreamingMessage(
       };
 
       // Add optimistic user message to cache
-      addMessageToCache(sessionId, optimisticUserMessage, currentStage);
+      cache.add(sessionId, optimisticUserMessage, currentStage);
 
       try {
         // Build auth headers - either E2E headers or Bearer token
@@ -635,6 +437,13 @@ export function useStreamingMessage(
             throw new Error('Not authenticated');
           }
           authHeaders = { Authorization: `Bearer ${token}` };
+        }
+
+        // Token retrieval is async: the component may have unmounted, or a
+        // newer send may have started, while it was pending. Creating the
+        // stream now would leave a socket and timers nobody owns.
+        if (!isCurrentSend()) {
+          return;
         }
 
         const url = `${API_BASE_URL}/sessions/${sessionId}/messages/stream`;
@@ -691,7 +500,7 @@ export function useStreamingMessage(
         const createPlaceholder = () => {
           if (placeholderCreated) return;
           placeholderCreated = true;
-          setStatus('streaming');
+          dispatch({ type: 'chunk' });
           const placeholderAIMessage: CachedStreamingMessage = {
             id: aiMessageIdRef.current,
             sessionId,
@@ -703,7 +512,7 @@ export function useStreamingMessage(
             refiningNeedId: refiningNeedId ?? null,
             status: 'streaming',
           };
-          addMessageToCache(sessionId, placeholderAIMessage, currentStage);
+          cache.add(sessionId, placeholderAIMessage, currentStage);
         };
 
         // Handle user_message event - update optimistic message with server data
@@ -720,7 +529,7 @@ export function useStreamingMessage(
             // Update optimistic message with server timestamp (keep same ID for React key stability)
             if (optimisticUserIdRef.current) {
               activeUserMessageIdRef.current = optimisticUserIdRef.current;
-              updateMessageInCache(sessionId, optimisticUserIdRef.current, {
+              cache.update(sessionId, optimisticUserIdRef.current, {
                 timestamp: data.timestamp,
                 content: data.content, // In case server modified content
                 refiningNeedId: data.refiningNeedId ?? null,
@@ -738,7 +547,7 @@ export function useStreamingMessage(
                 timestamp: data.timestamp,
                 refiningNeedId: data.refiningNeedId ?? null,
               };
-              addMessageToCache(sessionId, realUserMessage, currentStage);
+              cache.add(sessionId, realUserMessage, currentStage);
             }
           }
         });
@@ -777,7 +586,7 @@ export function useStreamingMessage(
                 refiningNeedId: refiningNeedId ?? null,
                 status: 'streaming',
               };
-              addMessageToCache(sessionId, updatedAIMessage, currentStage);
+              cache.add(sessionId, updatedAIMessage, currentStage);
               lastCacheUpdateRef.current = Date.now();
             };
 
@@ -851,7 +660,7 @@ export function useStreamingMessage(
               refiningNeedId: refiningNeedId ?? null,
               status: 'sent',
             };
-            addMessageToCache(sessionId, finalAIMessage, currentStage);
+            cache.add(sessionId, finalAIMessage, currentStage);
 
             // Handle metadata for UI panels (invitation, empathy, etc.)
             if (data.metadata) {
@@ -871,8 +680,7 @@ export function useStreamingMessage(
             }
 
             // Mark streaming as complete - cursor stops immediately
-            textCompleteReceivedRef.current = true;
-            setStatus('complete');
+            dispatch({ type: 'textComplete' });
             onComplete?.();
             console.log(`[useStreamingMessage] [TIMING] text_complete handler done at ${Date.now()}`);
           }
@@ -900,6 +708,8 @@ export function useStreamingMessage(
             console.error('[useStreamingMessage] Dropping invalid complete frame');
           }
           if (data) {
+            // Read the fallback decision before the terminal transition below.
+            const needsFallback = needsCompletionFallback(lifecycleRef.current);
             {
               handleMetadata(sessionId, data.metadata);
 
@@ -908,20 +718,20 @@ export function useStreamingMessage(
               // change from streaming placeholders to real UUIDs during refetch.
               if (data.messageId && aiMessageIdRef.current.startsWith('streaming-')) {
                 bridgeAnimatedId(aiMessageIdRef.current, data.messageId);
-                replaceMessageIdInCache(sessionId, aiMessageIdRef.current, data.messageId, currentStage);
+                cache.replaceId(sessionId, aiMessageIdRef.current, data.messageId, currentStage);
                 aiMessageIdRef.current = data.messageId;
               }
               if (realUserIdRef.current && activeUserMessageIdRef.current.startsWith('optimistic-user-')) {
                 bridgeAnimatedId(activeUserMessageIdRef.current, realUserIdRef.current);
-                replaceMessageIdInCache(sessionId, activeUserMessageIdRef.current, realUserIdRef.current, currentStage);
-                updateMessageInCache(sessionId, realUserIdRef.current, { status: 'sent' } as Partial<CachedStreamingMessage>, currentStage);
+                cache.replaceId(sessionId, activeUserMessageIdRef.current, realUserIdRef.current, currentStage);
+                cache.update(sessionId, realUserIdRef.current, { status: 'sent' } as Partial<CachedStreamingMessage>, currentStage);
                 activeUserMessageIdRef.current = realUserIdRef.current;
               }
 
               reconcilePersistedMessages(sessionId);
 
               // If text_complete wasn't received (fallback), handle completion here
-              if (!textCompleteReceivedRef.current) {
+              if (needsFallback) {
                 const finalAIMessage: CachedStreamingMessage = {
                   id: aiMessageIdRef.current,
                   sessionId,
@@ -933,7 +743,7 @@ export function useStreamingMessage(
                   refiningNeedId: refiningNeedId ?? null,
                   status: 'sent',
                 };
-                addMessageToCache(sessionId, finalAIMessage, currentStage);
+                cache.add(sessionId, finalAIMessage, currentStage);
 
                 // Refresh empathy status (fallback path)
                 if (currentStage === Stage.PERSPECTIVE_STRETCH) {
@@ -943,11 +753,13 @@ export function useStreamingMessage(
                   invalidateAfterSuccessfulStream(sessionId, currentStage);
                 }
 
-                setStatus('complete');
                 onComplete?.();
               }
             }
           }
+
+          // Terminal: further frames on this turn are late and must not apply.
+          dispatch({ type: 'complete' });
 
           // Close the EventSource
           es.close();
@@ -982,7 +794,7 @@ export function useStreamingMessage(
           console.error('[useStreamingMessage] SSE error:', errorMsg);
           cleanupFailedStream(sessionId, currentStage);
           setErrorMessage(errorMsg);
-          setStatus('error');
+          dispatch({ type: 'error' });
           onError?.(new Error(errorMsg));
           es.close();
           eventSourceRef.current = null;
@@ -1005,11 +817,11 @@ export function useStreamingMessage(
         console.error('[useStreamingMessage] Error:', error);
         cleanupFailedStream(sessionId, currentStage);
         setErrorMessage((error as Error).message || 'Failed to send message');
-        setStatus('error');
+        dispatch({ type: 'error' });
         onError?.(error as Error);
       }
     },
-    [addMessageToCache, updateMessageInCache, cleanupFailedStream, handleMetadata, invalidateAfterSuccessfulStream, reconcilePersistedMessages, recoverTimedOutStream, queryClient, onComplete, onError]
+    [cache, dispatch, cleanupFailedStream, handleMetadata, invalidateAfterSuccessfulStream, reconcilePersistedMessages, recoverTimedOutStream, queryClient, onComplete, onError]
   );
 
   /**
@@ -1040,7 +852,7 @@ export function useStreamingMessage(
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
-    setStatus('idle');
+    dispatch({ type: 'cancel' });
   }, []);
 
   /**
