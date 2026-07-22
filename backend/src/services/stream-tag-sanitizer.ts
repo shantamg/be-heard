@@ -60,6 +60,10 @@ const TAG_TRAP_MIN_RESPONSE_CHARS = 50;
 /** Matches a possible hidden-tag prefix at the end of a buffer (e.g. "<dra"). */
 const PARTIAL_TAG_PATTERN = /<\/?(d|n|s)[a-z0-9_-]*$/i;
 
+function truncateForLog(value: string): string {
+  return value.substring(0, 160) + (value.length > 160 ? '...' : '');
+}
+
 function stripHiddenTags(text: string): string {
   return text
     .replace(/<draft>[\s\S]*?<\/draft>/gi, '')
@@ -299,6 +303,7 @@ export class StreamTagSanitizer {
     const needMatch = buffer.match(/<need>([\s\S]*?)<\/need>/i);
     if (needMatch) {
       this.captured.need = needMatch[1].trim();
+      this.logger.info?.(`[HIDDEN NEED]: ${truncateForLog(this.captured.need)}`);
     }
 
     const needActionMatch = buffer.match(
@@ -306,16 +311,19 @@ export class StreamTagSanitizer {
     );
     if (needActionMatch) {
       this.captured.needAction = needActionMatch[0].trim();
+      this.logger.info?.(`[HIDDEN NEED ACTION]: ${truncateForLog(this.captured.needAction)}`);
     }
 
     const needsMatch = buffer.match(/<needs>([\s\S]*?)<\/needs>/i);
     if (needsMatch) {
       this.captured.needs = needsMatch[1].trim();
+      this.logger.info?.(`[HIDDEN NEEDS]: {length: ${this.captured.needs.length}}`);
     }
 
     const stage4ProposalsMatch = buffer.match(/<stage4_proposals>([\s\S]*?)<\/stage4_proposals>/i);
     if (stage4ProposalsMatch) {
       this.captured.stage4Proposals = stage4ProposalsMatch[1].trim();
+      this.logger.info?.(`[HIDDEN STAGE 4 PROPOSALS]: {length: ${this.captured.stage4Proposals.length}}`);
     }
 
     const stage4WalkthroughMatch = buffer.match(
@@ -323,6 +331,7 @@ export class StreamTagSanitizer {
     );
     if (stage4WalkthroughMatch) {
       this.captured.stage4Walkthrough = stage4WalkthroughMatch[1].trim();
+      this.logger.info?.(`[HIDDEN STAGE 4 WALKTHROUGH]: ${truncateForLog(this.captured.stage4Walkthrough)}`);
     }
 
     const dispatchMatch = buffer.match(/<dispatch>([\s\S]*?)<\/dispatch>/i);

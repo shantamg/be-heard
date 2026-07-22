@@ -1511,7 +1511,15 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
           lastChunkTime = Date.now();
           const wasInsideThinking = sanitizer.insideThinking;
           sendCleanText(sanitizer.push(event.text));
-          if (wasInsideThinking && !sanitizer.insideThinking && thinkingEndTime === null) {
+          // Timing parity with the original inline machine: the thinking phase
+          // only "completes" when a real </thinking> closed (opener confirmed),
+          // not when the no-thinking bail-out leaves the trap.
+          if (
+            wasInsideThinking &&
+            !sanitizer.insideThinking &&
+            sanitizer.confirmedThinkingOpener &&
+            thinkingEndTime === null
+          ) {
             thinkingEndTime = Date.now();
             logger.info(`[sendMessageStream:${requestId}] [TIMING] Thinking phase complete at ${thinkingEndTime - streamStartTime}ms`);
           }
