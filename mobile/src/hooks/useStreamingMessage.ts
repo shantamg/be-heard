@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import EventSource from 'react-native-sse';
 import { getAuthToken, isE2EAuthMode, getE2EAuthHeaders } from '../lib/api';
@@ -34,6 +34,13 @@ import {
   type StreamLifecycleState,
   type StreamStatus,
 } from '../lib/chat/streamLifecycle';
+import { createStreamTimers } from '../lib/chat/streamTimers';
+import {
+  hardTimeoutInvalidationKeys,
+  softTimeoutInvalidationKeys,
+  successInvalidationKeys,
+  textCompleteInvalidationKeys,
+} from '../lib/chat/streamInvalidation';
 
 // ============================================================================
 // Types
@@ -98,6 +105,15 @@ const rawApiUrl =
 
 const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 
+/** Longest gap between cache writes while chunks arrive. */
+const CACHE_UPDATE_INTERVAL = 50;
+/** Refetch persisted messages, but leave the stream open — it may still deliver. */
+const SOFT_RECOVERY_TIMEOUT = 15000;
+/** Give up on the stream and fall back to server truth. */
+const HARD_STREAM_TIMEOUT = 90000;
+/** Trailing refetch after reconciliation, to catch writes that landed late. */
+const RECONCILIATION_REFETCH_DELAY = 1200;
+
 // ============================================================================
 // Hook Implementation
 // ============================================================================
@@ -155,17 +171,12 @@ export function useStreamingMessage(
   // Real server ID received from the user_message event, used for ID bridging
   const realUserIdRef = useRef<string>('');
 
-  // Refs for throttled cache updates (reduces stuttering)
+  // Throttled cache updates (reduces stuttering during chunk delivery)
   const lastCacheUpdateRef = useRef<number>(0);
-  const pendingUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const CACHE_UPDATE_INTERVAL = 50; // Update cache every 50ms max
 
-  // Ref for 15-second fallback timer to handle stuck connections
-  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hardTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const SOFT_RECOVERY_TIMEOUT = 15000; // 15 seconds
-  const HARD_STREAM_TIMEOUT = 90000; // 90 seconds
-  const reconciliationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Every timer this turn owns, cleared by name. See streamTimers.ts for why
+  // this is a registry rather than four independent refs.
+  const timers = useMemo(() => createStreamTimers(), []);
 
   // Unmount cleanup: an in-flight stream must not outlive the component.
   // Closes the EventSource and clears every pending timer so no socket,
@@ -185,14 +196,9 @@ export function useStreamingMessage(
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
-      for (const timerRef of [fallbackTimerRef, hardTimeoutTimerRef, reconciliationTimerRef, pendingUpdateRef]) {
-        if (timerRef.current) {
-          clearTimeout(timerRef.current);
-          timerRef.current = null;
-        }
-      }
+      timers.clearAll();
     };
-  }, []);
+  }, [timers]);
 
   const cleanupFailedStream = useCallback(
     (sessionId: string, stage?: Stage) => {
@@ -213,23 +219,11 @@ export function useStreamingMessage(
     [queryClient, cache]
   );
 
-  const invalidateAfterSuccessfulStream = useCallback(
-    (sessionId: string, stage?: Stage) => {
-      queryClient.invalidateQueries({ queryKey: messageKeys.list(sessionId) });
-      queryClient.invalidateQueries({ queryKey: messageKeys.infinite(sessionId) });
-      queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
-      if (stage === Stage.PERSPECTIVE_STRETCH) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
-      }
-      if (stage === Stage.NEED_MAPPING) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-        queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
-      }
-      if (stage === Stage.STRATEGIC_REPAIR) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.stage4(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.strategies(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.agreements(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
+  /** Invalidate a derived key set. The policy itself lives in streamInvalidation.ts. */
+  const invalidateKeys = useCallback(
+    (queryKeys: readonly QueryKey[]) => {
+      for (const queryKey of queryKeys) {
+        queryClient.invalidateQueries({ queryKey });
       }
     },
     [queryClient]
@@ -237,50 +231,35 @@ export function useStreamingMessage(
 
   const reconcilePersistedMessages = useCallback(
     (sessionId: string) => {
-      if (reconciliationTimerRef.current) {
-        clearTimeout(reconciliationTimerRef.current);
-        reconciliationTimerRef.current = null;
-      }
+      timers.clear('reconciliation');
 
       for (const queryKey of getPersistedMessageRefreshQueryKeys(sessionId)) {
         queryClient.invalidateQueries({ queryKey });
         queryClient.refetchQueries({ queryKey });
       }
 
-      reconciliationTimerRef.current = setTimeout(() => {
-        for (const queryKey of getPersistedMessageRefreshQueryKeys(sessionId)) {
-          queryClient.refetchQueries({ queryKey });
-        }
-        reconciliationTimerRef.current = null;
-      }, 1200);
+      timers.set(
+        'reconciliation',
+        () => {
+          for (const queryKey of getPersistedMessageRefreshQueryKeys(sessionId)) {
+            queryClient.refetchQueries({ queryKey });
+          }
+        },
+        RECONCILIATION_REFETCH_DELAY
+      );
     },
-    [queryClient]
+    [queryClient, timers]
   );
 
   const recoverTimedOutStream = useCallback(
     (sessionId: string, stage?: Stage) => {
-      if (pendingUpdateRef.current) {
-        clearTimeout(pendingUpdateRef.current);
-        pendingUpdateRef.current = null;
-      }
+      timers.clear('throttledCacheUpdate');
 
       // The backend may have persisted the message even if the client-side SSE
       // connection stopped producing events. Pull server truth instead of
       // forcing the user to manually reload the chat.
       reconcilePersistedMessages(sessionId);
-      queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
-      if (stage === Stage.PERSPECTIVE_STRETCH) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
-      }
-      if (stage === Stage.NEED_MAPPING) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-      }
-      if (stage === Stage.STRATEGIC_REPAIR) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.stage4(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.strategies(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.agreements(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-      }
+      invalidateKeys(hardTimeoutInvalidationKeys(sessionId, stage));
 
       accumulatedTextRef.current = '';
       aiMessageIdRef.current = '';
@@ -289,7 +268,7 @@ export function useStreamingMessage(
       realUserIdRef.current = '';
       dispatch({ type: 'hardTimeout' });
     },
-    [queryClient, reconcilePersistedMessages]
+    [invalidateKeys, reconcilePersistedMessages, timers, dispatch]
   );
 
   /**
@@ -464,36 +443,28 @@ export function useStreamingMessage(
         // Start a soft recovery timer for slow streams. Some model calls take
         // longer than 15s before the first visible token; do not close the SSE
         // connection here or the final response can be lost after it persists.
-        if (fallbackTimerRef.current) {
-          clearTimeout(fallbackTimerRef.current);
-        }
-        fallbackTimerRef.current = setTimeout(() => {
-          if (eventSourceRef.current) {
+        timers.set(
+          'softRecovery',
+          () => {
+            if (!eventSourceRef.current) return;
             console.warn('[useStreamingMessage] 15s soft recovery - refetching persisted messages while stream remains open');
-            fallbackTimerRef.current = null;
             reconcilePersistedMessages(sessionId);
-            queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
-            if (currentStage === Stage.PERSPECTIVE_STRETCH) {
-              queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
-            }
-            if (currentStage === Stage.NEED_MAPPING) {
-              queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-            }
-          }
-        }, SOFT_RECOVERY_TIMEOUT);
+            invalidateKeys(softTimeoutInvalidationKeys(sessionId, currentStage));
+          },
+          SOFT_RECOVERY_TIMEOUT
+        );
 
-        if (hardTimeoutTimerRef.current) {
-          clearTimeout(hardTimeoutTimerRef.current);
-        }
-        hardTimeoutTimerRef.current = setTimeout(() => {
-          if (eventSourceRef.current) {
+        timers.set(
+          'hardTimeout',
+          () => {
+            if (!eventSourceRef.current) return;
             console.warn('[useStreamingMessage] 90s hard timeout - closing stream and recovering persisted messages');
             eventSourceRef.current.close();
             eventSourceRef.current = null;
-            hardTimeoutTimerRef.current = null;
             recoverTimedOutStream(sessionId, currentStage);
-          }
-        }, HARD_STREAM_TIMEOUT);
+          },
+          HARD_STREAM_TIMEOUT
+        );
 
         // Create placeholder AI message once streaming starts
         let placeholderCreated = false;
@@ -568,11 +539,7 @@ export function useStreamingMessage(
             const now = Date.now();
             const timeSinceLastUpdate = now - lastCacheUpdateRef.current;
 
-            // Clear any pending update
-            if (pendingUpdateRef.current) {
-              clearTimeout(pendingUpdateRef.current);
-              pendingUpdateRef.current = null;
-            }
+            timers.clear('throttledCacheUpdate');
 
             const updateCache = () => {
               const updatedAIMessage: CachedStreamingMessage = {
@@ -595,7 +562,8 @@ export function useStreamingMessage(
               updateCache();
             } else {
               // Schedule update for when the interval is reached
-              pendingUpdateRef.current = setTimeout(
+              timers.set(
+                'throttledCacheUpdate',
                 updateCache,
                 CACHE_UPDATE_INTERVAL - timeSinceLastUpdate
               );
@@ -628,17 +596,10 @@ export function useStreamingMessage(
           console.log(`[useStreamingMessage] [TIMING] text_complete received at ${receiveTime}`);
           if (!event.data) return;
 
-          // Clear fallback timer since streaming completed successfully
-          if (fallbackTimerRef.current) {
-            clearTimeout(fallbackTimerRef.current);
-            fallbackTimerRef.current = null;
-          }
-
-          // Clear any pending throttled update
-          if (pendingUpdateRef.current) {
-            clearTimeout(pendingUpdateRef.current);
-            pendingUpdateRef.current = null;
-          }
+          // Streaming completed, so the soft recovery timer and any pending
+          // throttled write are moot. The hard timeout stays armed until the
+          // complete event confirms persistence.
+          timers.clear('softRecovery', 'throttledCacheUpdate');
 
           {
             const data = parseStreamEventData('text_complete', event.data);
@@ -670,14 +631,10 @@ export function useStreamingMessage(
             }
 
             // Refresh empathy status after streaming completes during Stage 2
-            // This picks up messageCountSinceSharedContext and other server-side state
-            // that changes when user sends messages during REFINING
-            if (currentStage === Stage.PERSPECTIVE_STRETCH) {
-              queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
-            }
-            if (currentStage === Stage.NEED_MAPPING) {
-              invalidateAfterSuccessfulStream(sessionId, currentStage);
-            }
+            // (picks up messageCountSinceSharedContext and other server-side
+            // state that changes as the user sends messages during REFINING).
+            // Stage 3 escalates to the full success set — see streamInvalidation.ts.
+            invalidateKeys(textCompleteInvalidationKeys(sessionId, currentStage));
 
             // Mark streaming as complete - cursor stops immediately
             dispatch({ type: 'textComplete' });
@@ -689,19 +646,10 @@ export function useStreamingMessage(
         // Handle complete event - DB saves finished, close connection
         // The streaming UI has already stopped via text_complete
         es.addEventListener('complete', (event) => {
-          // Clear any pending throttled update (in case text_complete wasn't received)
-          if (fallbackTimerRef.current) {
-            clearTimeout(fallbackTimerRef.current);
-            fallbackTimerRef.current = null;
-          }
-          if (hardTimeoutTimerRef.current) {
-            clearTimeout(hardTimeoutTimerRef.current);
-            hardTimeoutTimerRef.current = null;
-          }
-          if (pendingUpdateRef.current) {
-            clearTimeout(pendingUpdateRef.current);
-            pendingUpdateRef.current = null;
-          }
+          // The turn is done. Reconciliation is deliberately left alone: the
+          // reconcilePersistedMessages call below re-arms it, and clearing it
+          // here would only cancel a timer we are about to replace.
+          timers.clear('softRecovery', 'hardTimeout', 'throttledCacheUpdate');
 
           const data = event.data ? parseStreamEventData('complete', event.data) : null;
           if (event.data && !data) {
@@ -746,12 +694,7 @@ export function useStreamingMessage(
                 cache.add(sessionId, finalAIMessage, currentStage);
 
                 // Refresh empathy status (fallback path)
-                if (currentStage === Stage.PERSPECTIVE_STRETCH) {
-                  queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
-                }
-                if (currentStage === Stage.NEED_MAPPING) {
-                  invalidateAfterSuccessfulStream(sessionId, currentStage);
-                }
+                invalidateKeys(textCompleteInvalidationKeys(sessionId, currentStage));
 
                 onComplete?.();
               }
@@ -770,25 +713,8 @@ export function useStreamingMessage(
         // react-native-sse error events have: ErrorEvent (message, xhrState, xhrStatus),
         // TimeoutEvent (type only), or ExceptionEvent (message, error)
         es.addEventListener('error', (event) => {
-          // Clear fallback timer since we're handling error
-          if (fallbackTimerRef.current) {
-            clearTimeout(fallbackTimerRef.current);
-            fallbackTimerRef.current = null;
-          }
-          if (hardTimeoutTimerRef.current) {
-            clearTimeout(hardTimeoutTimerRef.current);
-            hardTimeoutTimerRef.current = null;
-          }
-          if (reconciliationTimerRef.current) {
-            clearTimeout(reconciliationTimerRef.current);
-            reconciliationTimerRef.current = null;
-          }
-
-          // Clear any pending throttled update
-          if (pendingUpdateRef.current) {
-            clearTimeout(pendingUpdateRef.current);
-            pendingUpdateRef.current = null;
-          }
+          // The turn failed; nothing scheduled for it should still run.
+          timers.clearAll();
 
           const errorMsg = 'message' in event ? event.message : 'Connection error';
           console.error('[useStreamingMessage] SSE error:', errorMsg);
@@ -806,14 +732,15 @@ export function useStreamingMessage(
         });
 
       } catch (error) {
-        if (reconciliationTimerRef.current) {
-          clearTimeout(reconciliationTimerRef.current);
-          reconciliationTimerRef.current = null;
-        }
-        if (hardTimeoutTimerRef.current) {
-          clearTimeout(hardTimeoutTimerRef.current);
-          hardTimeoutTimerRef.current = null;
-        }
+        // BEHAVIOUR CHANGE (deliberate, called out for review): the original
+        // cleared only the reconciliation and hard-timeout timers here, leaving
+        // the soft-recovery timer and any pending throttled write armed. Since
+        // this path does not null `eventSourceRef`, a surviving soft timer
+        // would see a live EventSource 15s later and fire a reconcile for a
+        // turn that already failed. Reaching that state requires a throw after
+        // the timers are armed, which is why it was never observed. Clearing
+        // all of them is the same thing every other terminal path does.
+        timers.clearAll();
         console.error('[useStreamingMessage] Error:', error);
         cleanupFailedStream(sessionId, currentStage);
         setErrorMessage((error as Error).message || 'Failed to send message');
@@ -821,39 +748,21 @@ export function useStreamingMessage(
         onError?.(error as Error);
       }
     },
-    [cache, dispatch, cleanupFailedStream, handleMetadata, invalidateAfterSuccessfulStream, reconcilePersistedMessages, recoverTimedOutStream, queryClient, onComplete, onError]
+    [cache, dispatch, cleanupFailedStream, handleMetadata, invalidateKeys, reconcilePersistedMessages, recoverTimedOutStream, timers, onComplete, onError]
   );
 
   /**
    * Cancel the current stream
    */
   const cancel = useCallback(() => {
-    // Clear fallback timer
-    if (fallbackTimerRef.current) {
-      clearTimeout(fallbackTimerRef.current);
-      fallbackTimerRef.current = null;
-    }
-    if (hardTimeoutTimerRef.current) {
-      clearTimeout(hardTimeoutTimerRef.current);
-      hardTimeoutTimerRef.current = null;
-    }
-    if (reconciliationTimerRef.current) {
-      clearTimeout(reconciliationTimerRef.current);
-      reconciliationTimerRef.current = null;
-    }
-
-    // Clear any pending throttled update
-    if (pendingUpdateRef.current) {
-      clearTimeout(pendingUpdateRef.current);
-      pendingUpdateRef.current = null;
-    }
+    timers.clearAll();
 
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
     dispatch({ type: 'cancel' });
-  }, []);
+  }, [timers, dispatch]);
 
   /**
    * Retry the last failed message
