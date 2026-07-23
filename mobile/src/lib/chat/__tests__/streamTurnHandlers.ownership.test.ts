@@ -270,3 +270,70 @@ describe('a throwing caller callback cannot strand the socket', () => {
     expect(ctx.closeTransport).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('complete without a preceding text_complete (the fallback path)', () => {
+  // Review found this branch entirely uncovered: every `complete` in the
+  // characterization suite follows a `text_complete`, so the fallback that
+  // finalises the AI row — and the read-before-dispatch ordering of
+  // `needsCompletionFallback` — was never executed by a test.
+  it('finalises the AI message and fires onComplete', () => {
+    const { handlers, ctx, cache } = makeCtx(current);
+    ctx.refs.accumulatedText.current = 'streamed text';
+
+    handlers.complete({ messageId: 'server-ai-1', metadata: {} } as never);
+
+    expect(cache.add).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ content: 'streamed text', status: 'sent' }),
+      Stage.WITNESS
+    );
+    expect(ctx.onComplete).toHaveBeenCalledTimes(1);
+    expect(ctx.reconcilePersistedMessages).toHaveBeenCalledWith('session-1');
+  });
+
+  it('reads the fallback decision BEFORE the terminal dispatch', () => {
+    // If `needsCompletionFallback` were read after `dispatch({type:'complete'})`,
+    // the phase would already be terminal and the fallback would be skipped —
+    // silently dropping the final AI row. Order is the whole contract here.
+    const { handlers, ctx, cache } = makeCtx(current);
+    ctx.refs.accumulatedText.current = 'text';
+    const order: string[] = [];
+    (cache.add as jest.Mock).mockImplementation(() => order.push('cache.add'));
+    (ctx.dispatch as jest.Mock).mockImplementation((e: { type: string }) => {
+      order.push(`dispatch:${e.type}`);
+      return initialStreamLifecycleState;
+    });
+
+    handlers.complete({ messageId: 'server-ai-1', metadata: {} } as never);
+
+    expect(order).toContain('cache.add');
+    expect(order.indexOf('cache.add')).toBeLessThan(order.indexOf('dispatch:complete'));
+  });
+
+  it('bridges both the AI and the user row to their server ids', () => {
+    const { handlers, ctx, cache } = makeCtx(current);
+    ctx.refs.realUserId.current = 'server-user-1';
+
+    handlers.complete({ messageId: 'server-ai-1', metadata: {} } as never);
+
+    expect(cache.replaceId).toHaveBeenCalledWith(
+      'session-1', 'streaming-1', 'server-ai-1', Stage.WITNESS
+    );
+    expect(cache.replaceId).toHaveBeenCalledWith(
+      'session-1', 'optimistic-user-1', 'server-user-1', Stage.WITNESS
+    );
+    expect(ctx.refs.aiMessageId.current).toBe('server-ai-1');
+    expect(ctx.refs.activeUserMessageId.current).toBe('server-user-1');
+  });
+
+  it('still ends the turn when the payload is invalid', () => {
+    // The frame's arrival is the signal. Before this, an invalid payload left
+    // status stuck at streaming with the hard timeout already cleared.
+    const { handlers, ctx } = makeCtx(current);
+
+    handlers.complete(null);
+
+    expect(ctx.dispatch).toHaveBeenCalledWith({ type: 'complete' });
+    expect(ctx.closeTransport).toHaveBeenCalled();
+  });
+});

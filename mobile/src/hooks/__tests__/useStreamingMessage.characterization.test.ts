@@ -469,25 +469,45 @@ describe('useStreamingMessage unmount cleanup (defect fix)', () => {
       });
     });
     const es = mockEventSourceInstances[0];
+
+    // Two chunks inside the 50ms throttle window: the first writes through
+    // immediately, the second can only be scheduled. That pending write is the
+    // one timer whose effect is observable AFTER unmount, which is what makes
+    // this test non-vacuous.
+    //
+    // The soft/hard timeout callbacks are NOT usable as evidence here: both
+    // open with a transport-identity guard, and the unmount effect nulls
+    // `transportRef` before it clears the timers. So they return early whether
+    // or not the timers were cleared — asserting on their side effects would
+    // pass even with `timers.clearAll()` deleted. (Verified by mutation.)
     act(() => {
-      emit(es, 'chunk', { text: 'partial' }); // schedules the throttle timer
+      emit(es, 'chunk', { text: 'landed' });
+    });
+    act(() => {
+      jest.advanceTimersByTime(10);
+      emit(es, 'chunk', { text: ' SCHEDULED' });
     });
 
-    // Watch for the effects the hook's timers would produce if they survived:
-    // soft recovery refetches, and the hard timeout's warn + close.
-    const refetchSpy = jest.spyOn(queryClient, 'refetchQueries');
-    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const beforeUnmount = cachedMessages(queryClient)
+      .filter((m) => m.role === MessageRole.AI)
+      .map((m) => m.content);
+    expect(beforeUnmount).toEqual(['landed']);
 
     unmount();
     expect(es.close).toHaveBeenCalled();
 
-    // Well past both the 15s soft and 90s hard timeouts.
+    // Well past the throttle window and both the 15s soft and 90s hard timeouts.
     act(() => {
       jest.advanceTimersByTime(120_000);
     });
 
-    expect(refetchSpy).not.toHaveBeenCalled();
-    expect(warnSpy).not.toHaveBeenCalled();
+    // The scheduled write must never land. If `timers.clearAll()` is removed
+    // from the unmount effect, this is the assertion that fails.
+    const afterUnmount = cachedMessages(queryClient)
+      .filter((m) => m.role === MessageRole.AI)
+      .map((m) => m.content);
+    expect(afterUnmount).toEqual(['landed']);
+    expect(afterUnmount.join()).not.toContain('SCHEDULED');
 
     queryClient.clear();
   });

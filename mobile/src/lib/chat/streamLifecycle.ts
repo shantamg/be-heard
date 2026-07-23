@@ -67,7 +67,13 @@ const ACTIVE_PHASES: ReadonlySet<StreamPhase> = new Set<StreamPhase>([
 
 /**
  * A frame is "late" when it arrives after the turn already reached a terminal
- * phase. Late frames must not mutate the cache or resurrect a finished turn.
+ * phase. Late frames must not resurrect a finished turn.
+ *
+ * SCOPE: within a turn only. This cannot protect across turns — `send` resets
+ * the shared lifecycle to `sending`, so a frame from turn N arriving during
+ * turn N+1 sees `sending`, not a terminal phase, and would apply. Cross-turn
+ * protection is the `isCurrent` ownership guard in streamTurnHandlers.ts, not
+ * this. Do not read this predicate as a cross-turn guarantee.
  */
 export function isLateFrame(state: StreamLifecycleState): boolean {
   return state.phase === 'complete' || state.phase === 'cancelled' || state.phase === 'error';

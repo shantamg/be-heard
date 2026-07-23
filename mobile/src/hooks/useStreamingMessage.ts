@@ -204,7 +204,14 @@ export function useStreamingMessage(
   // Releasing the refs is necessary but not sufficient: `sendMessage` awaits
   // token retrieval before it has anything to release, so unmounting during
   // that await would otherwise let the resumed callback build a stream after
-  // the component is gone. `isMountedRef` closes that race.
+  // the component is gone.
+  //
+  // `isMountedRef` closes BOTH halves of that race, and it took two reviews to
+  // get there. The resolve path is guarded before the transport is built; the
+  // REJECT path is guarded at the top of the catch. An earlier version guarded
+  // only the resolve path, so a token rejection after unmount still ran
+  // `cleanupFailedStream` and `setState` on a dead component — and, worse, ran
+  // them against refs a newer send already owned.
   useEffect(() => {
     isMountedRef.current = true;
     return () => {

@@ -139,7 +139,13 @@ describe('textCompleteInvalidationKeys', () => {
     );
   });
 
-  it('invalidates nothing for other stages — the complete event handles them', () => {
+  // NOTE: deliberately does NOT claim "the complete event handles them" — it
+  // does not. For Stage 4 the complete handler's fallback calls
+  // textCompleteInvalidationKeys, which returns [] for that stage. Only
+  // handleMetadata refreshes Stage 4, and only when the payload carries a
+  // stage4 signal. The assertion below is correct and matches the original;
+  // an earlier title asserted a compensating mechanism that does not exist.
+  it('invalidates nothing for other stages', () => {
     for (const stage of [undefined, Stage.ONBOARDING, Stage.STRATEGIC_REPAIR]) {
       expect(textCompleteInvalidationKeys(SESSION, stage)).toEqual([]);
     }

@@ -342,6 +342,13 @@ export function createStreamTurnHandlers(ctx: StreamTurnContext): StreamTranspor
       }
 
       // Terminal: further frames on this turn are late and must not apply.
+      // BEHAVIOUR CHANGE (found by review, not originally disclosed): this
+      // dispatch sits OUTSIDE the `if (data)` block. The original only set
+      // status on the fallback path, i.e. only when `data` was truthy — so a
+      // `complete` frame with a missing or schema-invalid payload left status
+      // stuck at streaming/sending forever, with the hard timeout already
+      // cleared and nothing left to recover it. Always dispatching fixes that
+      // stranding bug. Kept deliberately.
       dispatch({ type: 'complete' });
       } finally {
         closeTransport();
