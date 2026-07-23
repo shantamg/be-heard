@@ -11,52 +11,43 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { logger } from '../lib/logger';
 import { prisma } from '../lib/prisma';
-import { getModelCompletionWithTools, getSonnetResponse, getSonnetStreamingResponse, BrainActivityCallType, isMockLLMEnabled } from '../lib/bedrock';
-import { brainService } from '../services/brain-service';
+import { getSonnetResponse, BrainActivityCallType } from '../lib/bedrock';
 import { buildInitialMessagePrompt, buildStagePromptString } from '../services/stage-prompts';
 import { parseMicroTagResponse } from '../utils/micro-tag-parser';
-import {
-  getToolsForStage,
-  parseSessionStateToolInput,
-  SESSION_STATE_TOOL_NAME,
-  type SessionStateToolInput,
-} from '../services/stage-tools';
-import { StreamTagSanitizer } from '../services/stream-tag-sanitizer';
+import { type SessionStateToolInput } from '../services/stage-tools';
 import { applyStage3NeedActions, persistTurnState } from '../services/stream-turn-actions';
-import { assembleStreamTurnContext } from '../services/stream-turn-context';
+import { admitStreamTurn } from '../services/stream-turn-admission';
+import { scheduleStreamTurnBackgroundJobs } from '../services/stream-turn-background';
 import {
-  sendMessageRequestSchema,
+  cleanupFailedStreamTurn,
+  isReadyForStage3RevealText,
+  resolveStage3GateTurn,
+  saveAiTurnMessage,
+} from '../services/stream-turn-persistence';
+import { assembleStreamTurnContext } from '../services/stream-turn-context';
+import { runStreamTurnModel } from '../services/stream-turn-model';
+import { resolveStreamTurn } from '../services/stream-turn-resolution';
+import {
   feelHeardRequestSchema,
   getMessagesQuerySchema,
-  DEFAULT_PRIVACY_PREFERENCES,
-  PrivacyPreferencesDTO,
   type StreamEvent,
 } from '@meet-without-fear/shared';
-import { notifyPartner, publishSessionEvent, publishMessageError } from '../services/realtime';
+import { notifyPartner, publishSessionEvent } from '../services/realtime';
 import { successResponse, errorResponse } from '../utils/response';
-import { getPartnerUserId, isSessionCreator, touchUserSessionActivity } from '../utils/session';
+import { getPartnerUserId, isSessionCreator } from '../utils/session';
 import { embedSessionContent } from '../services/embedding';
-import { updateSessionSummary } from '../services/conversation-summarizer';
 import { runReconcilerForDirection } from '../services/reconciler';
 import { updateContext } from '../lib/request-context';
-import { runPartnerSessionClassifier, ensureFactIds, CategorizedFactWithId } from '../services/partner-session-classifier';
 import { consolidateGlobalFacts } from '../services/global-memory';
-import { handleDispatch, type DispatchContext } from '../services/dispatch-handler';
 import { finalizeTurnMetrics } from '../services/llm-telemetry';
-import { cleanVisibleAIText } from '../utils/visible-text';
+import { scrubVisibleAIText } from '../utils/visible-text';
+
+// Re-exported for existing callers that import these from this controller.
+export { scrubVisibleAIText, isReadyForStage3RevealText };
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-async function getShowActivityStatus(userId: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { privacyPreferences: true } as any,
-  });
-  const preferences = ((user as { privacyPreferences?: unknown } | null)?.privacyPreferences as PrivacyPreferencesDTO | null) ?? DEFAULT_PRIVACY_PREFERENCES;
-  return preferences.showActivityStatus;
-}
 
 /**
  * Check if partner has completed stage 1 "feel heard"
@@ -142,124 +133,6 @@ function scrubStage2RepairFraming(content: string): string {
     .replace(moveForwardTogetherRegex,
       "If something feels off, you can say what is missing before the process continues."
     );
-}
-
-const PLANNER_LINE_PREFIXES = [
-  'i should',
-  'so both lists should',
-  '— so both lists should',
-  "here's my plan",
-  'the prompt says',
-  'i need to follow',
-  'i need to present',
-  'i need to check the prompt',
-  'i need to use the prompt',
-  'i need to make sure both lists',
-];
-
-function stripUntaggedReasoningPreamble(text: string): string {
-  const marker = text.match(/\bFor\s+stage4_(?:walkthrough|proposals)\s*:/i);
-  if (!marker || marker.index === undefined) return text;
-
-  const afterMarker = text.slice(marker.index);
-  const nextParagraph = afterMarker.match(/\n\s*\n+/);
-  if (!nextParagraph || nextParagraph.index === undefined) return text;
-
-  const visibleStart = marker.index + nextParagraph.index + nextParagraph[0].length;
-  return text.slice(visibleStart);
-}
-
-export function scrubVisibleAIText(
-  text: string,
-  options: { preserveBoundaryWhitespace?: boolean } = {}
-): { text: string; scrubbed: boolean } {
-  const before = text;
-  const preambleScrubbed = stripUntaggedReasoningPreamble(text);
-  const plannerScrubbed = preambleScrubbed
-    .split(/\r?\n/)
-    .filter((line) => {
-      const trimmed = line.trim().toLowerCase();
-      return !PLANNER_LINE_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
-    })
-    .join('\n')
-    .replace(/\bI should\b/gi, '')
-    .replace(/\bso both lists should be available\b/gi, '');
-  const cleaned = cleanVisibleAIText(plannerScrubbed, {
-    preserveBoundaryWhitespace: options.preserveBoundaryWhitespace,
-  });
-
-  return { text: cleaned, scrubbed: cleaned !== before };
-}
-
-export function isReadyForStage3RevealText(content: string): boolean {
-  const normalized = content.trim().toLowerCase();
-  if (/\bnot\s+ready\b/.test(normalized) || /\b(?:don'?t|do not)\s+(?:want|feel ready)\b/.test(normalized)) {
-    return false;
-  }
-  return /\b(i'?m|i am|we are)?\s*ready\b/.test(normalized) &&
-    /(list|lists|needs|side by side|reveal|see them|see it|show)/.test(normalized);
-}
-
-function isClarifyingStage4Response(content: string): boolean {
-  const trimmed = content.trim();
-  if (!trimmed.endsWith('?')) return false;
-
-  return /\b(?:do you mean|what do you mean|which|or something else|clarify|more specific|can you say more|are you saying)\b/i.test(trimmed);
-}
-
-async function getStage3GateResponse(sessionId: string, userId: string): Promise<string | null> {
-  const partnerId = await getPartnerUserId(sessionId, userId);
-  const progress = await prisma.stageProgress.findUnique({
-    where: {
-      sessionId_userId_stage: {
-        sessionId,
-        userId,
-        stage: 3,
-      },
-    },
-  });
-  if (!progress) return null;
-
-  const vessel = await prisma.userVessel.findUnique({
-    where: { userId_sessionId: { userId, sessionId } },
-    include: { identifiedNeeds: { orderBy: { createdAt: 'asc' } } },
-  });
-  const needs = vessel?.identifiedNeeds ?? [];
-  const gates = progress.gatesSatisfied as Record<string, unknown> | null;
-  const ownShared = gates?.needsShared === true;
-  const ownConfirmed = gates?.needsConfirmed === true || (needs.length > 0 && needs.every((need) => need.confirmed));
-
-  if (needs.length === 0) {
-    return "Let's first put words to what matters most for you here. What do you need in order to feel clear, grounded, or able to move forward from this?";
-  }
-
-  if (!ownConfirmed) {
-    return "I've captured a draft of what matters to you. Please review and confirm your needs before we move any further.";
-  }
-
-  if (!ownShared) {
-    return "Your needs are ready for your review. If they still feel right, you can choose to share them for the side-by-side step.";
-  }
-
-  if (!partnerId) {
-    return "Your needs are shared. We'll wait until your partner has shared theirs before showing anything side by side.";
-  }
-
-  const partnerProgress = await prisma.stageProgress.findUnique({
-    where: {
-      sessionId_userId_stage: {
-        sessionId,
-        userId: partnerId,
-        stage: 3,
-      },
-    },
-  });
-  const partnerGates = partnerProgress?.gatesSatisfied as Record<string, unknown> | null;
-  if (partnerGates?.needsShared !== true) {
-    return "Your needs are shared. We'll wait until your partner has shared theirs before showing anything side by side.";
-  }
-
-  return "Both needs lists are ready to review side by side. Take a look at them and notice what stands out before deciding whether they feel accurate.";
 }
 
 // ============================================================================
@@ -1184,122 +1057,25 @@ export async function sendMessageStream(req: Request, res: Response): Promise<vo
   try {
     logger.info(`[sendMessageStream:${requestId}] ========== SSE STREAM REQUEST START ==========`);
 
-    const user = req.user;
-    if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+    // Rejections here are plain JSON — no SSE header has been flushed yet.
+    const admission = await admitStreamTurn({ requestId, req });
+    if (!admission.admitted) {
+      res.status(admission.status).json(admission.body);
       return;
     }
 
-    const { id: sessionId } = req.params;
+    const {
+      user,
+      sessionId,
+      content,
+      session,
+      progress,
+      currentStage,
+      refiningNeedContext,
+      userMessage,
+    } = admission;
 
-    // Validate request body
-    const parseResult = sendMessageRequestSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      res.status(400).json({ error: 'Invalid request body', details: parseResult.error.issues });
-      return;
-    }
-
-    const { content, refiningNeedId } = parseResult.data;
-
-    // Check session exists and user has access
-    const session = await prisma.session.findFirst({
-      where: {
-        id: sessionId,
-        relationship: {
-          members: {
-            some: { userId: user.id },
-          },
-        },
-      },
-    });
-
-    if (!session) {
-      res.status(404).json({ error: 'Session not found' });
-      return;
-    }
-
-    // Check session allows messaging. RESOLVED remains open for private
-    // Tending/listen-first conversation after Stage 4 closes.
-    if (session.status !== 'ACTIVE') {
-      if (session.status === 'CREATED') {
-        const isCreator = await isSessionCreator(sessionId, user.id);
-        if (!isCreator) {
-          res.status(400).json({ error: 'Session is not active' });
-          return;
-        }
-      } else if (session.status !== 'INVITED' && session.status !== 'RESOLVED') {
-        res.status(400).json({ error: 'Session is not active' });
-        return;
-      }
-    }
-
-    // Get user's current stage progress
-    let progress = await prisma.stageProgress.findFirst({
-      where: {
-        sessionId,
-        userId: user.id,
-        status: { in: ['IN_PROGRESS', 'GATE_PENDING'] },
-      },
-      orderBy: { stage: 'desc' },
-    });
-
-    const currentStage = progress?.stage ?? 0;
-
-    let refiningNeedContext: { id: string; need: string; category?: string } | null = null;
-    if (currentStage === 3 && refiningNeedId) {
-      const vessel = await prisma.userVessel.findUnique({
-        where: { userId_sessionId: { userId: user.id, sessionId } },
-        select: { id: true },
-      });
-      const refiningNeed = vessel
-        ? await prisma.identifiedNeed.findFirst({
-            where: { id: refiningNeedId, vesselId: vessel.id },
-            select: { id: true, need: true, category: true },
-          })
-        : null;
-      if (!refiningNeed) {
-        res.status(400).json({ error: 'Invalid refiningNeedId' });
-        return;
-      }
-      refiningNeedContext = {
-        id: refiningNeed.id,
-        need: refiningNeed.need,
-        category: refiningNeed.category,
-      };
-    }
-
-    // =========================================================================
-    // Save user message
-    // =========================================================================
-    const userMessage = await prisma.message.create({
-      data: {
-        sessionId,
-        senderId: user.id,
-        role: 'USER',
-        content,
-        stage: currentStage,
-        refiningNeedId: refiningNeedContext?.id ?? null,
-      },
-    });
-    await touchUserSessionActivity(sessionId, user.id, userMessage.timestamp);
-    getShowActivityStatus(user.id)
-      .then((showActivityStatus) => {
-        if (!showActivityStatus) return;
-        return publishSessionEvent(sessionId, 'partner.activity', {
-          activeAt: userMessage.timestamp.toISOString(),
-        }, user.id);
-      })
-      .catch((err) =>
-        logger.warn(`[sendMessageStream:${requestId}] Failed to publish partner activity:`, err)
-      );
-    logger.info(`[sendMessageStream:${requestId}] User message created: ${userMessage.id}`);
-
-    // Broadcast to Status Site
-    brainService.broadcastMessage(userMessage);
-
-    // =========================================================================
     // Set up SSE headers
-    // =========================================================================
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -1317,38 +1093,19 @@ export async function sendMessageStream(req: Request, res: Response): Promise<vo
       },
     });
 
-    if (currentStage === 3 && isReadyForStage3RevealText(content)) {
-      const gateResponse = await getStage3GateResponse(sessionId, user.id);
-      if (gateResponse) {
-        const aiMessage = await prisma.message.create({
-          data: {
-            sessionId,
-            senderId: null,
-            forUserId: user.id,
-            role: 'AI',
-            content: gateResponse,
-            stage: 3,
-          },
-        });
-
-        if (!clientDisconnected) {
-          sendSSE(res, { event: 'chunk', data: { text: gateResponse } });
-          sendSSE(res, { event: 'metadata', data: { metadata: {} } });
-          sendSSE(res, { event: 'text_complete', data: { metadata: {} } });
-          sendSSE(res, { event: 'complete', data: { messageId: aiMessage.id, metadata: {} } });
-        }
-        res.end();
-        logger.info(`[sendMessageStream:${requestId}] Stage 3 ready text handled via gate response`);
-        return;
+    const stage3Gate = await resolveStage3GateTurn({ sessionId, userId: user.id, currentStage, content });
+    if (stage3Gate) {
+      if (!clientDisconnected) {
+        sendSSE(res, { event: 'chunk', data: { text: stage3Gate.text } });
+        sendSSE(res, { event: 'metadata', data: { metadata: {} } });
+        sendSSE(res, { event: 'text_complete', data: { metadata: {} } });
+        sendSSE(res, { event: 'complete', data: { messageId: stage3Gate.aiMessage.id, metadata: {} } });
       }
+      res.end();
+      logger.info(`[sendMessageStream:${requestId}] Stage 3 ready text handled via gate response`);
+      return;
     }
 
-    // =========================================================================
-    // Assemble the full turn context (history, counts, partner, context
-    // bundle, Stage 2B routing, Stage 4/Tending contexts, stage prompt).
-    // Tool calls are the primary structured-state channel; legacy semantic
-    // tags are still parsed below as a compatibility fallback.
-    // =========================================================================
     const {
       history,
       userTurnCount,
@@ -1368,343 +1125,45 @@ export async function sendMessageStream(req: Request, res: Response): Promise<vo
       refiningNeedContext,
     });
 
-    // =========================================================================
-    // Stream AI response (with analysis block trap)
-    // =========================================================================
     let accumulatedText = '';
     let metadata: SessionStateToolInput = {};
     let streamError: Error | null = null;
-
-    // The three-phase hidden-tag trap (thinking trap → tag trap → normal
-    // streaming with late-tag buffering) lives in StreamTagSanitizer; the
-    // controller only routes deltas through it and emits what it returns.
-    const sanitizer = new StreamTagSanitizer({
-      info: (message) => logger.info(`[sendMessageStream:${requestId}] ${message}`),
-      warn: (message) => logger.warn(`[sendMessageStream:${requestId}] ${message}`),
-    });
     let isDispatchMessage = false; // Track if this is a dispatch response (skip processing)
 
     try {
-      const stateCapturePrompt = {
-        staticBlock: prompt.staticBlock,
-        dynamicBlock: `${prompt.dynamicBlock}
-
-STATE CAPTURE PASS:
-Call update_session_state with any persisted state required by the latest user turn. Do not write conversational prose in this pass.`,
-      };
-      const stateCapture = await getModelCompletionWithTools('sonnet', {
-        systemPrompt: stateCapturePrompt,
-        messages: messagesWithContext,
-        tools: getToolsForStage(currentStage),
-        maxTokens: 1024,
+      const modelResult = await runStreamTurnModel({
+        requestId,
         sessionId,
         turnId,
-        operation: 'structured-state-capture',
-        callType: BrainActivityCallType.ORCHESTRATED_RESPONSE,
+        currentStage,
+        isInvitationPhase,
+        userTurnCount,
+        prompt,
+        messagesWithContext,
+        emitVisibleChunk: (text) => sendSSE(res, { event: 'chunk', data: { text } }),
+        isClientDisconnected: () => clientDisconnected,
       });
-      const sessionStateTool = stateCapture?.toolInvocations.find((tool) => tool.name === SESSION_STATE_TOOL_NAME);
-      if (sessionStateTool) {
-        metadata = { ...metadata, ...parseSessionStateToolInput(sessionStateTool.input) };
-        logger.info(`[sendMessageStream:${requestId}] [PRESTREAM TOOL ${sessionStateTool.name}]:`, {
-          topicFrame: Boolean(metadata.topicFrame),
-          proposedNeed: Boolean(metadata.proposedNeed),
-          needAction: metadata.needAction?.type ?? null,
-          stage4ProposalCount: metadata.stage4Proposals?.length ?? 0,
-          stage4WalkthroughAction: metadata.stage4WalkthroughAction?.action ?? null,
-          offerFeelHeardCheck: metadata.offerFeelHeardCheck,
-          offerReadyToShare: metadata.offerReadyToShare,
-        });
-      } else if (stateCapture?.text) {
-        const parsedStateFallback = parseMicroTagResponse(stateCapture.text);
-        metadata.offerFeelHeardCheck = parsedStateFallback.offerFeelHeardCheck;
-        metadata.offerReadyToShare = parsedStateFallback.offerReadyToShare;
-        if (currentStage === 3 && parsedStateFallback.proposedNeed) metadata.proposedNeed = parsedStateFallback.proposedNeed;
-        if (currentStage === 3 && parsedStateFallback.needAction) metadata.needAction = parsedStateFallback.needAction;
-        if (currentStage === 3 && parsedStateFallback.proposedNeeds.length > 0) metadata.proposedNeeds = parsedStateFallback.proposedNeeds;
-        if (currentStage === 4 && parsedStateFallback.stage4ProposalBlockPresent) metadata.stage4Proposals = parsedStateFallback.stage4Proposals;
-        if (currentStage === 4 && parsedStateFallback.stage4WalkthroughAction) metadata.stage4WalkthroughAction = parsedStateFallback.stage4WalkthroughAction;
-        if ((currentStage === 0 || isInvitationPhase) && parsedStateFallback.topicFrame) metadata.topicFrame = parsedStateFallback.topicFrame;
-        if (currentStage === 2 && parsedStateFallback.draft) metadata.proposedEmpathyStatement = parsedStateFallback.draft;
-        logger.warn(`[sendMessageStream:${requestId}] Structured state capture returned text without tool; parsed legacy fallback.`);
-      }
 
-      const visiblePrompt = {
-        staticBlock: prompt.staticBlock,
-        dynamicBlock: `${prompt.dynamicBlock}
-
-VISIBLE RESPONSE PASS:
-Persisted state has already been captured for this turn. The update_session_state tool is intentionally unavailable now. Ignore any instruction to call it in this pass.
-Captured state summary for your private context: ${JSON.stringify({
-  topicFrame: metadata.topicFrame,
-  offerFeelHeardCheck: metadata.offerFeelHeardCheck,
-  offerReadyToShare: metadata.offerReadyToShare,
-  proposedEmpathyStatement: metadata.proposedEmpathyStatement ? '[captured]' : undefined,
-  proposedNeed: metadata.proposedNeed,
-  needAction: metadata.needAction,
-  stage4ProposalCount: metadata.stage4Proposals?.length,
-  stage4WalkthroughAction: metadata.stage4WalkthroughAction,
-})}
-Write only the user-facing conversational response. Do not include tool JSON, XML tags beyond the normal hidden <thinking> protocol, or state summaries.`,
-      };
-      const streamGenerator = getSonnetStreamingResponse({
-        systemPrompt: visiblePrompt,
-        messages: messagesWithContext,
-        maxTokens: 1536,
+      // The empty-response guard inside throws into the stream error path below.
+      const resolution = await resolveStreamTurn({
+        requestId,
         sessionId,
         turnId,
-        operation: 'streaming-response',
-        callType: BrainActivityCallType.ORCHESTRATED_RESPONSE,
-        // For E2E mock mode: response index is 0-based (userTurnCount is 1-based after save)
-        mockResponseIndex: Math.max(0, userTurnCount - 1),
+        currentStage,
+        isInvitationPhase,
+        content,
+        history,
+        userName,
+        partnerName,
+        session,
+        accumulatedText: modelResult.accumulatedText,
+        metadata: modelResult.metadata,
+        captured: modelResult.captured,
+        emitVisibleChunk: (text) => sendSSE(res, { event: 'chunk', data: { text } }),
       });
-
-      const streamStartTime = Date.now();
-      let firstChunkTime: number | null = null;
-      let lastChunkTime: number | null = null;
-      let thinkingEndTime: number | null = null;
-
-      /**
-       * Helper to strip tags and send clean text to client
-       * NOTE: Do NOT use .trim() on every chunk - it removes spaces between words when streaming
-       * BUT we DO trimStart() on the FIRST chunk to remove leading newlines after </thinking>
-       */
-      const sendCleanText = (text: string) => {
-        if (!text || clientDisconnected) return;
-
-        // Strip ALL semantic tags as defense-in-depth (thinking trap should catch these,
-        // but this prevents leaks if the trap fails due to stream errors or chunk splitting)
-        let cleanText = text
-          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')  // Complete thinking blocks
-          .replace(/<thinking>[\s\S]*/gi, '')                // Unclosed thinking (strip to end)
-          .replace(/<\/thinking>/gi, '')                     // Orphaned closing tag
-          .replace(/<draft>[\s\S]*?<\/draft>/gi, '')
-          .replace(/<need>[\s\S]*?<\/need>/gi, '')
-          .replace(/<need-action\b[^>]*>[\s\S]*?<\/need-action>/gi, '')
-          .replace(/<need-action\b[^>]*\/>/gi, '')
-          .replace(/<needs>[\s\S]*?<\/needs>/gi, '')
-          .replace(/<stage4_proposals>[\s\S]*?<\/stage4_proposals>/gi, '')
-          .replace(/<stage4_proposals>[\s\S]*/gi, '')
-          .replace(/<\/stage4_proposals>/gi, '')
-          .replace(/<stage4_walkthrough>[\s\S]*?<\/stage4_walkthrough>/gi, '')
-          .replace(/<stage4_walkthrough>[\s\S]*/gi, '')
-          .replace(/<\/stage4_walkthrough>/gi, '')
-          .replace(/<dispatch>[\s\S]*?<\/dispatch>/gi, '');
-
-        // Trim LEADING whitespace only on the FIRST chunk (after </thinking> tag removal)
-        // This removes newlines at the start without breaking word spacing in subsequent chunks
-        if (!firstChunkTime && cleanText.length > 0) {
-          cleanText = cleanText.trimStart();
-        }
-
-        const scrubbed = scrubVisibleAIText(cleanText, { preserveBoundaryWhitespace: true });
-        cleanText = scrubbed.text;
-
-        if (cleanText.length > 0) {
-          if (!firstChunkTime) firstChunkTime = Date.now();
-          accumulatedText += cleanText;
-          sendSSE(res, { event: 'chunk', data: { text: cleanText } });
-        }
-      };
-
-      for await (const event of streamGenerator) {
-        if (event.type === 'text') {
-          lastChunkTime = Date.now();
-          const wasInsideThinking = sanitizer.insideThinking;
-          sendCleanText(sanitizer.push(event.text));
-          // Timing parity with the original inline machine: the thinking phase
-          // only "completes" when a real </thinking> closed (opener confirmed),
-          // not when the no-thinking bail-out leaves the trap.
-          if (
-            wasInsideThinking &&
-            !sanitizer.insideThinking &&
-            sanitizer.confirmedThinkingOpener &&
-            thinkingEndTime === null
-          ) {
-            thinkingEndTime = Date.now();
-            logger.info(`[sendMessageStream:${requestId}] [TIMING] Thinking phase complete at ${thinkingEndTime - streamStartTime}ms`);
-          }
-        }
-        if (event.type === 'tool_use') {
-          if (event.name === SESSION_STATE_TOOL_NAME) {
-            const toolMetadata = parseSessionStateToolInput(event.input);
-            metadata = { ...metadata, ...toolMetadata };
-            logger.info(`[sendMessageStream:${requestId}] [TOOL ${event.name}]:`, {
-              topicFrame: Boolean(toolMetadata.topicFrame),
-              stage4ProposalCount: toolMetadata.stage4Proposals?.length ?? 0,
-              stage4WalkthroughAction: toolMetadata.stage4WalkthroughAction?.action ?? null,
-              proposedNeed: Boolean(toolMetadata.proposedNeed),
-              needAction: toolMetadata.needAction?.type ?? null,
-              offerFeelHeardCheck: toolMetadata.offerFeelHeardCheck,
-              offerReadyToShare: toolMetadata.offerReadyToShare,
-            });
-          } else {
-            logger.warn(`[sendMessageStream:${requestId}] Ignoring unknown tool call: ${event.name}`);
-          }
-          continue;
-        }
-
-        // Check for done event with error flag (generator catches errors internally
-        // and yields a done event with an error string instead of throwing)
-        if (event.type === 'done' && event.error) {
-          throw new Error(event.error);
-        }
-      }
-
-      // =========================================================================
-      // SAFETY FLUSH: If the stream ends while still waiting for </thinking>,
-      // keep that content hidden. It is more important to avoid leaking
-      // internal reasoning/tool planning than to salvage malformed output.
-      // =========================================================================
-      // (Unterminated-thinking hiding vs. visible flush is decided inside the
-      // sanitizer; a hidden buffer yields '' here and stays in captured.thinking.)
-      sendCleanText(sanitizer.flush());
-
-      const streamEndTime = Date.now();
-      logger.info(`[sendMessageStream:${requestId}] [TIMING] Stream complete:`,
-        `total=${streamEndTime - streamStartTime}ms`,
-        `thinkingEnd=${thinkingEndTime ? thinkingEndTime - streamStartTime : 'none'}ms`,
-        `firstVisibleChunk=${firstChunkTime ? firstChunkTime - streamStartTime : 'none'}ms`,
-        `lastChunk=${lastChunkTime ? lastChunkTime - streamStartTime : 'none'}ms`);
-
-      // =========================================================================
-      // Parse accumulated response for metadata (semantic router format)
-      // The thinking content has flags like FeelHeardCheck:Y, ReadyShare:Y
-      // The accumulated text may contain <draft>...</draft> that needs stripping
-      // =========================================================================
-      const captured = sanitizer.captured;
-      const needsBlock = captured.needs ? `<needs>${captured.needs}</needs>\n` : '';
-      const needBlock = captured.need ? `<need>${captured.need}</need>\n` : '';
-      const needActionBlock = captured.needAction ? `${captured.needAction}\n` : '';
-      const stage4ProposalsBlock = captured.stage4Proposals ? `<stage4_proposals>${captured.stage4Proposals}</stage4_proposals>\n` : '';
-      const stage4WalkthroughBlock = captured.stage4Walkthrough ? `<stage4_walkthrough>${captured.stage4Walkthrough}</stage4_walkthrough>\n` : '';
-      const fullResponse = `<thinking>${captured.thinking}</thinking>\n${needBlock}${needActionBlock}${needsBlock}${stage4ProposalsBlock}${stage4WalkthroughBlock}${accumulatedText}`;
-      const parsed = parseMicroTagResponse(fullResponse);
-
-      // Extract metadata from parsed response
-      if (metadata.offerFeelHeardCheck === undefined) {
-        metadata.offerFeelHeardCheck = parsed.offerFeelHeardCheck;
-      }
-      if (metadata.offerReadyToShare === undefined) {
-        metadata.offerReadyToShare = parsed.offerReadyToShare;
-      }
-      if (parsed.proposedStrategies.length > 0) {
-        metadata.proposedStrategies = parsed.proposedStrategies;
-      }
-      if (currentStage === 4 && parsed.stage4ProposalBlockPresent && !metadata.stage4Proposals) {
-        metadata.stage4Proposals = parsed.stage4Proposals;
-      }
-      if (currentStage === 4 && parsed.stage4WalkthroughAction && !metadata.stage4WalkthroughAction) {
-        metadata.stage4WalkthroughAction = parsed.stage4WalkthroughAction;
-      }
-      if (currentStage === 3 && parsed.proposedNeeds.length > 0 && !metadata.proposedNeeds) {
-        metadata.proposedNeeds = parsed.proposedNeeds;
-      }
-      if (currentStage === 3 && parsed.proposedNeed && !metadata.proposedNeed) {
-        metadata.proposedNeed = parsed.proposedNeed;
-      }
-      if (currentStage === 3 && parsed.needAction && !metadata.needAction) {
-        metadata.needAction = parsed.needAction;
-      }
-      if (currentStage === 3 && parsed.needParseError) {
-        metadata.needParseError = parsed.needParseError;
-      }
-
-      // Use the draft captured during streaming (more reliable than re-parsing)
-      const draft = captured.draft || parsed.draft;
-      if (draft && currentStage === 2 && !metadata.proposedEmpathyStatement) {
-        // Draft is used for empathy statement (stage 2).
-        metadata.proposedEmpathyStatement = draft;
-      } else if (draft && (currentStage === 0 || isInvitationPhase) && !metadata.topicFrame) {
-        // Stage 0: <draft> contains the proposed topic frame.
-        metadata.topicFrame = draft.trim();
-      }
-
-      logger.info(`[sendMessageStream:${requestId}] Parsed metadata:`, {
-        offerFeelHeardCheck: metadata.offerFeelHeardCheck,
-        offerReadyToShare: metadata.offerReadyToShare,
-        hasDraft: !!parsed.draft,
-        proposedNeedsCount: metadata.proposedNeeds?.length ?? 0,
-        proposedNeed: !!metadata.proposedNeed,
-        needAction: metadata.needAction?.type ?? null,
-        needParseError: metadata.needParseError ?? null,
-        stage4ProposalCount: metadata.stage4Proposals?.length ?? 0,
-        dispatchTag: captured.dispatch || parsed.dispatchTag,
-      });
-
-      // Clean accumulated text (strip <draft> and <dispatch> tags if they leaked through)
-      const scrubbedResponse = scrubVisibleAIText(parsed.response);
-      accumulatedText = scrubbedResponse.text;
-      if (
-        currentStage === 4 &&
-        metadata.stage4WalkthroughAction &&
-        metadata.stage4WalkthroughAction.action !== 'NONE' &&
-        isClarifyingStage4Response(accumulatedText)
-      ) {
-        logger.warn(`[sendMessageStream:${requestId}] Ignoring Stage 4 state capture because visible response asks for clarification`, {
-          action: metadata.stage4WalkthroughAction.action,
-          needId: metadata.stage4WalkthroughAction.needId ?? null,
-          stage4ProposalCount: metadata.stage4Proposals?.length ?? 0,
-        });
-        metadata.stage4WalkthroughAction = {
-          ...metadata.stage4WalkthroughAction,
-          action: 'NONE',
-          reason: 'visible_response_requested_clarification',
-        };
-        metadata.stage4Proposals = undefined;
-      }
-
-      // =========================================================================
-      // DISPATCH HANDLING: If dispatch tag detected, get and stream dispatched response
-      // Dispatch messages are system responses - skip classifier/embeddings
-      // Use the dispatch tag captured during streaming (more reliable than re-parsing)
-      // =========================================================================
-      const dispatchTag = captured.dispatch || parsed.dispatchTag;
-      if (dispatchTag) {
-        logger.info(`[sendMessageStream:${requestId}] Dispatch detected: ${dispatchTag}`);
-        isDispatchMessage = true;
-
-        // Build dispatch context with conversation history and session state
-        const dispatchContext: DispatchContext = {
-          userMessage: content,
-          conversationHistory: history.map((m) => ({
-            role: m.role === 'USER' ? 'user' as const : 'assistant' as const,
-            content: m.content,
-          })),
-          userName,
-          partnerName,
-          sessionId,
-          turnId,
-          currentStage,
-          invitationSent: session.status !== 'CREATED', // INVITED or ACTIVE means sent
-          partnerJoined: session.status === 'ACTIVE',
-        };
-
-        const dispatchedResponse = await handleDispatch(dispatchTag, dispatchContext);
-
-        if (dispatchedResponse !== null) {
-          // Use ONLY the dispatch response - ignore any acknowledgment text the AI may have sent
-          // (The prompt instructs AI to not send visible text, but in case it does, we ignore it)
-          logger.info(`[sendMessageStream:${requestId}] Dispatch response only (ignoring any streamed acknowledgment)`);
-          sendSSE(res, { event: 'chunk', data: { text: dispatchedResponse } });
-          accumulatedText = dispatchedResponse;
-        } else {
-          // Unknown dispatch tag — fall through and use the AI's original streamed response
-          logger.info(`[sendMessageStream:${requestId}] Unknown dispatch tag "${dispatchTag}" — using original AI response`);
-          isDispatchMessage = false;
-        }
-      }
-
-      // Guard: empty AI response after parsing + dispatch means the model emitted
-      // no usable user-facing text, or the upstream stream failed without
-      // producing text. Treat this as a failed turn so the frontend can show its
-      // retry/error state instead of saving a misleading canned response.
-      if (!accumulatedText.trim()) {
-        logger.error(`[sendMessageStream:${requestId}] Empty AI response after tag stripping`, {
-          dispatchTag: dispatchTag ?? null,
-          scrubbedPlannerText: scrubbedResponse.scrubbed,
-        });
-        throw new Error('AI response was empty after tag stripping');
-      }
+      accumulatedText = resolution.accumulatedText;
+      metadata = resolution.metadata;
+      isDispatchMessage = resolution.isDispatchMessage;
 
       finalizeTurnMetrics(turnId);
 
@@ -1713,27 +1172,14 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
       streamError = error instanceof Error ? error : new Error(String(error));
     }
 
-    // =========================================================================
-    // Handle stream error: Delete user message, send Ably error, no DB save
-    // User can retry fresh (avoids duplicate messages on retry)
-    // =========================================================================
+    // On stream failure the user message is removed so a retry starts fresh,
+    // and no AI message is saved.
     if (streamError) {
-      logger.error(`[sendMessageStream:${requestId}] Stream failed, cleaning up user message`);
-
-      // Delete user message so retry creates fresh conversation turn
-      await prisma.message.delete({ where: { id: userMessage.id } }).catch((deleteErr) => {
-        logger.warn(`[sendMessageStream:${requestId}] Failed to delete user message on error:`, deleteErr);
-      });
-
-      // Publish error via Ably so frontend can update UI (mark message as failed)
-      await publishMessageError(
+      await cleanupFailedStreamTurn({
+        requestId,
         sessionId,
-        user.id,
-        userMessage.id, // ID for frontend to identify which optimistic message failed
-        'Sorry, I had trouble generating a response. Please try again.',
-        true // canRetry
-      ).catch((ablyErr) => {
-        logger.warn(`[sendMessageStream:${requestId}] Failed to publish error via Ably:`, ablyErr);
+        userId: user.id,
+        userMessageId: userMessage.id,
       });
 
       // Send SSE error event if client still connected
@@ -1764,38 +1210,21 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
       metadata,
     });
 
-    // =========================================================================
     // Signal that text streaming is complete (before DB saves for faster UX)
-    // =========================================================================
     if (!clientDisconnected) {
       sendSSE(res, { event: 'metadata', data: { metadata } });
       sendSSE(res, { event: 'text_complete', data: { metadata } });
     }
 
-    // =========================================================================
-    // Save AI message (only if streaming succeeded)
-    // Trim whitespace that Claude sometimes adds
-    // =========================================================================
-    const aiMessage = await prisma.message.create({
-      data: {
-        sessionId,
-        senderId: null,
-        forUserId: user.id,
-        role: 'AI',
-        content: accumulatedText.trim(),
-        stage: effectiveStage, // Use effective stage (21 for Stage 2B) for analytics
-        refiningNeedId: refiningNeedContext?.id ?? null,
-      },
+    const aiMessage = await saveAiTurnMessage({
+      requestId,
+      sessionId,
+      userId: user.id,
+      accumulatedText,
+      effectiveStage,
+      refiningNeedContext,
     });
-    logger.info(`[sendMessageStream:${requestId}] AI message created: ${aiMessage.id}`);
 
-    // Broadcast to Status Site
-    brainService.broadcastMessage(aiMessage);
-
-    // =========================================================================
-    // Process metadata (persist to database): stage gates, topic frame,
-    // empathy draft, Stage 4 capture/walkthrough/auto-closure.
-    // =========================================================================
     await persistTurnState({
       requestId,
       sessionId,
@@ -1811,89 +1240,21 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
       metadata,
     });
 
-    // =========================================================================
     // Send complete event (streamError case is handled above with early return)
-    // =========================================================================
     if (!clientDisconnected) {
-      sendSSE(res, {
-        event: 'complete',
-        data: {
-          messageId: aiMessage.id,
-          metadata,
-        },
-      });
+      sendSSE(res, { event: 'complete', data: { messageId: aiMessage.id, metadata } });
     }
 
-    // =========================================================================
-    // Background tasks (non-blocking)
-    // Skip for dispatch messages - they're system responses, not user conversation
-    // =========================================================================
-    if (isDispatchMessage) {
-      logger.info(`[sendMessageStream:${requestId}] Skipping background tasks for dispatch message`);
-    } else if (isMockLLMEnabled()) {
-      logger.info(`[sendMessageStream:${requestId}] Skipping background tasks in mock LLM mode`);
-    } else {
-      // Summarize and embed session content for cross-session retrieval
-      // Per fact-ledger architecture, we embed at session level after summary updates
-      updateSessionSummary(sessionId, user.id, turnId)
-        .then(() => embedSessionContent(sessionId, user.id, turnId))
-        .catch((err: unknown) =>
-          logger.warn(`[sendMessageStream:${requestId}] Failed to update summary/embedding:`, err)
-        );
-
-      // Run partner session classifier (fire-and-forget)
-      // This extracts notable facts and detects memory intents
-      logger.info(`[sendMessageStream:${requestId}] 🚀 Triggering background classification...`);
-      (async () => {
-        try {
-          // Fetch existing facts for the classifier
-          const userVessel = await prisma.userVessel.findUnique({
-            where: { userId_sessionId: { userId: user.id, sessionId } },
-            select: { notableFacts: true },
-          });
-          // Extract existing facts with IDs for diff-based updates
-          // Legacy facts (without IDs) get UUIDs assigned via ensureFactIds
-          const existingFactsWithIds: CategorizedFactWithId[] = (() => {
-            if (!userVessel?.notableFacts) return [];
-            const facts = userVessel.notableFacts as unknown;
-            if (Array.isArray(facts)) {
-              // Check if it's CategorizedFact[] or CategorizedFactWithId[] format
-              if (facts.length > 0 && typeof facts[0] === 'object' && 'fact' in facts[0]) {
-                // New format with category/fact (may or may not have IDs)
-                return ensureFactIds(facts as CategorizedFactWithId[]);
-              }
-              // Old format: string[] - convert to CategorizedFactWithId
-              return ensureFactIds(
-                facts
-                  .filter((f): f is string => typeof f === 'string')
-                  .map((f) => ({ category: 'Unknown', fact: f }))
-              );
-            }
-            return [];
-          })();
-
-          const result = await runPartnerSessionClassifier({
-            userMessage: content,
-            conversationHistory: history.slice(-5).map((m) => ({
-              role: m.role === 'USER' ? 'user' as const : 'assistant' as const,
-              content: m.content,
-            })),
-            sessionId,
-            userId: user.id,
-            turnId,
-            partnerName,
-            existingFactsWithIds,
-          });
-
-          logger.info(`[sendMessageStream:${requestId}] ✅ Classification finished:`, {
-            factsCount: result?.notableFacts?.length ?? 0,
-            topicContext: result?.topicContext?.substring(0, 50),
-          });
-        } catch (err) {
-          logger.error(`[sendMessageStream:${requestId}] ❌ Classification failed:`, err);
-        }
-      })();
-    }
+    scheduleStreamTurnBackgroundJobs({
+      requestId,
+      sessionId,
+      userId: user.id,
+      turnId,
+      isDispatchMessage,
+      content,
+      history,
+      partnerName,
+    });
 
     // End response
     res.end();

@@ -105,16 +105,23 @@ export function useSharingStatus(
   const empathyStatusQuery = useEmpathyStatus(sessionId, {
     enabled: baseEnabled && (options.enableEmpathyStatus ?? true),
   });
+  const empathyStatus = empathyStatusQuery.data;
   const shareOfferQuery = useShareOffer(sessionId, {
     enabled:
       baseEnabled &&
       (options.enableShareOffer ?? true),
+    // Once reconciliation reports AWAITING_SHARING, the offer may still be
+    // committing in the background. Poll only until that persisted offer is
+    // visible; normal steady-state reads remain event-driven.
+    refetchInterval: (query) =>
+      empathyStatus?.awaitingSharing && !query.state.data?.hasSuggestion
+        ? 2_000
+        : false,
   });
   const partnerEmpathyQuery = usePartnerEmpathy(sessionId, {
     enabled: baseEnabled && (options.enablePartnerEmpathy ?? true),
   });
 
-  const empathyStatus = empathyStatusQuery.data;
   const shareOfferData = shareOfferQuery.data;
   const partnerEmpathyData = partnerEmpathyQuery.data;
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Text, StyleProp, TextStyle } from 'react-native';
+import { computeTypewriterStep } from '../lib/chat/render/typewriter';
 
 interface TypewriterTextProps {
   /** The text content to animate. It may grow while streaming. */
@@ -14,27 +15,6 @@ interface TypewriterTextProps {
   /** Whether catching up to the current text should finish the whole animation. */
   completeWhenCaughtUp?: boolean;
   onProgress?: () => void;
-}
-
-const MIN_CHARACTER_DELAY_MS = 10;
-
-function getNextChunk(text: string, startIndex: number): string {
-  const remaining = text.slice(startIndex);
-  if (!remaining) return '';
-
-  const match = remaining.match(/^(\s+|\S+\s*)/);
-  return match?.[0] || remaining[0];
-}
-
-function getCommonPrefixLength(a: string, b: string): number {
-  const max = Math.min(a.length, b.length);
-  let index = 0;
-
-  while (index < max && a[index] === b[index]) {
-    index += 1;
-  }
-
-  return index;
 }
 
 export function TypewriterText({
@@ -108,8 +88,9 @@ export function TypewriterText({
 
       const target = targetTextRef.current;
       const current = displayedTextRef.current;
+      const step = computeTypewriterStep(current, target, wordDelay);
 
-      if (current === target) {
+      if (step.kind === 'caught-up') {
         isAnimatingRef.current = false;
         if (completeWhenCaughtUpRef.current && target.length > 0 && !completionNotifiedRef.current) {
           completionNotifiedRef.current = true;
@@ -118,29 +99,11 @@ export function TypewriterText({
         return;
       }
 
-      if (!target.startsWith(current)) {
-        const commonPrefixLength = getCommonPrefixLength(current, target);
-        const stableText = current.slice(0, commonPrefixLength);
-
-        displayedTextRef.current = stableText;
-        setDisplayedText(stableText);
-        onProgressRef.current?.();
-
-        scheduleNextTick(0);
-        return;
-      }
-
-      const chunk = getNextChunk(target, current.length);
-      const nextText = target.slice(0, current.length + chunk.length);
-      displayedTextRef.current = nextText;
-      setDisplayedText(nextText);
+      displayedTextRef.current = step.text;
+      setDisplayedText(step.text);
       onProgressRef.current?.();
 
-      const characterDelay = Math.max(
-        MIN_CHARACTER_DELAY_MS,
-        Math.floor(wordDelay / Math.max(1, chunk.trim().length)),
-      );
-      scheduleNextTick(characterDelay * Math.max(1, chunk.length));
+      scheduleNextTick(step.delayMs);
     }, delay);
   };
 

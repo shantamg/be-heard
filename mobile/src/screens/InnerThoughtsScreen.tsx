@@ -397,8 +397,7 @@ export function InnerThoughtsScreen({
         emptyStateTitle={comingSoonMode ? 'Inner Work' : 'Inner Thoughts'}
         emptyStateMessage={comingSoonMode ? '' : "A private space for reflection. Share what's on your mind."}
         customEmptyState={hideContentUntilReady ? <View /> : undefined}
-        keyboardVerticalOffset={0}
-        onVoicePress={Platform.OS !== 'web' ? handleVoicePress : undefined}
+        composer={{ onVoicePress: Platform.OS !== 'web' ? handleVoicePress : undefined }}
         skipInitialHistory={comingSoonMode}
         customCards={branchPointCards}
       />
