@@ -19,6 +19,14 @@ dotenv.config({ path: path.resolve(__dirname, '.env.test') });
 export default defineConfig({
   testDir: './tests',
   testMatch: /two-browser-.*\.spec\.ts/,
+  // Real-Bedrock journeys have their own on-demand config. The broad
+  // two-browser filename pattern also matches them, but this deterministic
+  // harness always starts the backend with MOCK_LLM=true.
+  testIgnore: /live-ai-.*\.spec\.ts/,
+  // Existing image baselines capture the retired pre-redesign UI. Keep this
+  // suite focused on live semantic/wire contracts until visual baselines are
+  // deliberately reviewed and regenerated as a separate change.
+  ignoreSnapshots: true,
   timeout: 900000, // 15 minutes per test (Stage 2 needs 13 AI interactions + reconciler)
   expect: {
     timeout: 15000, // 15s for Ably events and partner updates
@@ -34,6 +42,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
+    browserName: 'chromium',
     baseURL: 'http://localhost:8082',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -44,7 +53,9 @@ export default defineConfig({
     {
       name: 'two-browser',
       testMatch: /two-browser-.*\.spec\.ts/,
+      testIgnore: /live-ai-.*\.spec\.ts/,
       use: {
+        browserName: 'chromium',
         baseURL: 'http://localhost:8082',
       },
     },
@@ -53,9 +64,13 @@ export default defineConfig({
   // CRITICAL: No E2E_FIXTURE_ID here - each user sets fixture via X-E2E-Fixture-ID header
   webServer: [
     {
-      command: 'npm run dev:api',
+      // Playwright starts managed web servers before globalSetup. Prepare the
+      // database in this command so Prisma is created only after truncate and
+      // migrations finish; mutating the schema beneath a live client causes
+      // long pool stalls on the first browser requests.
+      command: 'npx tsx e2e/prepare-database.ts && npm run dev:api',
       url: 'http://localhost:3000/health',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       cwd: '..',
       timeout: 60000,
       env: {
@@ -66,13 +81,15 @@ export default defineConfig({
       },
     },
     {
-      command: 'cd ../mobile && EXPO_PUBLIC_E2E_MODE=true EXPO_PUBLIC_API_URL=http://localhost:3000 npx expo start --web --port 8082',
+      // Keep the two-browser harness on the same production-mode bundle as
+      // the main E2E suite. In dev mode, CREATED sessions intentionally use a
+      // lightweight __DEV__ chat surface that omits the compact/invitation
+      // controls exercised by these tests.
+      command: 'cd ../mobile && EXPO_PUBLIC_E2E_MODE=true EXPO_PUBLIC_API_URL=http://127.0.0.1:3000 npx expo start --web --port 8082 --no-dev',
       url: 'http://localhost:8082',
-      reuseExistingServer: !process.env.CI,
-      timeout: 180000,
+      reuseExistingServer: false,
+      timeout: 300000,
     },
   ],
-  // Global setup: Clean database and run migrations before tests
-  globalSetup: require.resolve('./global-setup'),
   outputDir: 'test-results/',
 });

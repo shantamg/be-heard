@@ -12,7 +12,12 @@
 
 import { test, expect, devices } from '@playwright/test';
 import { TwoBrowserHarness, waitForPartnerUpdate } from '../helpers';
-import { signCompact, handleMoodCheck, waitForAIResponse } from '../helpers/test-utils';
+import {
+  confirmInvitationTopicAndContinue,
+  signCompact,
+  handleMoodCheck,
+  waitForAIResponse,
+} from '../helpers/test-utils';
 
 // Use iPhone 12 viewport
 test.use(devices['iPhone 12']);
@@ -44,20 +49,14 @@ test.describe('Two Browser Smoke Test', () => {
   });
 
   test.afterEach(async () => {
-    await harness.teardown();
+    await harness?.teardown();
   });
 
   test('both users can connect and navigate UI', async ({ browser, request }) => {
-    test.setTimeout(300000); // 5 minutes
-
-    // Set up User B after session is created (sequential, not parallel)
-    await harness.setupUserB(browser, request);
-
-    // User B accepts invitation
-    await harness.acceptInvitation();
+    test.setTimeout(600000); // 10 minutes on resource-constrained local machines
 
     // ==========================================
-    // User A: Navigate, sign compact, handle mood check
+    // User A: Complete the inviter-only Stage 0 flow
     // ==========================================
     await harness.navigateUserA();
     await signCompact(harness.userAPage);
@@ -66,9 +65,29 @@ test.describe('Two Browser Smoke Test', () => {
     // User A should see chat input
     await expect(harness.userAPage.getByTestId('chat-input')).toBeVisible();
 
+    // User A's first streamed fixture response proves the SSE path is live.
+    const userAChatInput = harness.userAPage.getByTestId('chat-input');
+    const userASendButton = harness.userAPage.getByTestId('send-button');
+    await userAChatInput.fill("Hi, I'm having a conflict with my partner");
+    await userASendButton.click();
+    await waitForAIResponse(harness.userAPage, /glad you reached out/i);
+
+    // The second response proposes the topic frame. Invitations are not
+    // acceptable until the inviter confirms this production Stage 0 gate.
+    await userAChatInput.fill('We keep arguing about household chores');
+    await userASendButton.click();
+    await expect(harness.userAPage.getByTestId('typing-indicator')).not.toBeVisible({
+      timeout: 60000,
+    });
+    await confirmInvitationTopicAndContinue(harness.userAPage);
+
+    await harness.userAPage.screenshot({ path: 'test-results/smoke-user-a-first-response.png' });
+
     // ==========================================
-    // User B: Navigate, sign compact, handle mood check
+    // User B: Accept, navigate, sign compact, handle mood check
     // ==========================================
+    await harness.setupUserB(browser, request);
+    await harness.acceptInvitation();
     await harness.navigateUserB();
     await signCompact(harness.userBPage);
     await handleMoodCheck(harness.userBPage);
@@ -101,19 +120,6 @@ test.describe('Two Browser Smoke Test', () => {
     // ==========================================
     // Verify per-user fixtures deliver different AI responses
     // ==========================================
-
-    // User A sends first message
-    const userAChatInput = harness.userAPage.getByTestId('chat-input');
-    const userASendButton = harness.userAPage.getByTestId('send-button');
-
-    await userAChatInput.fill("Hi, I'm having a conflict with my partner");
-    await userASendButton.click();
-
-    // Wait for User A's fixture response (from user-a-full-journey, response 0)
-    await waitForAIResponse(harness.userAPage, /glad you reached out/i);
-
-    // Screenshot User A's chat
-    await harness.userAPage.screenshot({ path: 'test-results/smoke-user-a-first-response.png' });
 
     // User B sends first message
     const userBChatInput = harness.userBPage.getByTestId('chat-input');

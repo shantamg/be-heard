@@ -199,6 +199,7 @@ test.describe.skip('Stage 4 legacy ranking flow', () => {
     });
     const strategyA1Data = await strategyA1.json();
     console.log(`${elapsed()} User A strategy 1: ${strategyA1Data.success ? 'created' : 'failed'}`);
+    expect(strategyA1.ok(), 'User A first strategy was not created').toBe(true);
 
     const strategyA2 = await apiA.post(`${API_BASE_URL}/api/sessions/${sessionId}/strategies`, {
       description: 'Use a pause signal when conversations get heated',
@@ -206,6 +207,7 @@ test.describe.skip('Stage 4 legacy ranking flow', () => {
     });
     const strategyA2Data = await strategyA2.json();
     console.log(`${elapsed()} User A strategy 2: ${strategyA2Data.success ? 'created' : 'failed'}`);
+    expect(strategyA2.ok(), 'User A second strategy was not created').toBe(true);
 
     // User B proposes 1 strategy
     const strategyB1 = await apiB.post(`${API_BASE_URL}/api/sessions/${sessionId}/strategies`, {
@@ -214,13 +216,15 @@ test.describe.skip('Stage 4 legacy ranking flow', () => {
     });
     const strategyB1Data = await strategyB1.json();
     console.log(`${elapsed()} User B strategy 1: ${strategyB1Data.success ? 'created' : 'failed'}`);
+    expect(strategyB1.ok(), 'User B strategy was not created').toBe(true);
 
-    // Verify strategies via GET endpoint
+    // Proposals remain private during collection. User A should see only the
+    // two strategies they created until both users mark themselves ready.
     const strategiesResponse = await apiA.get(`${API_BASE_URL}/api/sessions/${sessionId}/strategies`);
     const strategiesData = await strategiesResponse.json();
-    const strategies = strategiesData.data?.strategies || [];
-    console.log(`${elapsed()} Total strategies in pool: ${strategies.length}`);
-    expect(strategies.length).toBe(3);
+    const privateStrategies = strategiesData.data?.strategies || [];
+    console.log(`${elapsed()} User A strategies visible before mutual readiness: ${privateStrategies.length}`);
+    expect(privateStrategies).toHaveLength(2);
 
     // Reload pages to show strategy pool UI
     await Promise.all([
@@ -270,6 +274,8 @@ test.describe.skip('Stage 4 legacy ranking flow', () => {
     console.log(`${elapsed()} User B ready: success=${readyBData.success}, canStartRanking=${readyBData.data?.canStartRanking}`);
 
     // Verify both are ready
+    expect(readyAResponse.ok(), 'User A was not marked ready to rank').toBe(true);
+    expect(readyBResponse.ok(), 'User B was not marked ready to rank').toBe(true);
     expect(readyBData.data?.canStartRanking).toBe(true);
 
     // ========================================
@@ -277,7 +283,16 @@ test.describe.skip('Stage 4 legacy ranking flow', () => {
     // ========================================
     console.log(`${elapsed()} === STEP 4: Submit rankings via API ===`);
 
-    // Get strategy IDs from the pool
+    // Mutual readiness opens the anonymous shared pool.
+    const sharedStrategiesResponse = await apiA.get(
+      `${API_BASE_URL}/api/sessions/${sessionId}/strategies`
+    );
+    const sharedStrategiesData = await sharedStrategiesResponse.json();
+    const strategies = sharedStrategiesData.data?.strategies || [];
+    expect(strategies).toHaveLength(3);
+    expect(sharedStrategiesData.data?.canRank).toBe(true);
+
+    // Get strategy IDs from the shared pool
     const strategy1 = strategies[0];
     const strategy2 = strategies[1];
     const strategy3 = strategies[2];
@@ -407,6 +422,7 @@ test.describe.skip('Stage 4 legacy ranking flow', () => {
     const agreementData = await agreementResponse.json();
     console.log(`${elapsed()} Agreement created: success=${agreementData.success}, awaitingPartner=${agreementData.data?.awaitingPartnerConfirmation}`);
 
+    expect(agreementResponse.ok(), 'Agreement was not created').toBe(true);
     expect(agreementData.data?.awaitingPartnerConfirmation).toBe(true);
 
     const agreementId = agreementData.data?.agreement?.id;
@@ -422,10 +438,11 @@ test.describe.skip('Stage 4 legacy ranking flow', () => {
       confirmed: true,
     });
     const confirmData = await confirmResponse.json();
-    console.log(`${elapsed()} Agreement confirmed: success=${confirmData.success}, partnerConfirmed=${confirmData.data?.partnerConfirmed}, sessionComplete=${confirmData.data?.sessionComplete}`);
+    console.log(`${elapsed()} Agreement confirmed: success=${confirmData.success}, sessionCanResolve=${confirmData.data?.sessionCanResolve}`);
 
-    expect(confirmData.data?.partnerConfirmed).toBe(true);
-    expect(confirmData.data?.sessionComplete).toBe(true);
+    expect(confirmResponse.ok(), 'Partner agreement confirmation failed').toBe(true);
+    expect(confirmData.data?.agreement?.status).toBe('AGREED');
+    expect(confirmData.data?.sessionCanResolve).toBe(true);
 
     // Reload pages to show agreement UI
     await Promise.all([

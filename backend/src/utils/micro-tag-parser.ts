@@ -17,30 +17,22 @@ import {
   Stage4ProposalKind,
   type CapturedNeedInput,
   type ParsedNeedAction,
+  type Stage4ProposalAction,
+  type Stage4ProposalClassification,
+  type Stage4ProposalInput,
+  type Stage4WalkthroughAction,
+  type Stage4WalkthroughActionType,
 } from '@meet-without-fear/shared';
 import { cleanVisibleAIText } from './visible-text';
 
-export type ParsedStage4ProposalClassification = 'PROPOSAL' | 'REFLECTION' | 'SUCCESS_MARKER' | 'PROCESS';
-export type ParsedStage4ProposalAction = 'ADD' | 'REVISE' | 'REMOVE' | 'IGNORE';
-export type ParsedStage4WalkthroughActionType = 'COVERED' | 'SKIP' | 'NONE';
-
-export interface ParsedStage4ProposalInput {
-  action: ParsedStage4ProposalAction;
-  targetProposalId?: string;
-  classification: ParsedStage4ProposalClassification;
-  description: string;
-  kind?: Stage4ProposalKind;
-  ownerUserId?: string;
-  needsAddressed?: string[];
-  duration?: string;
-  measureOfSuccess?: string;
-}
-
-export interface ParsedStage4WalkthroughAction {
-  action: ParsedStage4WalkthroughActionType;
-  needId?: string;
-  reason?: string;
-}
+// The Stage 4 structured-action shapes are part of the shared streaming
+// contract (shared/src/contracts/stream.ts). The Parsed* names are kept as
+// aliases for existing backend call sites.
+export type ParsedStage4ProposalClassification = Stage4ProposalClassification;
+export type ParsedStage4ProposalAction = Stage4ProposalAction;
+export type ParsedStage4WalkthroughActionType = Stage4WalkthroughActionType;
+export type ParsedStage4ProposalInput = Stage4ProposalInput;
+export type ParsedStage4WalkthroughAction = Stage4WalkthroughAction;
 
 export interface ParsedMicroTagResponse {
   /** The user-facing response text (all tags stripped) */

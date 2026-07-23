@@ -32,16 +32,14 @@
  */
 
 import { test, expect, devices } from '@playwright/test';
-import { TwoBrowserHarness } from '../helpers';
+import { getE2EHeaders, TwoBrowserHarness } from '../helpers';
 import {
   signCompact,
   handleMoodCheck,
+  completeInviterInvitationFlow,
   sendAndWaitForPanel,
-  confirmInvitationTopicAndContinue,
   confirmFeelHeard,
   waitForReconcilerComplete,
-  navigateToShareFromSession,
-  navigateBackToChat,
 } from '../helpers/test-utils';
 
 // Use iPhone 12 viewport
@@ -89,15 +87,14 @@ test.describe('Stage 2: Empathy Sharing and Reconciler', () => {
     // STAGE 0 PREREQUISITE
     // ==========================================
 
-    // Set up User B after session is created (sequential, not parallel)
-    await harness.setupUserB(browser, request);
-    await harness.acceptInvitation();
-
-    // Both users navigate, sign compact, handle mood check
+    // The inviter must confirm the topic before the invitation is acceptable.
     await harness.navigateUserA();
     await signCompact(harness.userAPage);
     await handleMoodCheck(harness.userAPage);
+    await completeInviterInvitationFlow(harness.userAPage);
 
+    await harness.setupUserB(browser, request);
+    await harness.acceptInvitation();
     await harness.navigateUserB();
     await signCompact(harness.userBPage);
     await handleMoodCheck(harness.userBPage);
@@ -110,33 +107,20 @@ test.describe('Stage 2: Empathy Sharing and Reconciler', () => {
     // STAGE 1: USER A WITNESSING
     // ==========================================
 
-    // User A sends messages matching user-a-full-journey fixture
-    // Note: Response 1 triggers invitation panel which we need to dismiss
+    // The first two fixture turns were consumed while preparing the invitation.
     const userAStage1Messages = [
-      "Hi, I'm having a conflict with my partner", // Response 0: initial greeting
-      'We keep arguing about household chores', // Response 1: invitation draft - triggers invitation panel
       'Thanks, I sent the invitation', // Response 2: post-invitation
       'This has been building for months, and I feel worn down by it',
       "I feel like I do most of the work and they don't notice or appreciate it", // Response 3: FeelHeardCheck: Y
     ];
 
-    // Send first 2 messages to trigger invitation panel
-    for (let i = 0; i < 2; i++) {
-      const chatInput = harness.userAPage.getByTestId('chat-input');
-      const sendButton = harness.userAPage.getByTestId('send-button');
-      await chatInput.fill(userAStage1Messages[i]);
-      await sendButton.click();
-      // Wait for typing indicator to disappear (streaming complete)
-      await expect(harness.userAPage.getByTestId('typing-indicator')).not.toBeVisible({ timeout: 60000 });
-      await harness.userAPage.waitForTimeout(500);
-    }
-
-    await confirmInvitationTopicAndContinue(harness.userAPage);
-    await harness.userAPage.waitForTimeout(500);
-
     // Send remaining messages until feel-heard panel appears
-    const remainingMessagesA = userAStage1Messages.slice(2);
-    await sendAndWaitForPanel(harness.userAPage, remainingMessagesA, 'feel-heard-yes', remainingMessagesA.length);
+    await sendAndWaitForPanel(
+      harness.userAPage,
+      userAStage1Messages,
+      'feel-heard-yes',
+      userAStage1Messages.length
+    );
 
     // User A confirms feel-heard
     await confirmFeelHeard(harness.userAPage);
@@ -251,42 +235,29 @@ test.describe('Stage 2: Empathy Sharing and Reconciler', () => {
     await harness.userAPage.screenshot({ path: 'test-results/stage2-user-a-reconciler-complete.png' });
     await harness.userBPage.screenshot({ path: 'test-results/stage2-user-b-reconciler-complete.png' });
 
-    // ==========================================
-    // NAVIGATE TO SHARE TAB FOR VALIDATION
-    // ==========================================
+    // Validation now happens inline in chat rather than on the legacy Share tab.
+    const userAValidateButton = harness.userAPage.getByTestId('partner-empathy-yes-button');
+    const userBValidateButton = harness.userBPage.getByTestId('partner-empathy-yes-button');
 
-    // Navigate both users to Share screen
-    await navigateToShareFromSession(harness.userAPage);
-    await navigateToShareFromSession(harness.userBPage);
+    await expect(userAValidateButton).toBeVisible({ timeout: 10000 });
+    const [userAValidationResponse] = await Promise.all([
+      harness.userAPage.waitForResponse(
+        response => response.url().includes(`/sessions/${harness.sessionId}/empathy/validate`)
+          && response.request().method() === 'POST'
+      ),
+      userAValidateButton.click(),
+    ]);
+    expect(userAValidationResponse.ok()).toBe(true);
 
-    // Screenshot Share screens
-    await harness.userAPage.screenshot({ path: 'test-results/stage2-user-a-share-screen.png' });
-    await harness.userBPage.screenshot({ path: 'test-results/stage2-user-b-share-screen.png' });
-
-    // Look for validation buttons on partner empathy cards
-    // The testID pattern is `partner-empathy-card-validate-accurate`
-    const userAValidateButton = harness.userAPage.getByTestId('partner-empathy-card-validate-accurate');
-    const userBValidateButton = harness.userBPage.getByTestId('partner-empathy-card-validate-accurate');
-
-    // Try to click validation buttons (may not be visible if Ably events delayed)
-    // This is a known issue (Pitfall 5 from research) - validation UI depends on Ably events
-    const userACanValidate = await userAValidateButton.isVisible({ timeout: 10000 }).catch(() => false);
-    if (userACanValidate) {
-      await userAValidateButton.click();
-      await harness.userAPage.waitForTimeout(1000);
-    } else {
-      // Document as known issue: validation UI not visible (Ably event timing)
-      console.log('KNOWN ISSUE: User A validation button not visible (Ably event timing)');
-    }
-
-    const userBCanValidate = await userBValidateButton.isVisible({ timeout: 10000 }).catch(() => false);
-    if (userBCanValidate) {
-      await userBValidateButton.click();
-      await harness.userBPage.waitForTimeout(1000);
-    } else {
-      // Document as known issue: validation UI not visible (Ably event timing)
-      console.log('KNOWN ISSUE: User B validation button not visible (Ably event timing)');
-    }
+    await expect(userBValidateButton).toBeVisible({ timeout: 10000 });
+    const [userBValidationResponse] = await Promise.all([
+      harness.userBPage.waitForResponse(
+        response => response.url().includes(`/sessions/${harness.sessionId}/empathy/validate`)
+          && response.request().method() === 'POST'
+      ),
+      userBValidateButton.click(),
+    ]);
+    expect(userBValidationResponse.ok()).toBe(true);
 
     // Screenshot after validation attempts
     await harness.userAPage.screenshot({ path: 'test-results/stage2-user-a-validation.png' });
@@ -296,18 +267,29 @@ test.describe('Stage 2: Empathy Sharing and Reconciler', () => {
     // VERIFY STAGE 3 ENTRY
     // ==========================================
 
-    // Navigate back to chat
-    await navigateBackToChat(harness.userAPage);
-    await navigateBackToChat(harness.userBPage);
+    // The second validation triggers an asynchronous Stage 3 transition.
+    const apiBaseUrl = process.env.API_BASE_URL || 'http://localhost:3000';
+    await expect.poll(async () => {
+      const stateResponse = await request.get(
+        `${apiBaseUrl}/api/sessions/${harness.sessionId}/state`,
+        {
+          headers: getE2EHeaders(
+            harness.config.userA.email,
+            harness.userAId,
+            harness.config.userA.fixtureId
+          ),
+        }
+      );
+      if (!stateResponse.ok()) return -1;
+      const stateData = await stateResponse.json();
+      return stateData.data.session.currentStage;
+    }, {
+      timeout: 30000,
+      message: 'session should advance to Stage 3 after both empathy validations',
+    }).toBe(3);
 
-    // Handle mood check that may appear after navigation
-    await handleMoodCheck(harness.userAPage);
-    await handleMoodCheck(harness.userBPage);
-
-    // Verify chat input visible for both users (Stage 3 continues conversation)
-    // This is the key indicator that Stage 2 completed successfully
-    await expect(harness.userAPage.getByTestId('chat-input')).toBeVisible({ timeout: 5000 });
-    await expect(harness.userBPage.getByTestId('chat-input')).toBeVisible({ timeout: 5000 });
+    await expect(harness.userAPage.getByTestId('chat-input')).toBeVisible({ timeout: 10000 });
+    await expect(harness.userBPage.getByTestId('chat-input')).toBeVisible({ timeout: 10000 });
 
     // Take final screenshots
     await harness.userAPage.screenshot({ path: 'test-results/stage2-user-a-final.png' });

@@ -14,7 +14,11 @@
 
 import { test, expect, devices } from '@playwright/test';
 import { TwoBrowserHarness, waitForPartnerUpdate } from '../helpers';
-import { signCompact, handleMoodCheck } from '../helpers/test-utils';
+import {
+  completeInviterInvitationFlow,
+  signCompact,
+  handleMoodCheck,
+} from '../helpers/test-utils';
 
 // Use iPhone 12 viewport
 test.use(devices['iPhone 12']);
@@ -53,24 +57,21 @@ test.describe('Stage 0: Compact Signing', () => {
     test.setTimeout(180000); // 3 minutes - compact signing is fast but Ably needs time
 
     // ==========================================
-    // Setup User B and accept invitation
-    // ==========================================
-    await harness.setupUserB(browser, request);
-    await harness.acceptInvitation();
-
-    // ==========================================
-    // User A: Navigate, sign compact, handle mood check
+    // User A: Complete the inviter-only Stage 0 flow
     // ==========================================
     await harness.navigateUserA();
     await signCompact(harness.userAPage);
     await handleMoodCheck(harness.userAPage);
+    await completeInviterInvitationFlow(harness.userAPage);
 
     // User A should see chat input
     await expect(harness.userAPage.getByTestId('chat-input')).toBeVisible();
 
     // ==========================================
-    // User B: Navigate, sign compact, handle mood check
+    // User B: Accept, navigate, sign compact, handle mood check
     // ==========================================
+    await harness.setupUserB(browser, request);
+    await harness.acceptInvitation();
     await harness.navigateUserB();
     await signCompact(harness.userBPage);
     await handleMoodCheck(harness.userBPage);

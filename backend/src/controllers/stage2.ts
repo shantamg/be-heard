@@ -120,7 +120,12 @@ async function triggerReconcilerAndUpdateStatuses(sessionId: string): Promise<vo
 
     // Update empathy attempt for User A (A's guess about B)
     if (result.aUnderstandingB && shouldUpdateA) {
-      const hasSignificantGapsA = false;
+      const hasSignificantGapsA =
+        result.aUnderstandingB.recommendation.action === 'OFFER_SHARING' ||
+        (
+          result.aUnderstandingB.recommendation.action === 'OFFER_OPTIONAL' &&
+          !!result.aUnderstandingB.recommendation.suggestedShareFocus
+        );
 
       // Check if B has already shared context with A to prevent infinite loop
       // When A has gaps guessing B, B (subject) should share with A (guesser)
@@ -178,7 +183,12 @@ async function triggerReconcilerAndUpdateStatuses(sessionId: string): Promise<vo
 
     // Update empathy attempt for User B (B's guess about A)
     if (result.bUnderstandingA && shouldUpdateB) {
-      const hasSignificantGapsB = false;
+      const hasSignificantGapsB =
+        result.bUnderstandingA.recommendation.action === 'OFFER_SHARING' ||
+        (
+          result.bUnderstandingA.recommendation.action === 'OFFER_OPTIONAL' &&
+          !!result.bUnderstandingA.recommendation.suggestedShareFocus
+        );
 
       // Check if A has already shared context with B to prevent infinite loop
       // When B has gaps guessing A, A (subject) should share with B (guesser)

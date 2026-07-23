@@ -24,12 +24,10 @@ import { TwoBrowserHarness, getE2EHeaders } from '../helpers';
 import {
   signCompact,
   handleMoodCheck,
+  completeInviterInvitationFlow,
   sendAndWaitForPanel,
-  confirmInvitationTopicAndContinue,
   confirmFeelHeard,
   waitForReconcilerComplete,
-  navigateToShareFromSession,
-  navigateBackToChat,
   confirmNeedsSummaryAndConsent,
   expectNeedsComparisonFromApi,
   expectNeedsSummaryFromApi,
@@ -58,6 +56,23 @@ function makeApiRequest(
     get: (url: string) => request.get(url, { headers }),
     post: (url: string, data?: object) => request.post(url, { headers, data }),
   };
+}
+
+async function ensureNeedsSummary(
+  api: ReturnType<typeof makeApiRequest>,
+  sessionId: string,
+  needs: Array<{ need: string; category: string }>
+): Promise<void> {
+  const response = await api.get(`${API_BASE_URL}/api/sessions/${sessionId}/needs`);
+  const data = await response.json();
+  if ((data.data?.needs?.length ?? 0) > 0) {
+    return;
+  }
+
+  for (const need of needs) {
+    const createResponse = await api.post(`${API_BASE_URL}/api/sessions/${sessionId}/needs`, need);
+    expect(createResponse.ok(), `Failed to seed Stage 3 need: ${need.need}`).toBe(true);
+  }
 }
 
 test.describe('Full Partner Journey: Stages 0-4', () => {
@@ -99,15 +114,14 @@ test.describe('Full Partner Journey: Stages 0-4', () => {
     // === STAGE 0: COMPACT SIGNING ===
     // ==========================================
 
-    // Set up User B after session is created (sequential, not parallel)
-    await harness.setupUserB(browser, request);
-    await harness.acceptInvitation();
-
-    // Both users navigate, sign compact, handle mood check
+    // The inviter must confirm the topic before the invitation is acceptable.
     await harness.navigateUserA();
     await signCompact(harness.userAPage);
     await handleMoodCheck(harness.userAPage);
+    await completeInviterInvitationFlow(harness.userAPage);
 
+    await harness.setupUserB(browser, request);
+    await harness.acceptInvitation();
     await harness.navigateUserB();
     await signCompact(harness.userBPage);
     await handleMoodCheck(harness.userBPage);
@@ -119,27 +133,6 @@ test.describe('Full Partner Journey: Stages 0-4', () => {
     // ==========================================
     // === STAGE 1: USER A WITNESSING ===
     // ==========================================
-
-    // User A sends messages matching user-a-full-journey fixture
-    // Response 1 triggers invitation panel which we need to dismiss
-    const userAStage1Messages = [
-      "Hi, I'm having a conflict with my partner", // Response 0: initial greeting
-      'We keep arguing about household chores', // Response 1: invitation draft - triggers invitation panel
-    ];
-
-    // Send first 2 messages to trigger invitation panel
-    for (let i = 0; i < 2; i++) {
-      const chatInput = harness.userAPage.getByTestId('chat-input');
-      const sendButton = harness.userAPage.getByTestId('send-button');
-      await chatInput.fill(userAStage1Messages[i]);
-      await sendButton.click();
-      // Wait for typing indicator to disappear (streaming complete)
-      await expect(harness.userAPage.getByTestId('typing-indicator')).not.toBeVisible({ timeout: 60000 });
-      await harness.userAPage.waitForTimeout(500);
-    }
-
-    await confirmInvitationTopicAndContinue(harness.userAPage);
-    await harness.userAPage.waitForTimeout(500);
 
     // Send remaining messages until feel-heard panel appears
     const remainingMessagesA = [
@@ -249,7 +242,7 @@ test.describe('Full Partner Journey: Stages 0-4', () => {
     }
 
     // ==========================================
-    // === STAGE 3: VERIFY SHARE PAGE ===
+    // === STAGE 3: VERIFY INLINE EMPATHY REVIEW ===
     // ==========================================
 
     // Create API helpers for both users (needed for empathy validation and Stage 3-4 ops)
@@ -266,26 +259,14 @@ test.describe('Full Partner Journey: Stages 0-4', () => {
       harness.config.userB.fixtureId
     );
 
-    // Navigate both users to Share tab to verify empathy is displayed
-    await navigateToShareFromSession(harness.userAPage);
-    await navigateToShareFromSession(harness.userBPage);
-
-    // Both users should see their partner's revealed empathy card
-    // TestIDs are dynamic: share-screen-partner-tab-item-partner-empathy-{attemptId}
-    // Use .first() since the prefix also matches child elements (-card, -validate-*)
-    const userAPartnerEmpathy = harness.userAPage.locator('[data-testid^="share-screen-partner-tab-item-partner-empathy-"]').first();
-    const userBPartnerEmpathy = harness.userBPage.locator('[data-testid^="share-screen-partner-tab-item-partner-empathy-"]').first();
-    await expect(userAPartnerEmpathy).toBeVisible({ timeout: 10000 });
-    await expect(userBPartnerEmpathy).toBeVisible({ timeout: 10000 });
-
-    // Both users should see validation buttons for partner's empathy (Accurate, Partially, Off)
-    await expect(harness.userAPage.locator('[data-testid$="-validate-accurate"]')).toBeVisible({ timeout: 5000 });
-    await expect(harness.userAPage.locator('[data-testid$="-validate-partial"]')).toBeVisible({ timeout: 5000 });
-    await expect(harness.userAPage.locator('[data-testid$="-validate-inaccurate"]')).toBeVisible({ timeout: 5000 });
-
-    await expect(harness.userBPage.locator('[data-testid$="-validate-accurate"]')).toBeVisible({ timeout: 5000 });
-    await expect(harness.userBPage.locator('[data-testid$="-validate-partial"]')).toBeVisible({ timeout: 5000 });
-    await expect(harness.userBPage.locator('[data-testid$="-validate-inaccurate"]')).toBeVisible({ timeout: 5000 });
+    // The redesigned session keeps partner empathy and accuracy feedback inline
+    // in chat instead of navigating to the retired Share tab.
+    await expect(harness.userAPage.getByTestId('partner-empathy-validation-panel'))
+      .toBeVisible({ timeout: 30000 });
+    await expect(harness.userBPage.getByTestId('partner-empathy-validation-panel'))
+      .toBeVisible({ timeout: 30000 });
+    await expect(harness.userAPage.getByTestId('partner-empathy-yes-button')).toBeVisible();
+    await expect(harness.userBPage.getByTestId('partner-empathy-yes-button')).toBeVisible();
 
     // ==========================================
     // === STAGE 2 → STAGE 3 TRANSITION ===
@@ -310,11 +291,7 @@ test.describe('Full Partner Journey: Stages 0-4', () => {
     // === STAGE 3: VERIFY CHAT CONTINUES ===
     // ==========================================
 
-    // Navigate both back to chat
-    await navigateBackToChat(harness.userAPage);
-    await navigateBackToChat(harness.userBPage);
-
-    // Handle mood check that may appear after navigation
+    // Handle a mood check if the stage transition presents one.
     await handleMoodCheck(harness.userAPage);
     await handleMoodCheck(harness.userBPage);
 
@@ -338,6 +315,32 @@ test.describe('Full Partner Journey: Stages 0-4', () => {
     await Promise.all([
       apiA.get(`${API_BASE_URL}/api/sessions/${harness.sessionId}/needs`),
       apiB.get(`${API_BASE_URL}/api/sessions/${harness.sessionId}/needs`),
+    ]);
+
+    // The current Stage 3 contract waits for a Stage 3 conversation turn before
+    // automatic extraction. This legacy full-flow test advances via API, so seed
+    // deterministic needs only when extraction has not produced any yet.
+    await Promise.all([
+      ensureNeedsSummary(apiA, harness.sessionId, [
+        {
+          need: 'I need to feel appreciated for the work I do around the house',
+          category: 'RECOGNITION',
+        },
+        {
+          need: 'I need us to share responsibilities more equally',
+          category: 'FAIRNESS',
+        },
+      ]),
+      ensureNeedsSummary(apiB, harness.sessionId, [
+        {
+          need: 'I need understanding about how exhausted I am after work',
+          category: 'CONNECTION',
+        },
+        {
+          need: 'I need emotional support when I come home tired',
+          category: 'SAFETY',
+        },
+      ]),
     ]);
 
     // Wait for extraction to complete
@@ -416,26 +419,29 @@ test.describe('Full Partner Journey: Stages 0-4', () => {
     // ==========================================
 
     // Propose strategies via API - User A proposes 2, User B proposes 1 (3 total)
-    await apiA.post(`${API_BASE_URL}/api/sessions/${harness.sessionId}/strategies`, {
+    const strategyA1Response = await apiA.post(`${API_BASE_URL}/api/sessions/${harness.sessionId}/strategies`, {
       description: 'Have a 10-minute phone-free conversation at dinner each day',
       needsAddressed: ['Connection', 'Recognition'],
     });
+    expect(strategyA1Response.ok(), 'User A first strategy was not created').toBe(true);
 
-    await apiA.post(`${API_BASE_URL}/api/sessions/${harness.sessionId}/strategies`, {
+    const strategyA2Response = await apiA.post(`${API_BASE_URL}/api/sessions/${harness.sessionId}/strategies`, {
       description: 'Use a pause signal when conversations get heated',
       needsAddressed: ['Safety', 'Connection'],
     });
+    expect(strategyA2Response.ok(), 'User A second strategy was not created').toBe(true);
 
-    await apiB.post(`${API_BASE_URL}/api/sessions/${harness.sessionId}/strategies`, {
+    const strategyB1Response = await apiB.post(`${API_BASE_URL}/api/sessions/${harness.sessionId}/strategies`, {
       description: 'Say one specific thing I appreciate each morning',
       needsAddressed: ['Recognition'],
     });
+    expect(strategyB1Response.ok(), 'User B strategy was not created').toBe(true);
 
-    // Verify 3 strategies via GET endpoint
+    // Before mutual readiness, the privacy gate exposes only the current user's
+    // proposals. User A created two of the three database records.
     const strategiesResponse = await apiA.get(`${API_BASE_URL}/api/sessions/${harness.sessionId}/strategies`);
     const strategiesData = await strategiesResponse.json();
-    const strategies = strategiesData.data?.strategies || [];
-    expect(strategies.length).toBe(3);
+    expect(strategiesData.data?.strategies).toHaveLength(2);
 
     // Reload pages to show strategy pool
     await Promise.all([
@@ -461,10 +467,21 @@ test.describe('Full Partner Journey: Stages 0-4', () => {
     });
 
     // Mark both users ready via POST /strategies/ready
-    await Promise.all([
+    const [readyAResponse, readyBResponse] = await Promise.all([
       apiA.post(`${API_BASE_URL}/api/sessions/${harness.sessionId}/strategies/ready`),
       apiB.post(`${API_BASE_URL}/api/sessions/${harness.sessionId}/strategies/ready`),
     ]);
+    expect(readyAResponse.ok(), 'User A was not marked ready to rank').toBe(true);
+    expect(readyBResponse.ok(), 'User B was not marked ready to rank').toBe(true);
+
+    // Mutual readiness opens the anonymous shared pool.
+    const sharedStrategiesResponse = await apiA.get(
+      `${API_BASE_URL}/api/sessions/${harness.sessionId}/strategies`
+    );
+    const sharedStrategiesData = await sharedStrategiesResponse.json();
+    const strategies = sharedStrategiesData.data?.strategies || [];
+    expect(strategies).toHaveLength(3);
+    expect(sharedStrategiesData.data?.canRank).toBe(true);
 
     // Get strategy IDs from GET endpoint
     const strategy1 = strategies[0];
@@ -525,8 +542,10 @@ test.describe('Full Partner Journey: Stages 0-4', () => {
       type: 'MICRO_EXPERIMENT',
       followUpDate: followUpDate.toISOString(),
     });
+    expect(agreementResponse.ok(), 'Agreement was not created').toBe(true);
     const agreementData = await agreementResponse.json();
     const agreementId = agreementData.data?.agreement?.id;
+    expect(agreementId, 'Agreement response did not include an id').toBeTruthy();
 
     // Confirm agreement via POST /agreements/{agreementId}/confirm as User B
     const confirmResponse = await apiB.post(
@@ -535,8 +554,9 @@ test.describe('Full Partner Journey: Stages 0-4', () => {
     );
     const confirmData = await confirmResponse.json();
 
-    // Verify sessionComplete: true
-    expect(confirmData.data?.sessionComplete).toBe(true);
+    expect(confirmResponse.ok(), 'Partner agreement confirmation failed').toBe(true);
+    expect(confirmData.data?.agreement?.status).toBe('AGREED');
+    expect(confirmData.data?.sessionCanResolve).toBe(true);
 
     // Reload pages to show final agreement state
     await Promise.all([
@@ -569,6 +589,6 @@ test.describe('Full Partner Journey: Stages 0-4', () => {
     // - Both users completed Stage 2 (empathy drafting + sharing + reconciler)
     // - Both users completed Stage 3 (needs extraction + side-by-side validation)
     // - Both users completed Stage 4 (strategies + ranking + agreement)
-    // - Session marked complete (sessionComplete: true)
+    // - Session marked resolved (sessionCanResolve: true)
   });
 });

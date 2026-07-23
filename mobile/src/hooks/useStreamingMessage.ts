@@ -5,91 +5,60 @@
  * Uses react-native-sse for proper SSE support in React Native.
  */
 
-import { useState, useCallback, useRef } from 'react';
-import { useQueryClient, InfiniteData } from '@tanstack/react-query';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useQueryClient, type QueryKey } from '@tanstack/react-query';
 import Constants from 'expo-constants';
-import EventSource from 'react-native-sse';
 import { getAuthToken, isE2EAuthMode, getE2EAuthHeaders } from '../lib/api';
 import {
-  MessageDTO,
   MessageRole,
-  GetMessagesResponse,
   Stage,
-  CapturedNeedInput,
-  IdentifiedNeedDTO,
+  type StreamMetadata,
 } from '@meet-without-fear/shared';
-import { messageKeys, sessionKeys, stageKeys, timelineKeys } from './queryKeys';
+import { messageKeys } from './queryKeys';
 import { getPersistedMessageRefreshQueryKeys } from '../utils/realtimeInvalidation';
-import { bridgeAnimatedId } from '../utils/animationBridge';
+import {
+  createMessageCacheAdapter,
+  type CachedStreamingMessage,
+} from '../lib/chat/messageCacheAdapter';
+import {
+  initialStreamLifecycleState,
+  streamLifecycleReducer,
+  toPublicStatus,
+  type StreamLifecycleEvent,
+  type StreamLifecycleState,
+  type StreamStatus,
+} from '../lib/chat/streamLifecycle';
+import { createStreamTimers } from '../lib/chat/streamTimers';
+import {
+  hardTimeoutInvalidationKeys,
+  softTimeoutInvalidationKeys,
+} from '../lib/chat/streamInvalidation';
+import {
+  metadataInvalidationKeys,
+  streamMetadataCacheWrites,
+} from '../lib/chat/streamMetadataCache';
+import {
+  openStreamTransport,
+  type StreamTransport,
+} from '../lib/chat/streamTransport';
+import {
+  createStreamTurnHandlers,
+  type StreamTurnRefs,
+} from '../lib/chat/streamTurnHandlers';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-/** SSE event types from the streaming endpoint */
-interface UserMessageEvent {
-  id: string;
-  content: string;
-  timestamp: string;
-  refiningNeedId?: string | null;
-}
+/**
+ * Structured metadata from the AI's tool call. Defined once in the shared
+ * streaming contract (shared/src/contracts/stream.ts); re-exported here for
+ * existing consumers of this hook.
+ */
+export type { StreamMetadata } from '@meet-without-fear/shared';
 
-interface ChunkEvent {
-  text: string;
-}
-
-interface MetadataEvent {
-  metadata: StreamMetadata;
-}
-
-interface TextCompleteEvent {
-  metadata: StreamMetadata;
-}
-
-interface CompleteEvent {
-  messageId: string;
-  metadata: StreamMetadata;
-}
-
-/** Metadata from the AI's tool call */
-export interface StreamMetadata {
-  offerFeelHeardCheck?: boolean;
-  offerReadyToShare?: boolean;
-  proposedEmpathyStatement?: string | null;
-  proposedStrategies?: string[];
-  stage4Proposals?: Array<Record<string, unknown>>;
-  proposedNeeds?: CapturedNeedInput[];
-  proposedNeed?: CapturedNeedInput;
-  needAction?: {
-    type: 'refine' | 'delete' | 'lock';
-    needId?: string;
-    supersedes?: string;
-  };
-  needParseError?: string;
-  needsCaptured?: boolean;
-  stage4WalkthroughAction?: {
-    action: 'COVERED' | 'SKIP' | 'NONE';
-    needId?: string;
-    reason?: string;
-  };
-  stage4Capture?: {
-    appliedOperationCount?: number;
-    skippedOperationCount?: number;
-    selectionCaptured?: boolean;
-    closureSignalCaptured?: boolean;
-    confidence?: number;
-    autoClosed?: boolean;
-  };
-  topicFrame?: string | null;
-  analysis?: string;
-}
-
-/** Status of a streaming message */
-export type StreamStatus = 'idle' | 'sending' | 'streaming' | 'complete' | 'error';
-
-type CachedStreamingMessage = MessageDTO & {
-  status?: 'sending' | 'streaming' | 'sent' | 'error';
-};
+/** Status of a streaming message. Owned by the pure lifecycle module. */
+export type { StreamStatus } from '../lib/chat/streamLifecycle';
 
 /** Parameters for sending a streaming message */
 export interface SendStreamingMessageParams {
@@ -140,6 +109,13 @@ const rawApiUrl =
 
 const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 
+/** Refetch persisted messages, but leave the stream open — it may still deliver. */
+const SOFT_RECOVERY_TIMEOUT = 15000;
+/** Give up on the stream and fall back to server truth. */
+const HARD_STREAM_TIMEOUT = 90000;
+/** Trailing refetch after reconciliation, to catch writes that landed late. */
+const RECONCILIATION_REFETCH_DELAY = 1200;
+
 // ============================================================================
 // Hook Implementation
 // ============================================================================
@@ -152,7 +128,7 @@ const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`
  * - Real-time text chunk updates for AI message
  * - Metadata handling from AI tool calls
  * - Error handling with retry support
- * - EventSource for cancellation
+ * - Cancellable transport
  *
  * @param options - Optional callbacks for metadata, error, and completion
  */
@@ -164,8 +140,27 @@ export function useStreamingMessage(
   const [status, setStatus] = useState<StreamStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Typed seam to the message caches (add/update/replaceId/remove).
+  const cache = useMemo(() => createMessageCacheAdapter(queryClient), [queryClient]);
+
+  // Lifecycle: the ref is the synchronous source of truth (handlers branch on
+  // it within the same tick), the state exists so React re-renders.
+  const lifecycleRef = useRef<StreamLifecycleState>(initialStreamLifecycleState);
+  const dispatch = useCallback((event: StreamLifecycleEvent): StreamLifecycleState => {
+    const next = streamLifecycleReducer(lifecycleRef.current, event);
+    lifecycleRef.current = next;
+    setStatus(toPublicStatus(next.phase));
+    return next;
+  }, []);
+
+  // Bumped on unmount and on each new send. Any async continuation that finds
+  // a stale generation must abandon quietly instead of creating a stream that
+  // nothing is left to close.
+  const isMountedRef = useRef(true);
+  const sendGenerationRef = useRef(0);
+
   // Refs for cleanup and retry
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const transportRef = useRef<StreamTransport | null>(null);
   const lastParamsRef = useRef<SendStreamingMessageParams | null>(null);
 
   // Ref to track accumulated text for AI message updates
@@ -178,258 +173,61 @@ export function useStreamingMessage(
   // Real server ID received from the user_message event, used for ID bridging
   const realUserIdRef = useRef<string>('');
 
-  // Refs for throttled cache updates (reduces stuttering)
+  // Throttled cache updates (reduces stuttering during chunk delivery)
   const lastCacheUpdateRef = useRef<number>(0);
-  const pendingUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const CACHE_UPDATE_INTERVAL = 50; // Update cache every 50ms max
 
-  // Ref to track if text_complete was received (for complete event fallback)
-  const textCompleteReceivedRef = useRef<boolean>(false);
-
-  // Ref for 15-second fallback timer to handle stuck connections
-  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hardTimeoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const SOFT_RECOVERY_TIMEOUT = 15000; // 15 seconds
-  const HARD_STREAM_TIMEOUT = 90000; // 90 seconds
-  const reconciliationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  /**
-   * Add a message to the cache
-   */
-  const addMessageToCache = useCallback(
-    (sessionId: string, message: CachedStreamingMessage, stage?: Stage) => {
-      const updateCache = (old: GetMessagesResponse | undefined) => {
-        if (!old) {
-          return { messages: [message], hasMore: false };
-        }
-        // Check for duplicates
-        const existingIds = new Set((old.messages || []).map((m) => m.id));
-        if (existingIds.has(message.id)) {
-          // Update existing message (for streaming updates)
-          return {
-            ...old,
-            messages: (old.messages || []).map((m) =>
-              m.id === message.id ? message : m
-            ),
-          };
-        }
-        return {
-          ...old,
-          messages: [...(old.messages || []), message],
-        };
-      };
-
-      const updateInfiniteCache = (
-        old: InfiniteData<GetMessagesResponse> | undefined
-      ): InfiniteData<GetMessagesResponse> | undefined => {
-        if (!old || old.pages.length === 0) {
-          return {
-            pages: [{ messages: [message], hasMore: false }],
-            pageParams: [undefined],
-          };
-        }
-        const updatedPages = [...old.pages];
-        const firstPage = updatedPages[0];
-        const existingIds = new Set((firstPage.messages || []).map((m) => m.id));
-
-        if (existingIds.has(message.id)) {
-          // Update existing message (for streaming updates)
-          updatedPages[0] = {
-            ...firstPage,
-            messages: (firstPage.messages || []).map((m) =>
-              m.id === message.id ? message : m
-            ),
-          };
-        } else {
-          updatedPages[0] = {
-            ...firstPage,
-            messages: [...(firstPage.messages || []), message],
-          };
-        }
-        return { ...old, pages: updatedPages };
-      };
-
-      // Update caches
-      queryClient.setQueryData<GetMessagesResponse>(
-        messageKeys.list(sessionId),
-        updateCache
-      );
-      queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-        messageKeys.infinite(sessionId),
-        updateInfiniteCache
-      );
-
-      if (stage !== undefined) {
-        queryClient.setQueryData<GetMessagesResponse>(
-          messageKeys.list(sessionId, stage),
-          updateCache
-        );
-        queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-          messageKeys.infinite(sessionId, stage),
-          updateInfiniteCache
-        );
-      }
-    },
-    [queryClient]
+  // The mutable state a turn advances, bundled once so the handler factory
+  // receives it explicitly instead of capturing it from scope. Shared by
+  // identity: the recovery and cleanup paths below read the same refs.
+  const turnRefs = useMemo<StreamTurnRefs>(
+    () => ({
+      accumulatedText: accumulatedTextRef,
+      aiMessageId: aiMessageIdRef,
+      optimisticUserId: optimisticUserIdRef,
+      activeUserMessageId: activeUserMessageIdRef,
+      realUserId: realUserIdRef,
+      lastCacheUpdate: lastCacheUpdateRef,
+      lifecycle: lifecycleRef,
+    }),
+    []
   );
 
-  /**
-   * Update a message in cache by ID without changing the ID.
-   * Used to update optimistic messages with server data while keeping
-   * the same ID for React's key reconciliation (prevents visual jumps).
-   */
-  const updateMessageInCache = useCallback(
-    (sessionId: string, messageId: string, updates: Partial<Omit<MessageDTO, 'id'>>, stage?: Stage) => {
-      const updateCache = (old: GetMessagesResponse | undefined) => {
-        if (!old) return old;
-        const messages = old.messages || [];
-        const index = messages.findIndex((m) => m.id === messageId);
-        if (index === -1) return old;
+  // Every timer this turn owns, cleared by name. See streamTimers.ts for why
+  // this is a registry rather than four independent refs.
+  const timers = useMemo(() => createStreamTimers(), []);
 
-        const updatedMessages = [...messages];
-        updatedMessages[index] = { ...updatedMessages[index], ...updates };
-        return { ...old, messages: updatedMessages };
-      };
-
-      const updateInfiniteCache = (
-        old: InfiniteData<GetMessagesResponse> | undefined
-      ): InfiniteData<GetMessagesResponse> | undefined => {
-        if (!old || old.pages.length === 0) return old;
-
-        const updatedPages = old.pages.map((page) => {
-          const index = (page.messages || []).findIndex((m) => m.id === messageId);
-          if (index === -1) return page;
-
-          const updatedMessages = [...(page.messages || [])];
-          updatedMessages[index] = { ...updatedMessages[index], ...updates };
-          return { ...page, messages: updatedMessages };
-        });
-
-        return { ...old, pages: updatedPages };
-      };
-
-      // Update caches
-      queryClient.setQueryData<GetMessagesResponse>(
-        messageKeys.list(sessionId),
-        updateCache
-      );
-      queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-        messageKeys.infinite(sessionId),
-        updateInfiniteCache
-      );
-
-      if (stage !== undefined) {
-        queryClient.setQueryData<GetMessagesResponse>(
-          messageKeys.list(sessionId, stage),
-          updateCache
-        );
-        queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-          messageKeys.infinite(sessionId, stage),
-          updateInfiniteCache
-        );
+  // Unmount cleanup: an in-flight stream must not outlive the component.
+  // Closes the transport and clears every pending timer so no socket,
+  // timer, or stale identity alias survives (Phase 4 exit criterion; this
+  // was a real leak before the chat-modernization work).
+  //
+  // Releasing the refs is necessary but not sufficient: `sendMessage` awaits
+  // token retrieval before it has anything to release, so unmounting during
+  // that await would otherwise let the resumed callback build a stream after
+  // the component is gone.
+  //
+  // `isMountedRef` closes BOTH halves of that race, and it took two reviews to
+  // get there. The resolve path is guarded before the transport is built; the
+  // REJECT path is guarded at the top of the catch. An earlier version guarded
+  // only the resolve path, so a token rejection after unmount still ran
+  // `cleanupFailedStream` and `setState` on a dead component — and, worse, ran
+  // them against refs a newer send already owned.
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      sendGenerationRef.current += 1;
+      if (transportRef.current) {
+        transportRef.current.close();
+        transportRef.current = null;
       }
-    },
-    [queryClient]
-  );
-
-  /**
-   * Replace a message ID in cache. Used to bridge temporary streaming/optimistic
-   * IDs to real server UUIDs before reconciliation, so refetch matches by ID
-   * instead of treating messages as new.
-   */
-  const replaceMessageIdInCache = useCallback(
-    (sessionId: string, oldId: string, newId: string, stage?: Stage) => {
-      const replaceInPage = (page: GetMessagesResponse): GetMessagesResponse => ({
-        ...page,
-        messages: (page.messages || []).map((m) =>
-          m.id === oldId ? { ...m, id: newId } : m
-        ),
-      });
-
-      queryClient.setQueryData<GetMessagesResponse>(
-        messageKeys.list(sessionId),
-        (old) => old ? replaceInPage(old) : old
-      );
-      queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-        messageKeys.infinite(sessionId),
-        (old) => {
-          if (!old) return old;
-          return { ...old, pages: old.pages.map(replaceInPage) };
-        }
-      );
-
-      if (stage !== undefined) {
-        queryClient.setQueryData<GetMessagesResponse>(
-          messageKeys.list(sessionId, stage),
-          (old) => old ? replaceInPage(old) : old
-        );
-        queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-          messageKeys.infinite(sessionId, stage),
-          (old) => {
-            if (!old) return old;
-            return { ...old, pages: old.pages.map(replaceInPage) };
-          }
-        );
-      }
-    },
-    [queryClient]
-  );
-
-  /**
-   * Remove optimistic/placeholder messages from the cache after a failed stream.
-   */
-  const removeMessagesFromCache = useCallback(
-    (sessionId: string, messageIds: string[], stage?: Stage) => {
-      const ids = new Set(messageIds.filter(Boolean));
-      if (ids.size === 0) return;
-
-      const updateCache = (old: GetMessagesResponse | undefined) => {
-        if (!old) return old;
-        return {
-          ...old,
-          messages: (old.messages || []).filter((message) => !ids.has(message.id)),
-        };
-      };
-
-      const updateInfiniteCache = (
-        old: InfiniteData<GetMessagesResponse> | undefined
-      ): InfiniteData<GetMessagesResponse> | undefined => {
-        if (!old) return old;
-        return {
-          ...old,
-          pages: old.pages.map((page) => ({
-            ...page,
-            messages: (page.messages || []).filter((message) => !ids.has(message.id)),
-          })),
-        };
-      };
-
-      queryClient.setQueryData<GetMessagesResponse>(
-        messageKeys.list(sessionId),
-        updateCache
-      );
-      queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-        messageKeys.infinite(sessionId),
-        updateInfiniteCache
-      );
-
-      if (stage !== undefined) {
-        queryClient.setQueryData<GetMessagesResponse>(
-          messageKeys.list(sessionId, stage),
-          updateCache
-        );
-        queryClient.setQueryData<InfiniteData<GetMessagesResponse>>(
-          messageKeys.infinite(sessionId, stage),
-          updateInfiniteCache
-        );
-      }
-    },
-    [queryClient]
-  );
+      timers.clearAll();
+    };
+  }, [timers]);
 
   const cleanupFailedStream = useCallback(
     (sessionId: string, stage?: Stage) => {
-      removeMessagesFromCache(
+      cache.remove(
         sessionId,
         [activeUserMessageIdRef.current, optimisticUserIdRef.current, aiMessageIdRef.current],
         stage
@@ -442,29 +240,15 @@ export function useStreamingMessage(
 
       queryClient.invalidateQueries({ queryKey: messageKeys.list(sessionId) });
       queryClient.invalidateQueries({ queryKey: messageKeys.infinite(sessionId) });
-      queryClient.invalidateQueries({ queryKey: timelineKeys.infinite(sessionId) });
     },
-    [queryClient, removeMessagesFromCache]
+    [queryClient, cache]
   );
 
-  const invalidateAfterSuccessfulStream = useCallback(
-    (sessionId: string, stage?: Stage) => {
-      queryClient.invalidateQueries({ queryKey: messageKeys.list(sessionId) });
-      queryClient.invalidateQueries({ queryKey: messageKeys.infinite(sessionId) });
-      queryClient.invalidateQueries({ queryKey: timelineKeys.infinite(sessionId) });
-      queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
-      if (stage === Stage.PERSPECTIVE_STRETCH) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
-      }
-      if (stage === Stage.NEED_MAPPING) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-        queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
-      }
-      if (stage === Stage.STRATEGIC_REPAIR) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.stage4(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.strategies(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.agreements(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
+  /** Invalidate a derived key set. The policy itself lives in streamInvalidation.ts. */
+  const invalidateKeys = useCallback(
+    (queryKeys: readonly QueryKey[]) => {
+      for (const queryKey of queryKeys) {
+        queryClient.invalidateQueries({ queryKey });
       }
     },
     [queryClient]
@@ -472,60 +256,44 @@ export function useStreamingMessage(
 
   const reconcilePersistedMessages = useCallback(
     (sessionId: string) => {
-      if (reconciliationTimerRef.current) {
-        clearTimeout(reconciliationTimerRef.current);
-        reconciliationTimerRef.current = null;
-      }
+      timers.clear('reconciliation');
 
       for (const queryKey of getPersistedMessageRefreshQueryKeys(sessionId)) {
         queryClient.invalidateQueries({ queryKey });
         queryClient.refetchQueries({ queryKey });
       }
 
-      reconciliationTimerRef.current = setTimeout(() => {
-        for (const queryKey of getPersistedMessageRefreshQueryKeys(sessionId)) {
-          queryClient.refetchQueries({ queryKey });
-        }
-        reconciliationTimerRef.current = null;
-      }, 1200);
+      timers.set(
+        'reconciliation',
+        () => {
+          for (const queryKey of getPersistedMessageRefreshQueryKeys(sessionId)) {
+            queryClient.refetchQueries({ queryKey });
+          }
+        },
+        RECONCILIATION_REFETCH_DELAY
+      );
     },
-    [queryClient]
+    [queryClient, timers]
   );
 
   const recoverTimedOutStream = useCallback(
     (sessionId: string, stage?: Stage) => {
-      if (pendingUpdateRef.current) {
-        clearTimeout(pendingUpdateRef.current);
-        pendingUpdateRef.current = null;
-      }
+      timers.clear('throttledCacheUpdate');
 
       // The backend may have persisted the message even if the client-side SSE
       // connection stopped producing events. Pull server truth instead of
       // forcing the user to manually reload the chat.
       reconcilePersistedMessages(sessionId);
-      queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
-      queryClient.invalidateQueries({ queryKey: timelineKeys.infinite(sessionId) });
-      if (stage === Stage.PERSPECTIVE_STRETCH) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
-      }
-      if (stage === Stage.NEED_MAPPING) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-      }
-      if (stage === Stage.STRATEGIC_REPAIR) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.stage4(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.strategies(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.agreements(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-      }
+      invalidateKeys(hardTimeoutInvalidationKeys(sessionId, stage));
 
       accumulatedTextRef.current = '';
       aiMessageIdRef.current = '';
       optimisticUserIdRef.current = '';
       activeUserMessageIdRef.current = '';
       realUserIdRef.current = '';
-      setStatus('idle');
+      dispatch({ type: 'hardTimeout' });
     },
-    [queryClient, reconcilePersistedMessages]
+    [invalidateKeys, reconcilePersistedMessages, timers, dispatch]
   );
 
   /**
@@ -533,81 +301,23 @@ export function useStreamingMessage(
    */
   const handleMetadata = useCallback(
     (sessionId: string, metadata: StreamMetadata) => {
-      // Update session state cache for feel-heard check
-      // Must update nested path: progress.myProgress.gatesSatisfied.feelHeardCheckOffered
-      if (metadata.offerFeelHeardCheck) {
-        queryClient.setQueryData(
-          sessionKeys.state(sessionId),
-          (old: Record<string, unknown> | undefined) => {
-            if (!old) return old;
-            const progress = old.progress as Record<string, unknown> | undefined;
-            const myProgress = progress?.myProgress as Record<string, unknown> | undefined;
-            const gates = (myProgress?.gatesSatisfied as Record<string, unknown>) ?? {};
-            return {
-              ...old,
-              progress: {
-                ...progress,
-                myProgress: {
-                  ...myProgress,
-                  gatesSatisfied: {
-                    ...gates,
-                    feelHeardCheckOffered: true,
-                  },
-                },
-              },
-            };
-          }
-        );
+      // Direct writes first, so panels open while text is still streaming.
+      for (const { queryKey, update } of streamMetadataCacheWrites(sessionId, metadata)) {
+        queryClient.setQueryData(queryKey, update);
       }
 
-      // Update empathy draft cache (must use stageKeys to match useEmpathyDraft reader)
-      if (metadata.proposedEmpathyStatement) {
-        queryClient.setQueryData(
-          stageKeys.empathyDraft(sessionId),
-          (old: Record<string, unknown> | undefined) => ({
-            ...old,
-            draft: {
-              ...(old as Record<string, unknown>)?.draft as Record<string, unknown> | undefined,
-              content: metadata.proposedEmpathyStatement,
-              readyToShare: false,
-            },
-            canConsent: true,
-            alreadyConsented: false,
-          })
-        );
-      }
-
-      if (metadata.proposedNeeds && metadata.proposedNeeds.length > 0) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-        queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
-      }
-
-      if (
-        metadata.stage4Proposals ||
-        metadata.stage4WalkthroughAction ||
-        metadata.stage4Capture
-      ) {
-        queryClient.invalidateQueries({ queryKey: stageKeys.stage4(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.strategies(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.agreements(sessionId) });
-        queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-      }
-
-      // NOTE: We intentionally avoid broad invalidation here.
-      // Invalidating sessionKeys.state or other queries during streaming causes race conditions:
-      // - Optimistic updates (e.g., invitation.messageConfirmedAt) get overwritten
-      // - UI elements (indicators, messages) briefly disappear during refetch
-      // - The cache-first pattern is violated, causing visual glitches
+      // Then the narrow refetch set, for state only the server can produce.
       //
-      // Instead, most updates are done via setQueryData above. Stage 3 needs are
-      // an exception because the structured card is persisted server-side.
-      // If fresh data is needed, the mutation's onSuccess handler should handle it,
-      // or the component can trigger a refetch on mount.
+      // Broad invalidation here would be a bug, not a convenience: it races the
+      // optimistic writes (invitation.messageConfirmedAt gets overwritten),
+      // makes indicators and messages blink out during refetch, and breaks the
+      // cache-first contract. Anything writable directly is written above;
+      // see streamInvalidation.ts for what genuinely needs the server.
+      invalidateKeys(metadataInvalidationKeys(sessionId, metadata));
 
-      // Call the onMetadata callback if provided
       onMetadata?.(sessionId, metadata);
     },
-    [queryClient, onMetadata]
+    [queryClient, invalidateKeys, onMetadata]
   );
 
   /**
@@ -617,24 +327,28 @@ export function useStreamingMessage(
     async (params: SendStreamingMessageParams) => {
       const { sessionId, content, currentStage, refiningNeedId } = params;
 
+      // Claim this send. Unmount (and any later send) bumps the generation, so
+      // work resuming after an await can tell it has been superseded.
+      const generation = ++sendGenerationRef.current;
+      const isCurrentSend = () => isMountedRef.current && sendGenerationRef.current === generation;
+
       // Store params for retry
       lastParamsRef.current = params;
 
-      // Close any existing EventSource
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
+      // Close any existing transport
+      if (transportRef.current) {
+        transportRef.current.close();
+        transportRef.current = null;
       }
 
       // Reset state
-      setStatus('sending');
+      dispatch({ type: 'send' });
       setErrorMessage(null);
       accumulatedTextRef.current = '';
       aiMessageIdRef.current = `streaming-${Date.now()}`;
       optimisticUserIdRef.current = `optimistic-user-${Date.now()}`;
       activeUserMessageIdRef.current = optimisticUserIdRef.current;
       realUserIdRef.current = '';
-      textCompleteReceivedRef.current = false;
 
       // Create optimistic user message
       const optimisticUserMessage: CachedStreamingMessage = {
@@ -650,7 +364,7 @@ export function useStreamingMessage(
       };
 
       // Add optimistic user message to cache
-      addMessageToCache(sessionId, optimisticUserMessage, currentStage);
+      cache.add(sessionId, optimisticUserMessage, currentStage);
 
       try {
         // Build auth headers - either E2E headers or Bearer token
@@ -671,407 +385,124 @@ export function useStreamingMessage(
           authHeaders = { Authorization: `Bearer ${token}` };
         }
 
-        const url = `${API_BASE_URL}/sessions/${sessionId}/messages/stream`;
+        // Token retrieval is async: the component may have unmounted, or a
+        // newer send may have started, while it was pending. Creating the
+        // stream now would leave a socket and timers nobody owns.
+        if (!isCurrentSend()) {
+          return;
+        }
 
-        // Create EventSource with POST method
-        const es = new EventSource<'user_message' | 'chunk' | 'metadata' | 'text_complete' | 'complete' | 'error'>(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...authHeaders,
+        // Close this turn's transport. The shared ref is cleared only if it
+        // still points here: a newer send may already own it, and a late frame
+        // from this turn must not tear down the turn that replaced it.
+        function closeTransport() {
+          transport.close();
+          if (transportRef.current === transport) {
+            transportRef.current = null;
+          }
+        }
+
+        const transport = openStreamTransport(
+          {
+            url: `${API_BASE_URL}/sessions/${sessionId}/messages/stream`,
+            headers: authHeaders,
+            body: JSON.stringify({ content, refiningNeedId: refiningNeedId ?? undefined }),
           },
-          body: JSON.stringify({ content, refiningNeedId: refiningNeedId ?? undefined }),
-          pollingInterval: 0, // Disable polling, use SSE
-        });
+          createStreamTurnHandlers({
+            // Ownership: every handler bails if a newer send has taken over.
+            isCurrent: isCurrentSend,
+            sessionId,
+            currentStage,
+            refiningNeedId,
+            refs: turnRefs,
+            cache,
+            timers,
+            dispatch,
+            handleMetadata,
+            invalidateKeys,
+            reconcilePersistedMessages,
+            cleanupFailedStream,
+            setErrorMessage,
+            closeTransport,
+            onComplete,
+            onError,
+          })
+        );
 
-        eventSourceRef.current = es;
+        transportRef.current = transport;
 
         // Start a soft recovery timer for slow streams. Some model calls take
         // longer than 15s before the first visible token; do not close the SSE
         // connection here or the final response can be lost after it persists.
-        if (fallbackTimerRef.current) {
-          clearTimeout(fallbackTimerRef.current);
-        }
-        fallbackTimerRef.current = setTimeout(() => {
-          if (eventSourceRef.current) {
+        timers.set(
+          'softRecovery',
+          () => {
+            if (transportRef.current !== transport || !isCurrentSend()) return;
             console.warn('[useStreamingMessage] 15s soft recovery - refetching persisted messages while stream remains open');
-            fallbackTimerRef.current = null;
             reconcilePersistedMessages(sessionId);
-            queryClient.invalidateQueries({ queryKey: sessionKeys.state(sessionId) });
-            if (currentStage === Stage.PERSPECTIVE_STRETCH) {
-              queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
-            }
-            if (currentStage === Stage.NEED_MAPPING) {
-              queryClient.invalidateQueries({ queryKey: stageKeys.progress(sessionId) });
-            }
-          }
-        }, SOFT_RECOVERY_TIMEOUT);
+            invalidateKeys(softTimeoutInvalidationKeys(sessionId, currentStage));
+          },
+          SOFT_RECOVERY_TIMEOUT
+        );
 
-        if (hardTimeoutTimerRef.current) {
-          clearTimeout(hardTimeoutTimerRef.current);
-        }
-        hardTimeoutTimerRef.current = setTimeout(() => {
-          if (eventSourceRef.current) {
+        timers.set(
+          'hardTimeout',
+          () => {
+            // Identity, not mere existence: if a newer send already owns the
+            // ref, `recoverTimedOutStream` would reset ITS refs and lifecycle.
+            if (transportRef.current !== transport || !isCurrentSend()) return;
             console.warn('[useStreamingMessage] 90s hard timeout - closing stream and recovering persisted messages');
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
-            hardTimeoutTimerRef.current = null;
+            closeTransport();
             recoverTimedOutStream(sessionId, currentStage);
-          }
-        }, HARD_STREAM_TIMEOUT);
-
-        // Create placeholder AI message once streaming starts
-        let placeholderCreated = false;
-        const createPlaceholder = () => {
-          if (placeholderCreated) return;
-          placeholderCreated = true;
-          setStatus('streaming');
-          const placeholderAIMessage: CachedStreamingMessage = {
-            id: aiMessageIdRef.current,
-            sessionId,
-            senderId: null,
-            role: MessageRole.AI,
-            content: '',
-            stage: currentStage ?? Stage.ONBOARDING,
-            timestamp: new Date().toISOString(),
-            refiningNeedId: refiningNeedId ?? null,
-            status: 'streaming',
-          };
-          addMessageToCache(sessionId, placeholderAIMessage, currentStage);
-        };
-
-        // Handle user_message event - update optimistic message with server data
-        // We keep the same ID to avoid React key changes that cause visual jumps
-        es.addEventListener('user_message', (event) => {
-          if (!event.data) return;
-          try {
-            const data = JSON.parse(event.data) as UserMessageEvent;
-            realUserIdRef.current = data.id; // Store for ID bridging at completion
-            // Update optimistic message with server timestamp (keep same ID for React key stability)
-            if (optimisticUserIdRef.current) {
-              activeUserMessageIdRef.current = optimisticUserIdRef.current;
-              updateMessageInCache(sessionId, optimisticUserIdRef.current, {
-                timestamp: data.timestamp,
-                content: data.content, // In case server modified content
-                refiningNeedId: data.refiningNeedId ?? null,
-              }, currentStage);
-              optimisticUserIdRef.current = ''; // Clear after update
-            } else {
-              // Fallback: add as new message if no optimistic message exists
-              const realUserMessage: MessageDTO = {
-                id: data.id,
-                sessionId,
-                senderId: null,
-                role: MessageRole.USER,
-                content: data.content,
-                stage: currentStage ?? Stage.ONBOARDING,
-                timestamp: data.timestamp,
-                refiningNeedId: data.refiningNeedId ?? null,
-              };
-              addMessageToCache(sessionId, realUserMessage, currentStage);
-            }
-          } catch (e) {
-            console.error('[useStreamingMessage] Error parsing user_message:', e);
-          }
-        });
-
-        // Handle chunk event with throttled cache updates
-        es.addEventListener('chunk', (event) => {
-          if (!event.data) return;
-          createPlaceholder();
-          try {
-            const data = JSON.parse(event.data) as ChunkEvent;
-            accumulatedTextRef.current += data.text;
-
-            // Throttle cache updates to reduce stuttering
-            const now = Date.now();
-            const timeSinceLastUpdate = now - lastCacheUpdateRef.current;
-
-            // Clear any pending update
-            if (pendingUpdateRef.current) {
-              clearTimeout(pendingUpdateRef.current);
-              pendingUpdateRef.current = null;
-            }
-
-            const updateCache = () => {
-              const updatedAIMessage: CachedStreamingMessage = {
-                id: aiMessageIdRef.current,
-                sessionId,
-                senderId: null,
-                role: MessageRole.AI,
-                content: accumulatedTextRef.current,
-                stage: currentStage ?? Stage.ONBOARDING,
-                timestamp: new Date().toISOString(),
-                refiningNeedId: refiningNeedId ?? null,
-                status: 'streaming',
-              };
-              addMessageToCache(sessionId, updatedAIMessage, currentStage);
-              lastCacheUpdateRef.current = Date.now();
-            };
-
-            if (timeSinceLastUpdate >= CACHE_UPDATE_INTERVAL) {
-              // Enough time has passed, update immediately
-              updateCache();
-            } else {
-              // Schedule update for when the interval is reached
-              pendingUpdateRef.current = setTimeout(
-                updateCache,
-                CACHE_UPDATE_INTERVAL - timeSinceLastUpdate
-              );
-            }
-          } catch (e) {
-            console.error('[useStreamingMessage] Error parsing chunk:', e);
-          }
-        });
-
-        // Handle metadata event - tool call received during streaming
-        // This allows UI to show panels (invitation, empathy) immediately while text continues
-        es.addEventListener('metadata', (event) => {
-          if (!event.data) return;
-
-          try {
-            const data = JSON.parse(event.data) as MetadataEvent;
-            console.log(`[useStreamingMessage] [TIMING] metadata event received at ${Date.now()}`);
-
-            // Handle metadata for UI panels immediately
-            if (data.metadata) {
-              handleMetadata(sessionId, data.metadata);
-            }
-          } catch (e) {
-            console.error('[useStreamingMessage] Error parsing metadata:', e);
-          }
-        });
-
-        // Handle text_complete event - streaming text is done (before DB saves)
-        // This allows the UI to stop showing the blinking cursor immediately
-        es.addEventListener('text_complete', (event) => {
-          const receiveTime = Date.now();
-          console.log(`[useStreamingMessage] [TIMING] text_complete received at ${receiveTime}`);
-          if (!event.data) return;
-
-          // Clear fallback timer since streaming completed successfully
-          if (fallbackTimerRef.current) {
-            clearTimeout(fallbackTimerRef.current);
-            fallbackTimerRef.current = null;
-          }
-
-          // Clear any pending throttled update
-          if (pendingUpdateRef.current) {
-            clearTimeout(pendingUpdateRef.current);
-            pendingUpdateRef.current = null;
-          }
-
-          try {
-            const data = JSON.parse(event.data) as TextCompleteEvent;
-            console.log(`[useStreamingMessage] [TIMING] text_complete parsed`);
-
-            // Update cache with final content
-            const finalAIMessage: CachedStreamingMessage = {
-              id: aiMessageIdRef.current,
-              sessionId,
-              senderId: null,
-              role: MessageRole.AI,
-              content: accumulatedTextRef.current,
-              stage: currentStage ?? Stage.ONBOARDING,
-              timestamp: new Date().toISOString(),
-              refiningNeedId: refiningNeedId ?? null,
-              status: 'sent',
-            };
-            addMessageToCache(sessionId, finalAIMessage, currentStage);
-
-            // Handle metadata for UI panels (invitation, empathy, etc.)
-            if (data.metadata) {
-              console.log(`[useStreamingMessage] [TIMING] Calling handleMetadata at ${Date.now()}`);
-              handleMetadata(sessionId, data.metadata);
-              console.log(`[useStreamingMessage] [TIMING] handleMetadata returned at ${Date.now()}`);
-            }
-
-            // Refresh empathy status after streaming completes during Stage 2
-            // This picks up messageCountSinceSharedContext and other server-side state
-            // that changes when user sends messages during REFINING
-            if (currentStage === Stage.PERSPECTIVE_STRETCH) {
-              queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
-            }
-            if (currentStage === Stage.NEED_MAPPING) {
-              invalidateAfterSuccessfulStream(sessionId, currentStage);
-            }
-
-            // Mark streaming as complete - cursor stops immediately
-            textCompleteReceivedRef.current = true;
-            setStatus('complete');
-            onComplete?.();
-            console.log(`[useStreamingMessage] [TIMING] text_complete handler done at ${Date.now()}`);
-          } catch (e) {
-            console.error('[useStreamingMessage] Error parsing text_complete:', e);
-          }
-        });
-
-        // Handle complete event - DB saves finished, close connection
-        // The streaming UI has already stopped via text_complete
-        es.addEventListener('complete', (event) => {
-          // Clear any pending throttled update (in case text_complete wasn't received)
-          if (fallbackTimerRef.current) {
-            clearTimeout(fallbackTimerRef.current);
-            fallbackTimerRef.current = null;
-          }
-          if (hardTimeoutTimerRef.current) {
-            clearTimeout(hardTimeoutTimerRef.current);
-            hardTimeoutTimerRef.current = null;
-          }
-          if (pendingUpdateRef.current) {
-            clearTimeout(pendingUpdateRef.current);
-            pendingUpdateRef.current = null;
-          }
-
-          if (event.data) {
-            try {
-              const data = JSON.parse(event.data) as CompleteEvent;
-
-              if (data.metadata) {
-                handleMetadata(sessionId, data.metadata);
-              }
-
-              // Bridge temporary IDs to real server IDs before reconciliation.
-              // This prevents ChatInterface from re-animating messages whose IDs
-              // change from streaming placeholders to real UUIDs during refetch.
-              if (data.messageId && aiMessageIdRef.current.startsWith('streaming-')) {
-                bridgeAnimatedId(aiMessageIdRef.current, data.messageId);
-                replaceMessageIdInCache(sessionId, aiMessageIdRef.current, data.messageId, currentStage);
-                aiMessageIdRef.current = data.messageId;
-              }
-              if (realUserIdRef.current && activeUserMessageIdRef.current.startsWith('optimistic-user-')) {
-                bridgeAnimatedId(activeUserMessageIdRef.current, realUserIdRef.current);
-                replaceMessageIdInCache(sessionId, activeUserMessageIdRef.current, realUserIdRef.current, currentStage);
-                updateMessageInCache(sessionId, realUserIdRef.current, { status: 'sent' } as Partial<CachedStreamingMessage>, currentStage);
-                activeUserMessageIdRef.current = realUserIdRef.current;
-              }
-
-              reconcilePersistedMessages(sessionId);
-
-              // If text_complete wasn't received (fallback), handle completion here
-              if (!textCompleteReceivedRef.current) {
-                const finalAIMessage: CachedStreamingMessage = {
-                  id: aiMessageIdRef.current,
-                  sessionId,
-                  senderId: null,
-                  role: MessageRole.AI,
-                  content: accumulatedTextRef.current,
-                  stage: currentStage ?? Stage.ONBOARDING,
-                  timestamp: new Date().toISOString(),
-                  refiningNeedId: refiningNeedId ?? null,
-                  status: 'sent',
-                };
-                addMessageToCache(sessionId, finalAIMessage, currentStage);
-
-                // Refresh empathy status (fallback path)
-                if (currentStage === Stage.PERSPECTIVE_STRETCH) {
-                  queryClient.invalidateQueries({ queryKey: stageKeys.empathyStatus(sessionId) });
-                }
-                if (currentStage === Stage.NEED_MAPPING) {
-                  invalidateAfterSuccessfulStream(sessionId, currentStage);
-                }
-
-                setStatus('complete');
-                onComplete?.();
-              }
-            } catch (e) {
-              console.error('[useStreamingMessage] Error parsing complete:', e);
-            }
-          }
-
-          // Close the EventSource
-          es.close();
-          eventSourceRef.current = null;
-        });
-
-        // Handle error event from SSE
-        // react-native-sse error events have: ErrorEvent (message, xhrState, xhrStatus),
-        // TimeoutEvent (type only), or ExceptionEvent (message, error)
-        es.addEventListener('error', (event) => {
-          // Clear fallback timer since we're handling error
-          if (fallbackTimerRef.current) {
-            clearTimeout(fallbackTimerRef.current);
-            fallbackTimerRef.current = null;
-          }
-          if (hardTimeoutTimerRef.current) {
-            clearTimeout(hardTimeoutTimerRef.current);
-            hardTimeoutTimerRef.current = null;
-          }
-          if (reconciliationTimerRef.current) {
-            clearTimeout(reconciliationTimerRef.current);
-            reconciliationTimerRef.current = null;
-          }
-
-          // Clear any pending throttled update
-          if (pendingUpdateRef.current) {
-            clearTimeout(pendingUpdateRef.current);
-            pendingUpdateRef.current = null;
-          }
-
-          const errorMsg = 'message' in event ? event.message : 'Connection error';
-          console.error('[useStreamingMessage] SSE error:', errorMsg);
-          cleanupFailedStream(sessionId, currentStage);
-          setErrorMessage(errorMsg);
-          setStatus('error');
-          onError?.(new Error(errorMsg));
-          es.close();
-          eventSourceRef.current = null;
-        });
-
-        // Handle open event
-        es.addEventListener('open', () => {
-          // Connection opened, waiting for events
-        });
+          },
+          HARD_STREAM_TIMEOUT
+        );
 
       } catch (error) {
-        if (reconciliationTimerRef.current) {
-          clearTimeout(reconciliationTimerRef.current);
-          reconciliationTimerRef.current = null;
+        // Ownership check FIRST. The timers, the caches and the turn refs are
+        // all shared singletons, so a stale turn cleaning up would tear down
+        // whichever turn currently owns them. The realistic sequence: this
+        // turn is awaiting `getAuthToken()`, a newer send starts and arms its
+        // timers, then this turn's token promise rejects. Without this guard
+        // the rejection clears the newer turn's timers and runs
+        // `cleanupFailedStream` against refs that now hold the newer turn's
+        // ids — removing its rows.
+        //
+        // A superseded turn has nothing of its own left to clean: `sendMessage`
+        // resets the shared refs at the top, so the newer turn already owns
+        // them. Returning quietly is the whole cleanup.
+        if (!isCurrentSend()) {
+          console.warn('[useStreamingMessage] Ignoring error from a superseded send:', error);
+          return;
         }
-        if (hardTimeoutTimerRef.current) {
-          clearTimeout(hardTimeoutTimerRef.current);
-          hardTimeoutTimerRef.current = null;
-        }
+
+        // Clearing all four timers is safe only under the guard above. The
+        // original cleared just two, leaving the soft-recovery timer armed on a
+        // path that does not null `transportRef` — so a failed turn could
+        // reconcile 15s later.
+        timers.clearAll();
         console.error('[useStreamingMessage] Error:', error);
         cleanupFailedStream(sessionId, currentStage);
         setErrorMessage((error as Error).message || 'Failed to send message');
-        setStatus('error');
+        dispatch({ type: 'error' });
         onError?.(error as Error);
       }
     },
-    [addMessageToCache, updateMessageInCache, cleanupFailedStream, handleMetadata, invalidateAfterSuccessfulStream, reconcilePersistedMessages, recoverTimedOutStream, queryClient, onComplete, onError]
+    [cache, dispatch, cleanupFailedStream, handleMetadata, invalidateKeys, reconcilePersistedMessages, recoverTimedOutStream, timers, onComplete, onError]
   );
 
   /**
    * Cancel the current stream
    */
   const cancel = useCallback(() => {
-    // Clear fallback timer
-    if (fallbackTimerRef.current) {
-      clearTimeout(fallbackTimerRef.current);
-      fallbackTimerRef.current = null;
-    }
-    if (hardTimeoutTimerRef.current) {
-      clearTimeout(hardTimeoutTimerRef.current);
-      hardTimeoutTimerRef.current = null;
-    }
-    if (reconciliationTimerRef.current) {
-      clearTimeout(reconciliationTimerRef.current);
-      reconciliationTimerRef.current = null;
-    }
+    timers.clearAll();
 
-    // Clear any pending throttled update
-    if (pendingUpdateRef.current) {
-      clearTimeout(pendingUpdateRef.current);
-      pendingUpdateRef.current = null;
+    if (transportRef.current) {
+      transportRef.current.close();
+      transportRef.current = null;
     }
-
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    setStatus('idle');
-  }, []);
+    dispatch({ type: 'cancel' });
+  }, [timers, dispatch]);
 
   /**
    * Retry the last failed message

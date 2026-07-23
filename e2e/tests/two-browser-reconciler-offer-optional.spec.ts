@@ -28,12 +28,10 @@ import { TwoBrowserHarness } from '../helpers';
 import {
   signCompact,
   handleMoodCheck,
+  completeInviterInvitationFlow,
   sendAndWaitForPanel,
-  confirmInvitationTopicAndContinue,
   confirmFeelHeard,
   waitForReconcilerComplete,
-  navigateToShareFromSession,
-  navigateBackToChat,
 } from '../helpers/test-utils';
 
 // Use iPhone 12 viewport
@@ -82,15 +80,14 @@ test.describe('Reconciler: OFFER_OPTIONAL Path', () => {
     // STAGE 0 PREREQUISITE
     // ==========================================
 
-    // Set up User B after session is created
-    await harness.setupUserB(browser, request);
-    await harness.acceptInvitation();
-
-    // Both users navigate, sign compact, handle mood check
+    // The inviter must confirm the topic before the invitation is acceptable.
     await harness.navigateUserA();
     await signCompact(harness.userAPage);
     await handleMoodCheck(harness.userAPage);
+    await completeInviterInvitationFlow(harness.userAPage);
 
+    await harness.setupUserB(browser, request);
+    await harness.acceptInvitation();
     await harness.navigateUserB();
     await signCompact(harness.userBPage);
     await handleMoodCheck(harness.userBPage);
@@ -103,39 +100,18 @@ test.describe('Reconciler: OFFER_OPTIONAL Path', () => {
     // STAGE 1: USER A WITNESSING
     // ==========================================
 
-    // User A sends messages matching user-a-full-journey fixture
+    // The first two fixture turns were consumed while preparing the invitation.
     const userAStage1Messages = [
-      "Hi, I'm having a conflict with my partner", // Response 0
-      'We keep arguing about household chores', // Response 1: invitation panel
       'Thanks, I sent the invitation', // Response 2
       "I feel like I do most of the work and they don't notice or appreciate it", // Response 3: FeelHeardCheck: Y
     ];
 
-    // Send first 2 messages to trigger invitation panel
-    for (let i = 0; i < 2; i++) {
-      const chatInput = harness.userAPage.getByTestId('chat-input');
-      const sendButton = harness.userAPage.getByTestId('send-button');
-      await chatInput.fill(userAStage1Messages[i]);
-      await sendButton.click();
-      await expect(harness.userAPage.getByTestId('typing-indicator')).not.toBeVisible({
-        timeout: 60000,
-      });
-      await harness.userAPage.waitForTimeout(500);
-    }
-
-    // Confirm the topic frame and invitation
-    await expect(harness.userAPage.getByTestId('typing-indicator')).not.toBeVisible({ timeout: 30000 });
-    await harness.userAPage.waitForTimeout(500);
-    await confirmInvitationTopicAndContinue(harness.userAPage);
-    await harness.userAPage.waitForTimeout(1000);
-
     // Send remaining messages until feel-heard panel
-    const remainingMessagesA = userAStage1Messages.slice(2);
     await sendAndWaitForPanel(
       harness.userAPage,
-      remainingMessagesA,
+      userAStage1Messages,
       'feel-heard-yes',
-      remainingMessagesA.length
+      userAStage1Messages.length
     );
 
     // User A confirms feel-heard
@@ -265,172 +241,43 @@ test.describe('Reconciler: OFFER_OPTIONAL Path', () => {
       maxDiffPixels: 15000,
     });
 
-    // ==========================================
-    // USER B DECLINES SHARE SUGGESTION (A→B direction)
-    // ==========================================
+    // Share suggestions now live inline in chat. Decline both symmetric
+    // OFFER_OPTIONAL directions through the current panel and drawer.
+    const declineSuggestion = async (page: typeof harness.userAPage, label: string) => {
+      await page.bringToFront();
+      const panel = page.getByTestId('share-topic-panel');
+      await expect(panel).toBeVisible({ timeout: 15000 });
+      await panel.click();
+      await expect(page.getByTestId('share-topic-drawer')).toBeVisible({ timeout: 10000 });
 
-    // Navigate User B to Share tab if not already there
-    await navigateToShareFromSession(harness.userBPage);
-
-    // Wait for ShareSuggestionCard to be visible (may need time after navigation)
-    const shareCardB = harness.userBPage.getByTestId('share-suggestion-card');
-    const shareCardBVisible = await shareCardB.isVisible({ timeout: 10000 }).catch(() => false);
-
-    if (shareCardBVisible) {
-      // Verify OFFER_OPTIONAL content: "Share something to build understanding"
-      const optionalTitle = harness.userBPage.getByText('Share something to build understanding');
-      const sharingTitle = harness.userBPage.getByText(/Help.*understand you better/i);
-
-      if (await optionalTitle.isVisible({ timeout: 2000 }).catch(() => false)) {
-        // OFFER_OPTIONAL path confirmed
-        console.log('User B: OFFER_OPTIONAL ShareSuggestionCard visible');
-      } else if (await sharingTitle.isVisible({ timeout: 2000 }).catch(() => false)) {
-        console.log('User B: OFFER_SHARING ShareSuggestionCard visible');
-      }
-
-      // Screenshot the suggestion card
-      await expect(harness.userBPage).toHaveScreenshot('offer-optional-02-subject-card.png', {
-        maxDiffPixels: 15000,
+      page.once('dialog', async (dialog) => {
+        await dialog.accept();
       });
+      const [response] = await Promise.all([
+        page.waitForResponse(
+          candidate => candidate.url().includes('/reconciler/share-offer/respond')
+            && candidate.request().method() === 'POST'
+          , { timeout: 15000 }
+        ),
+        page.getByTestId('share-topic-decline').click(),
+      ]);
+      expect(response.ok(), `${label} decline request should succeed`).toBe(true);
+      await expect(page.getByTestId('share-topic-drawer')).not.toBeVisible({ timeout: 10000 });
+    };
 
-      // Click "No thanks" to decline
-      const declineButtonB = harness.userBPage.getByTestId('share-suggestion-card-decline');
-      if (await declineButtonB.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await declineButtonB.click();
-        // After decline, navigates back to Chat
-        await harness.userBPage.waitForURL(/\/session\/[^/]+$/, { timeout: 15000 }).catch(() => {});
-        await harness.userBPage.waitForTimeout(2000);
-        console.log('User B: Declined share suggestion');
-      }
-    } else {
-      // No suggestion card visible - document current state
-      console.log('User B: No ShareSuggestionCard visible, documenting state');
-      await expect(harness.userBPage).toHaveScreenshot('offer-optional-02-subject-card.png', {
-        maxDiffPixels: 15000,
-      });
-    }
+    await declineSuggestion(harness.userBPage, 'User B');
+    await declineSuggestion(harness.userAPage, 'User A');
 
-    // Screenshot after decline
-    await expect(harness.userBPage).toHaveScreenshot('offer-optional-03-subject-after-decline.png', {
-      maxDiffPixels: 15000,
-    });
-
-    // ==========================================
-    // USER A DECLINES SHARE SUGGESTION (B→A direction)
-    // ==========================================
-
-    // The symmetric reconciler also runs B→A direction with OFFER_OPTIONAL
-    // User A (subject in B→A) also has a share suggestion to respond to
-    await navigateToShareFromSession(harness.userAPage);
-
-    // Wait for Share tab to load
-    await harness.userAPage.waitForLoadState('domcontentloaded');
-
-    // Check if User A has a pending suggestion
-    const shareCardA = harness.userAPage.getByTestId('share-suggestion-card');
-    const shareCardAVisible = await shareCardA.isVisible({ timeout: 10000 }).catch(() => false);
-
-    if (shareCardAVisible) {
-      // Screenshot User A's suggestion
-      await expect(harness.userAPage).toHaveScreenshot('offer-optional-03-guesser-card.png', {
-        maxDiffPixels: 15000,
-      });
-
-      // Decline User A's suggestion
-      const declineButtonA = harness.userAPage.getByTestId('share-suggestion-card-decline');
-      if (await declineButtonA.isVisible({ timeout: 5000 }).catch(() => false)) {
-        await declineButtonA.click();
-        await harness.userAPage.waitForURL(/\/session\/[^/]+$/, { timeout: 15000 }).catch(() => {});
-        await harness.userAPage.waitForTimeout(2000);
-        console.log('User A: Declined share suggestion');
-      }
-    } else {
-      console.log('User A: No ShareSuggestionCard visible on Share tab');
-      await expect(harness.userAPage).toHaveScreenshot('offer-optional-03-guesser-after-decline.png', {
-        maxDiffPixels: 15000,
-      });
-    }
-
-    // ==========================================
-    // WAIT FOR EMPATHY REVEAL
-    // ==========================================
-
-    // After both users decline, checkAndRevealBothIfReady should trigger reveal
-    // Wait for Ably propagation
-    await harness.userBPage.waitForTimeout(3000);
-
-    // Both users should see empathy revealed
-    const userARevealed = await waitForReconcilerComplete(harness.userAPage, 60000);
-    if (!userARevealed) {
-      console.log('KNOWN ISSUE: User A did not see empathy-shared indicator (may need both declines first)');
-    }
-
-    // Screenshot after reveal attempts
-    await expect(harness.userAPage).toHaveScreenshot('offer-optional-04-guesser-revealed.png', {
-      maxDiffPixels: 15000,
-    });
-    await expect(harness.userBPage).toHaveScreenshot('offer-optional-04-subject-revealed.png', {
-      maxDiffPixels: 15000,
-    });
-
-    // ==========================================
-    // NAVIGATE TO SHARE TAB
-    // ==========================================
-
-    // Both users navigate to Share screen
-    await navigateToShareFromSession(harness.userAPage);
-    await navigateToShareFromSession(harness.userBPage);
-
-    // Screenshot Share screens
-    await expect(harness.userAPage).toHaveScreenshot('offer-optional-05-guesser-share.png', {
-      maxDiffPixels: 15000,
-    });
-    await expect(harness.userBPage).toHaveScreenshot('offer-optional-05-subject-share.png', {
-      maxDiffPixels: 15000,
-    });
-
-    // Navigate back to Chat to verify content persistence
-    await navigateBackToChat(harness.userAPage);
-    await navigateBackToChat(harness.userBPage);
-
-    // Handle mood check if it appears
-    await handleMoodCheck(harness.userAPage);
-    await handleMoodCheck(harness.userBPage);
-
-    // Verify chat input still visible (persistence)
-    await expect(harness.userAPage.getByTestId('chat-input')).toBeVisible({ timeout: 5000 });
-    await expect(harness.userBPage.getByTestId('chat-input')).toBeVisible({ timeout: 5000 });
-
-    // ==========================================
-    // CONTEXT-ALREADY-SHARED GUARD TEST
-    // ==========================================
-
-    // Navigate User B back to Share page
-    await navigateToShareFromSession(harness.userBPage);
-
-    // Wait a moment for any panels to appear
-    await harness.userBPage.waitForTimeout(2000);
-
-    // Assert no ShareSuggestionCard is visible (declined, so no re-offer)
-    const duplicateCard = harness.userBPage.getByTestId('share-suggestion-card');
-    await expect(duplicateCard).not.toBeVisible({ timeout: 2000 });
-
-    // Screenshot to document guard behavior
-    await expect(harness.userBPage).toHaveScreenshot('offer-optional-06-subject-no-duplicate-panel.png', {
-      maxDiffPixels: 15000,
-    });
-
-    // Navigate back to Chat for final state
-    await navigateBackToChat(harness.userBPage);
-    await handleMoodCheck(harness.userBPage);
-
-    // Final screenshots
-    await expect(harness.userAPage).toHaveScreenshot('offer-optional-07-guesser-final.png', {
-      maxDiffPixels: 15000,
-    });
-    await expect(harness.userBPage).toHaveScreenshot('offer-optional-07-subject-final.png', {
-      maxDiffPixels: 15000,
-    });
+    // Once both offers are declined, both empathy attempts are revealed for
+    // inline review and neither suggestion is offered again.
+    await expect(harness.userAPage.getByTestId('partner-empathy-validation-panel'))
+      .toBeVisible({ timeout: 60000 });
+    await expect(harness.userBPage.getByTestId('partner-empathy-validation-panel'))
+      .toBeVisible({ timeout: 60000 });
+    await expect(harness.userAPage.getByTestId('share-topic-panel')).not.toBeVisible();
+    await expect(harness.userBPage.getByTestId('share-topic-panel')).not.toBeVisible();
+    await expect(harness.userAPage.getByTestId('chat-input')).toBeVisible();
+    await expect(harness.userBPage.getByTestId('chat-input')).toBeVisible();
 
     // ==========================================
     // SUCCESS

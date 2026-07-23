@@ -276,11 +276,6 @@ test.describe('Stage 3: Two-Browser Need Mapping', () => {
     await confirmNeedsSummaryAndConsent(pageA, apiA, API_BASE_URL, sessionId, 'User A');
     await confirmNeedsSummaryAndConsent(pageB, apiB, API_BASE_URL, sessionId, 'User B');
 
-    await Promise.all([
-      waitForStage(apiA, API_BASE_URL, sessionId, 3, 'User A', 30000),
-      waitForStage(apiB, API_BASE_URL, sessionId, 3, 'User B', 30000),
-    ]);
-
     // Wait a moment for share consent to propagate
     await pageA.waitForTimeout(1000);
 

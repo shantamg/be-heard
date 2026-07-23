@@ -17,6 +17,7 @@ import {
   Modal,
   ScrollView,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { X, Lightbulb } from 'lucide-react-native';
@@ -68,6 +69,13 @@ export function ShareTopicDrawer({
     : 'sharing a little more about this:';
 
   const handleDecline = () => {
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Sharing this could help ${partnerName} understand you better. Continue without sharing?`)) {
+        onDecline();
+      }
+      return;
+    }
+
     // Show confirmation dialog before declining
     Alert.alert(
       'Are you sure?',
