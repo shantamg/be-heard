@@ -1350,13 +1350,26 @@ export async function getNeedsComparison(
       return;
     }
 
-    // Get user's stage progress
-    const progress = await prisma.stageProgress.findFirst({
-      where: { sessionId, userId: user.id },
-      orderBy: { stage: 'desc' },
-    });
+    // The latest progress determines whether the user has reached Stage 3,
+    // while the Stage 3 record remains the source of truth for needs gates
+    // after automatic advancement creates a Stage 4 progress record.
+    const [latestProgress, stage3Progress] = await Promise.all([
+      prisma.stageProgress.findFirst({
+        where: { sessionId, userId: user.id },
+        orderBy: { stage: 'desc' },
+      }),
+      prisma.stageProgress.findUnique({
+        where: {
+          sessionId_userId_stage: {
+            sessionId,
+            userId: user.id,
+            stage: 3,
+          },
+        },
+      }),
+    ]);
 
-    const currentStage = progress?.stage ?? 0;
+    const currentStage = latestProgress?.stage ?? 0;
     if (currentStage < 3) {
       successResponse(res, {
         myNeeds: [],
@@ -1376,7 +1389,7 @@ export async function getNeedsComparison(
     }
 
     // Check both users have shared needs
-    const userGates = progress?.gatesSatisfied as Record<string, unknown> | null;
+    const userGates = stage3Progress?.gatesSatisfied as Record<string, unknown> | null;
     const userShared = userGates?.needsShared === true;
     const partnerShared = await hasPartnerSharedNeeds(sessionId, user.id);
 

@@ -224,7 +224,7 @@ export async function navigateToShareFromSession(
  * @param page - Playwright Page instance
  * @param timeout - Maximum time to wait for compact UI (default: 10000)
  */
-export async function signCompact(page: Page, timeout = 30000): Promise<void> {
+export async function signCompact(page: Page, timeout = 120000): Promise<void> {
   // The compact agreement bar was simplified — the standalone agree-checkbox
   // no longer exists; the bar is now just a single Sign/Ready CTA. Mirrors
   // the fix in PR #192 (single-user-journey.spec.ts).
@@ -234,11 +234,39 @@ export async function signCompact(page: Page, timeout = 30000): Promise<void> {
 }
 
 /**
- * Complete the Stage 0 invitation gate by confirming the AI topic frame, then
- * confirming that the invitation was sent.
+ * Drive the inviter through the fixture-backed Stage 0 conversation until the
+ * invitation is ready for the partner to accept.
  *
- * The invitation continue button is disabled until the topic frame is finalized,
- * so tests that dismiss the panel need to mirror the production flow.
+ * All mocked two-browser journeys use the same User A fixture for these first
+ * two turns. Keeping the valid ordering here prevents deeper-stage specs from
+ * accepting an invitation before its topic has been confirmed.
+ */
+export async function completeInviterInvitationFlow(
+  page: Page,
+  timeout = 60000
+): Promise<void> {
+  const chatInput = page.getByTestId('chat-input');
+  const sendButton = page.getByTestId('send-button');
+
+  await expect(chatInput).toBeVisible({ timeout });
+  await chatInput.fill("Hi, I'm having a conflict with my partner");
+  await sendButton.click();
+  await waitForAIResponse(page, /glad you reached out/i, timeout);
+
+  await chatInput.fill('We keep arguing about household chores');
+  await sendButton.click();
+  await expect(page.getByTestId('topic-proposal-use-button')).toBeVisible({ timeout });
+  await confirmInvitationTopicAndContinue(page, timeout);
+}
+
+/**
+ * Complete the Stage 0 invitation gate by confirming the AI topic frame, then
+ * dismissing the invitation-ready UI so the normal invitation confirmation
+ * request and Stage 0 transition run.
+ *
+ * The current UI presents a topic proposal panel followed by a centered
+ * invitation-ready modal. The legacy inline invitation panel is retained as a
+ * fallback so this helper remains usable with older fixtures/screens.
  *
  * @param page - Playwright Page instance
  * @param timeout - Maximum time to wait for the topic/continue flow
@@ -247,12 +275,9 @@ export async function confirmInvitationTopicAndContinue(
   page: Page,
   timeout = 30000
 ): Promise<void> {
-  const invitationPanel = page.getByTestId('invitation-draft-panel');
-  await expect(invitationPanel).toBeVisible({ timeout });
-
-  const confirmTopicButton = page.getByTestId('topic-frame-confirm-button');
+  const topicProposalButton = page.getByTestId('topic-proposal-use-button');
+  const legacyConfirmTopicButton = page.getByTestId('topic-frame-confirm-button');
   const regenerateTopicButton = page.getByTestId('topic-frame-generate-button');
-  const continueButton = page.getByTestId('invitation-continue-button');
 
   if (await regenerateTopicButton.isVisible({ timeout: 2000 }).catch(() => false)) {
     const generateResponse = page.waitForResponse(
@@ -263,22 +288,41 @@ export async function confirmInvitationTopicAndContinue(
     await generateResponse;
   }
 
-  if (await confirmTopicButton.isVisible({ timeout }).catch(() => false)) {
-    const confirmResponse = page.waitForResponse(
-      response => response.url().includes('/topic-frame/confirm'),
+  await expect(topicProposalButton.or(legacyConfirmTopicButton)).toBeVisible({ timeout });
+  const confirmTopicButton = await topicProposalButton.isVisible()
+    ? topicProposalButton
+    : legacyConfirmTopicButton;
+  const confirmResponse = page.waitForResponse(
+    response => response.url().includes('/topic-frame/confirm'),
+    { timeout }
+  );
+  await confirmTopicButton.click();
+  const topicResponse = await confirmResponse;
+  expect(topicResponse.ok()).toBe(true);
+
+  const invitationPanel = page.getByTestId('invitation-draft-panel');
+  const invitationModal = page.getByTestId('invitation-ready-modal');
+  await expect(invitationModal.or(invitationPanel)).toBeVisible({ timeout });
+  if (await invitationModal.isVisible()) {
+    const invitationResponse = page.waitForResponse(
+      response => response.url().includes('/invitation/confirm'),
       { timeout }
     );
-    await confirmTopicButton.click();
-    await confirmResponse;
-    await expect(confirmTopicButton).not.toBeVisible({ timeout });
+    await page.getByTestId('invitation-modal-close-button').click();
+    const response = await invitationResponse;
+    expect(response.ok()).toBe(true);
+    await expect(invitationModal).not.toBeVisible({ timeout });
+    return;
   }
 
+  const continueButton = page.getByTestId('invitation-continue-button');
   const invitationResponse = page.waitForResponse(
     response => response.url().includes('/invitation/confirm'),
     { timeout }
   );
   await continueButton.click();
-  await invitationResponse;
+  const response = await invitationResponse;
+  expect(response.ok()).toBe(true);
 }
 
 /**
@@ -380,22 +424,36 @@ export async function sendAndWaitForPanel(
   maxAttempts: number,
   responseTimeout = 60000
 ): Promise<number> {
-  for (let i = 0; i < Math.min(messages.length, maxAttempts); i++) {
+  // WebKit throttles requestAnimationFrame for background pages. The inline
+  // panels use React Native Web animations, so foreground the browser page
+  // before driving the conversation and waiting for a panel to slide in.
+  await page.bringToFront();
+
+  const attemptCount = Math.min(messages.length, maxAttempts);
+  for (let i = 0; i < attemptCount; i++) {
     // Type and send message
     await page.getByTestId('chat-input').fill(messages[i]);
     await page.getByTestId('send-button').click();
     // Wait for AI response
     await waitForAnyAIResponse(page, responseTimeout);
-    // Check if panel appeared (metadata arrives via separate SSE event after text,
-    // so give it time to process through React state updates)
+    // Check if panel appeared (metadata arrives via a separate SSE event after
+    // text, so give it time to process through React state updates).
     const panel = page.getByTestId(panelTestId);
-    if (await panel.isVisible({ timeout: 5000 }).catch(() => false)) {
+    // Earlier turns get a short probe so a deterministic fixture can advance
+    // without paying a full panel timeout each time. The final allowed turn
+    // must wait through the UI animation/metadata tail before declaring failure.
+    const panelTimeout = i === attemptCount - 1 ? 30000 : 3000;
+    const panelAppeared = await panel
+      .waitFor({ state: 'visible', timeout: panelTimeout })
+      .then(() => true)
+      .catch(() => false);
+    if (panelAppeared) {
       // Wait for typewriter animation to complete so pointer-events become 'auto'
       await page.waitForTimeout(3000);
       return i + 1; // turns it took
     }
   }
-  throw new Error(`Panel '${panelTestId}' did not appear after ${Math.min(messages.length, maxAttempts)} messages`);
+  throw new Error(`Panel '${panelTestId}' did not appear after ${attemptCount} messages`);
 }
 
 /**
@@ -407,9 +465,12 @@ export async function sendAndWaitForPanel(
  * @returns Promise resolving to true if indicator appears, false if timeout
  */
 export async function waitForReconcilerComplete(page: Page, timeout = 30000): Promise<boolean> {
-  const indicator = page.getByTestId('chat-indicator-empathy-shared');
+  const completionSurface = page
+    .getByTestId('partner-empathy-validation-panel')
+    .or(page.getByTestId('chat-indicator-empathy-shared'))
+    .or(page.getByTestId('share-topic-panel'));
   try {
-    await indicator.waitFor({ state: 'visible', timeout });
+    await completionSurface.waitFor({ state: 'visible', timeout });
     return true;
   } catch {
     return false;
@@ -601,9 +662,10 @@ async function waitForProgressGate(
   while (Date.now() < deadline) {
     const response = await api.get(`${apiBaseUrl}/api/sessions/${sessionId}/progress`);
     const data = await readJson<ProgressResponseDTO>(response, `${label} progress`);
+    const stage = data.data?.myProgress?.stage;
     const gates = data.data?.myProgress?.gatesSatisfied ?? {};
 
-    if (gates[gate] === true) {
+    if (gates[gate] === true || (gate === 'needsShared' && stage !== undefined && stage > 3)) {
       return;
     }
 

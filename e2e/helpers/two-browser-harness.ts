@@ -87,7 +87,10 @@ export class TwoBrowserHarness {
 
     // Seed User A via API
     const seedResponse = await request.post(`${this.apiBaseUrl}/api/e2e/seed`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Connection: 'close',
+      },
       data: { email: this.config.userA.email, name: this.config.userA.name },
     });
 
@@ -125,7 +128,10 @@ export class TwoBrowserHarness {
 
     // Seed User B via API
     const seedResponse = await request.post(`${this.apiBaseUrl}/api/e2e/seed`, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Connection: 'close',
+      },
       data: { email: this.config.userB.email, name: this.config.userB.name },
     });
 
@@ -164,6 +170,7 @@ export class TwoBrowserHarness {
       headers: {
         ...getE2EHeaders(this.config.userA.email, this.userAId, this.config.userA.fixtureId),
         'Content-Type': 'application/json',
+        Connection: 'close',
       },
       data: {
         inviteName: this.config.userB.name,
@@ -197,6 +204,7 @@ export class TwoBrowserHarness {
       headers: {
         ...getE2EHeaders(this.config.userB.email, this.userBId, this.config.userB.fixtureId),
         'Content-Type': 'application/json',
+        Connection: 'close',
       },
     });
 

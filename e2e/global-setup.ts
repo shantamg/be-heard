@@ -88,14 +88,20 @@ const prisma = new PrismaClient();
 const TABLES_TO_TRUNCATE = ${JSON.stringify(TABLES_TO_TRUNCATE)};
 
 async function truncateTables() {
-  for (const table of TABLES_TO_TRUNCATE) {
-    try {
-      await prisma.$executeRawUnsafe('TRUNCATE TABLE "' + table + '" CASCADE');
-      console.log('  ok Truncated ' + table);
-    } catch (error) {
-      // Table might not exist yet, that's ok
-      console.log('  skip Skipped ' + table + ': ' + error.message);
-    }
+  const existingTables = await prisma.$queryRawUnsafe(
+    "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+  );
+  const existingNames = new Set(existingTables.map(function(row) { return row.tablename; }));
+  const tables = TABLES_TO_TRUNCATE.filter(function(table) { return existingNames.has(table); });
+
+  if (tables.length > 0) {
+    const quotedTables = tables.map(function(table) {
+      return '"' + table.replace(/"/g, '""') + '"';
+    });
+    await prisma.$executeRawUnsafe('TRUNCATE TABLE ' + quotedTables.join(', ') + ' CASCADE');
+    console.log('  ok Truncated ' + tables.length + ' tables in one transaction');
+  } else {
+    console.log('  skip No application tables exist yet');
   }
   await prisma.$disconnect();
 }

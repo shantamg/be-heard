@@ -169,7 +169,7 @@ export function GuidedActionPanel({
     return (
       <TouchableOpacity
         style={containerStyle}
-        testID={testID}
+        testID={primaryAction.testID ?? testID}
         onLayout={(event) => setPanelWidth(event.nativeEvent.layout.width)}
         onPress={primaryAction.onPress}
         disabled={primaryAction.disabled || primaryAction.loading}
