@@ -62,12 +62,25 @@ export interface StreamTurnContext {
   setErrorMessage: (message: string | null) => void;
   /** Closes this turn's transport. Idempotent. */
   closeTransport: () => void;
+  /**
+   * Whether this turn still owns the shared state.
+   *
+   * Every ref, the timer registry and the caches are singletons shared with
+   * the hook, so a late frame from a superseded turn would otherwise clear the
+   * current turn's timers, rewrite its ids, and drive its lifecycle to a
+   * terminal phase. Transport identity alone cannot prevent that: by the time
+   * `closeTransport` declines to touch a newer transport, the handler body has
+   * already done the damage. Ownership is therefore checked FIRST in every
+   * handler.
+   */
+  isCurrent: () => boolean;
   onComplete?: () => void;
   onError?: (error: Error) => void;
 }
 
 export function createStreamTurnHandlers(ctx: StreamTurnContext): StreamTransportHandlers {
   const {
+    isCurrent,
     sessionId,
     currentStage,
     refiningNeedId,
@@ -109,6 +122,8 @@ export function createStreamTurnHandlers(ctx: StreamTurnContext): StreamTranspor
     // Update the optimistic message with server data, keeping the same ID
     // so React does not remount the row and make it visually jump.
     user_message: (data) => {
+      // A superseded turn must not touch shared state. See `isCurrent`.
+      if (!isCurrent()) return;
       {
         refs.realUserId.current = data.id; // Store for ID bridging at completion
         // Update optimistic message with server timestamp (keep same ID for React key stability)
@@ -148,6 +163,8 @@ export function createStreamTurnHandlers(ctx: StreamTurnContext): StreamTranspor
     // Observable only if every chunk of a turn is invalid; a single valid
     // chunk produces the same result as before.
     chunk: (data) => {
+      // A superseded turn must not touch shared state. See `isCurrent`.
+      if (!isCurrent()) return;
       createPlaceholder();
       {
         refs.accumulatedText.current += data.text;
@@ -191,6 +208,8 @@ export function createStreamTurnHandlers(ctx: StreamTurnContext): StreamTranspor
     // Tool call received mid-stream. Applied immediately so panels
     // (invitation, empathy) open while text is still arriving.
     metadata: (data) => {
+      // A superseded turn must not touch shared state. See `isCurrent`.
+      if (!isCurrent()) return;
       {
         console.log(`[useStreamingMessage] [TIMING] metadata event received at ${Date.now()}`);
 
@@ -208,6 +227,8 @@ export function createStreamTurnHandlers(ctx: StreamTurnContext): StreamTranspor
     // actually completed. They are now cleared only once the frame parses,
     // which is what recovery is for.
     text_complete: (data) => {
+      // A superseded turn must not touch shared state. See `isCurrent`.
+      if (!isCurrent()) return;
       console.log(`[useStreamingMessage] [TIMING] text_complete received at ${Date.now()}`);
 
       // Streaming completed, so the soft recovery timer and any pending
@@ -256,11 +277,24 @@ export function createStreamTurnHandlers(ctx: StreamTurnContext): StreamTranspor
     // stopped at text_complete. `data` is null when the frame carried no
     // valid payload — the turn still has to be closed out either way.
     complete: (data) => {
+      // Terminal frame: always close THIS turn's transport, even when
+      // superseded. `closeTransport` is idempotent and identity-safe, so it
+      // cannot touch a newer turn's socket — and skipping it would strand this
+      // turn's socket open.
+      if (!isCurrent()) {
+        closeTransport();
+        return;
+      }
       // The turn is done. Reconciliation is deliberately left alone: the
       // reconcilePersistedMessages call below re-arms it, and clearing it
       // here would only cancel a timer we are about to replace.
       timers.clear('softRecovery', 'hardTimeout', 'throttledCacheUpdate');
 
+      // `handleMetadata` invokes the caller-supplied `onMetadata`, and
+      // `onComplete` is caller-supplied too. Either can throw. The finally
+      // guarantees the socket closes regardless — the recovery timers have
+      // just been disarmed, so nothing else would ever close it.
+      try {
       if (data) {
         // Read the fallback decision before the terminal transition below.
         const needsFallback = needsCompletionFallback(refs.lifecycle.current);
@@ -309,22 +343,35 @@ export function createStreamTurnHandlers(ctx: StreamTurnContext): StreamTranspor
 
       // Terminal: further frames on this turn are late and must not apply.
       dispatch({ type: 'complete' });
-
-      closeTransport();
+      } finally {
+        closeTransport();
+      }
     },
 
     // Transport failure (ErrorEvent / TimeoutEvent / ExceptionEvent), not a
     // protocol error frame.
     error: (errorMsg) => {
+      // Terminal frame: close this turn's transport regardless of ownership,
+      // for the same reason as `complete`.
+      if (!isCurrent()) {
+        closeTransport();
+        return;
+      }
       // The turn failed; nothing scheduled for it should still run.
       timers.clearAll();
 
-      console.error('[useStreamingMessage] SSE error:', errorMsg);
-      cleanupFailedStream(sessionId, currentStage);
-      setErrorMessage(errorMsg);
-      dispatch({ type: 'error' });
-      onError?.(new Error(errorMsg));
-      closeTransport();
+      // `onError` is caller-supplied and may throw. Without the finally, a
+      // throwing callback would leave this socket open forever with its
+      // recovery timers already disarmed — the worst combination.
+      try {
+        console.error('[useStreamingMessage] SSE error:', errorMsg);
+        cleanupFailedStream(sessionId, currentStage);
+        setErrorMessage(errorMsg);
+        dispatch({ type: 'error' });
+        onError?.(new Error(errorMsg));
+      } finally {
+        closeTransport();
+      }
     },
   };
 }

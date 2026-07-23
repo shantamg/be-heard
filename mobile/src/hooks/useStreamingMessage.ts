@@ -402,6 +402,8 @@ export function useStreamingMessage(
             body: JSON.stringify({ content, refiningNeedId: refiningNeedId ?? undefined }),
           },
           createStreamTurnHandlers({
+            // Ownership: every handler bails if a newer send has taken over.
+            isCurrent: isCurrentSend,
             sessionId,
             currentStage,
             refiningNeedId,
@@ -428,7 +430,7 @@ export function useStreamingMessage(
         timers.set(
           'softRecovery',
           () => {
-            if (!transportRef.current) return;
+            if (transportRef.current !== transport || !isCurrentSend()) return;
             console.warn('[useStreamingMessage] 15s soft recovery - refetching persisted messages while stream remains open');
             reconcilePersistedMessages(sessionId);
             invalidateKeys(softTimeoutInvalidationKeys(sessionId, currentStage));
@@ -439,7 +441,9 @@ export function useStreamingMessage(
         timers.set(
           'hardTimeout',
           () => {
-            if (!transportRef.current) return;
+            // Identity, not mere existence: if a newer send already owns the
+            // ref, `recoverTimedOutStream` would reset ITS refs and lifecycle.
+            if (transportRef.current !== transport || !isCurrentSend()) return;
             console.warn('[useStreamingMessage] 90s hard timeout - closing stream and recovering persisted messages');
             closeTransport();
             recoverTimedOutStream(sessionId, currentStage);
@@ -448,14 +452,27 @@ export function useStreamingMessage(
         );
 
       } catch (error) {
-        // BEHAVIOUR CHANGE (deliberate, called out for review): the original
-        // cleared only the reconciliation and hard-timeout timers here, leaving
-        // the soft-recovery timer and any pending throttled write armed. Since
-        // this path does not null `transportRef`, a surviving soft timer
-        // would see a live transport 15s later and fire a reconcile for a
-        // turn that already failed. Reaching that state requires a throw after
-        // the timers are armed, which is why it was never observed. Clearing
-        // all of them is the same thing every other terminal path does.
+        // Ownership check FIRST. The timers, the caches and the turn refs are
+        // all shared singletons, so a stale turn cleaning up would tear down
+        // whichever turn currently owns them. The realistic sequence: this
+        // turn is awaiting `getAuthToken()`, a newer send starts and arms its
+        // timers, then this turn's token promise rejects. Without this guard
+        // the rejection clears the newer turn's timers and runs
+        // `cleanupFailedStream` against refs that now hold the newer turn's
+        // ids — removing its rows.
+        //
+        // A superseded turn has nothing of its own left to clean: `sendMessage`
+        // resets the shared refs at the top, so the newer turn already owns
+        // them. Returning quietly is the whole cleanup.
+        if (!isCurrentSend()) {
+          console.warn('[useStreamingMessage] Ignoring error from a superseded send:', error);
+          return;
+        }
+
+        // Clearing all four timers is safe only under the guard above. The
+        // original cleared just two, leaving the soft-recovery timer armed on a
+        // path that does not null `transportRef` — so a failed turn could
+        // reconcile 15s later.
         timers.clearAll();
         console.error('[useStreamingMessage] Error:', error);
         cleanupFailedStream(sessionId, currentStage);

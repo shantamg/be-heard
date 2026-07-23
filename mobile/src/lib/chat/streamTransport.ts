@@ -93,28 +93,36 @@ export function openStreamTransport(
     });
   };
 
-  routeValidated('user_message');
-  routeValidated('chunk');
-  routeValidated('metadata');
-  routeValidated('text_complete');
+  // Listener registration happens AFTER the socket is open, so anything that
+  // throws here would unwind before the caller ever receives a handle — an
+  // open EventSource nothing can close. Close it on the way out instead.
+  try {
+    routeValidated('user_message');
+    routeValidated('chunk');
+    routeValidated('metadata');
+    routeValidated('text_complete');
 
-  es.addEventListener('complete', (raw) => {
-    const data = raw.data ? parseStreamEventData('complete', raw.data) : null;
-    if (raw.data && !data) {
-      console.error(`${LOG_PREFIX} Dropping invalid complete frame`);
-    }
-    // Delivered either way: the frame's arrival ends the turn.
-    handlers.complete(data);
-  });
+    es.addEventListener('complete', (raw) => {
+      const data = raw.data ? parseStreamEventData('complete', raw.data) : null;
+      if (raw.data && !data) {
+        console.error(`${LOG_PREFIX} Dropping invalid complete frame`);
+      }
+      // Delivered either way: the frame's arrival ends the turn.
+      handlers.complete(data);
+    });
 
-  es.addEventListener('error', (event) => {
-    const message = 'message' in event ? event.message : 'Connection error';
-    handlers.error(message ?? 'Connection error');
-  });
+    es.addEventListener('error', (event) => {
+      const message = 'message' in event ? event.message : 'Connection error';
+      handlers.error(message ?? 'Connection error');
+    });
 
-  es.addEventListener('open', () => {
-    // Connection opened, waiting for events.
-  });
+    es.addEventListener('open', () => {
+      // Connection opened, waiting for events.
+    });
+  } catch (error) {
+    es.close();
+    throw error;
+  }
 
   let closed = false;
   return {
