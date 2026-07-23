@@ -144,10 +144,9 @@ export function GuidedDraftChatModal({
           isLoading={isLoading}
           isInputDisabled={isFinalizing}
           partnerName={partnerName}
-          renderMessageExtra={renderMessageExtra}
+          slots={{ messageExtra: renderMessageExtra }}
           emptyStateTitle={emptyStateTitle}
           emptyStateMessage={emptyStateMessage}
-          keyboardVerticalOffset={0}
         />
       </SafeAreaView>
     </View>

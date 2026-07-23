@@ -23,6 +23,10 @@ import {
   UserEventData,
   MessageAIResponsePayload,
   MessageErrorPayload,
+  parseSessionEvent,
+  parseUserEventData,
+  isKnownUserEventName,
+  isKnownSessionEventName,
 } from '@meet-without-fear/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { sessionKeys } from './queryKeys';
@@ -90,6 +94,108 @@ export interface RealtimeActions {
 // ============================================================================
 
 type AblyRealtimeChannel = Ably.RealtimeChannel;
+
+// ============================================================================
+// Validation Failure Reporting
+// ============================================================================
+
+type SentryBreadcrumb = {
+  category: string;
+  message: string;
+  level: string;
+  data: Record<string, unknown>;
+};
+
+/**
+ * Resolved lazily rather than imported at module scope.
+ *
+ * `@sentry/react-native` ships ESM and is not in Jest's `transformIgnorePatterns`,
+ * so a static import here fails to parse in every suite that transitively pulls
+ * in this hook — not just the ones testing it. Resolving on first use keeps that
+ * blast radius at zero: the require only runs when a validation actually fails,
+ * which is never in unrelated suites. Mirrors the lazy `expo-updates` load in
+ * `useOTAUpdate.ts`.
+ */
+let cachedAddBreadcrumb: ((breadcrumb: SentryBreadcrumb) => void) | null | undefined;
+
+function getAddBreadcrumb(): ((breadcrumb: SentryBreadcrumb) => void) | null {
+  if (cachedAddBreadcrumb === undefined) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      cachedAddBreadcrumb = require('@sentry/react-native').addBreadcrumb ?? null;
+    } catch {
+      cachedAddBreadcrumb = null;
+    }
+  }
+  return cachedAddBreadcrumb ?? null;
+}
+
+/**
+ * Reduce a wire event name to something safe to report.
+ *
+ * `message.name` is ATTACKER-CONTROLLED. Session members are granted
+ * `['subscribe', 'publish']` on `meetwithoutfear:session:{id}`
+ * (`backend/src/controllers/auth.ts:240`), so a malicious or compromised partner
+ * client can publish an event whose *name* is arbitrary text — including the
+ * user's private content. The app's `beforeBreadcrumb` hook
+ * (`mobile/app/_layout.tsx:57`) strips known PII *keys*, not arbitrary *values*,
+ * so an unsanitized name would sail straight through into Sentry.
+ *
+ * Names in the contract's registry are safe compile-time constants; anything
+ * else is collapsed to 'unknown'. Diagnosing contract drift only ever needs the
+ * known names, so nothing of value is lost.
+ */
+function safeEventName(name: string | undefined, channel: 'session' | 'user'): string {
+  if (!name) return 'unknown';
+  const isKnown = channel === 'session' ? isKnownSessionEventName(name) : isKnownUserEventName(name);
+  return isKnown ? name : 'unknown';
+}
+
+/**
+ * Report a realtime payload that failed contract validation.
+ *
+ * Nothing should ever reach here: the backend typechecks its publish call sites
+ * against the same shapes the consumer validates with, so a failure means the
+ * two have drifted. That makes it worth alarming on rather than leaving in a dev
+ * console nobody reads in production.
+ *
+ * PRIVACY: the breadcrumb carries a SANITIZED event name and the failure reason
+ * only. Never the payload — realtime payloads carry empathy statements, shared
+ * context and need descriptions, and several are addressed to one partner.
+ * Session and user IDs are omitted too; the event name plus reason is enough to
+ * identify a drifted contract, and anything more would put private content in
+ * crash reports. `dropped` distinguishes a real drop from a payload we delivered
+ * anyway because its handler never reads it.
+ *
+ * NEVER THROWS. This runs inside the Ably subscribe callback, where an escaping
+ * exception would abort event processing — and on the user channel would skip
+ * the refetch that a malformed-but-delivered event still owes. Reporting must
+ * never be able to break delivery, so every failure path here is swallowed.
+ *
+ * Safe on web: `shims/sentry-web.ts` makes addBreadcrumb a no-op.
+ */
+function reportRealtimeValidationFailure(params: {
+  channel: 'session' | 'user';
+  eventName: string | undefined;
+  reason: string;
+  dropped: boolean;
+}): void {
+  const { channel, eventName, reason, dropped } = params;
+  try {
+    const addBreadcrumb = getAddBreadcrumb();
+    if (typeof addBreadcrumb !== 'function') return;
+    addBreadcrumb({
+      category: 'realtime-validation',
+      message: dropped
+        ? `Dropped malformed ${channel} event`
+        : `Malformed ${channel} event delivered (payload not read by handler)`,
+      level: 'warning',
+      data: { event: safeEventName(eventName, channel), reason, dropped },
+    });
+  } catch {
+    // Reporting is best-effort and must never interrupt realtime delivery.
+  }
+}
 
 // ============================================================================
 // Connection State Mapping
@@ -228,8 +334,31 @@ export function useRealtime(config: RealtimeConfig): RealtimeState & RealtimeAct
       const currentUserId = userIdRef.current;
       if (!currentUserId) return;
 
-      const eventName = message.name as SessionEventType;
-      const eventData = message.data as SessionEventData;
+      // Validate at the boundary against the shared realtime contract, so no
+      // unchecked payload reaches a handler. An unrecognised event NAME is not a
+      // failure — it falls back to envelope validation and is still delivered, so
+      // a newer backend can ship an event this client does not know about yet.
+      const parsed = parseSessionEvent(message.name ?? '', message.data);
+      if (parsed.kind === 'invalid') {
+        // Raw name only in dev, where Sentry is disabled (`enabled: !__DEV__`).
+        // In production Sentry's console integration turns this into a
+        // breadcrumb too, so it gets the same sanitizing as the explicit one.
+        console.warn(
+          '[Realtime] Dropping malformed event payload:',
+          __DEV__ ? message.name : safeEventName(message.name, 'session'),
+          parsed.reason
+        );
+        reportRealtimeValidationFailure({
+          channel: 'session',
+          eventName: message.name,
+          reason: parsed.reason,
+          dropped: true,
+        });
+        return;
+      }
+
+      const eventName = parsed.event as SessionEventType;
+      const eventData = parsed.data;
 
       // Skip events from ourselves
       if (eventData.excludeUserId === currentUserId) {
@@ -239,45 +368,54 @@ export function useRealtime(config: RealtimeConfig): RealtimeState & RealtimeAct
       // Session channels are broadcast. Drop private payloads for other users
       // before they reach screen-level handlers.
       if (!isRealtimePayloadAddressedToCurrentUser(eventData, currentUserId)) {
-        console.log('[Realtime] Dropping event addressed to a different user:', eventName);
+        console.log(
+          '[Realtime] Dropping event addressed to a different user:',
+          __DEV__ ? eventName : safeEventName(eventName, 'session')
+        );
         return;
       }
 
-      // Handle specific events
-      switch (eventName) {
+      if (parsed.kind === 'unknown-event') {
+        callbacksRef.current.onSessionEvent?.(eventName, eventData as SessionEventData);
+        return;
+      }
+
+      // Handle specific events. `parsed.data` is narrowed to the event's payload
+      // by the switch — the casts these branches used to need are gone.
+      switch (parsed.event) {
         case 'typing.start':
           setPartnerTyping(true);
-          callbacksRef.current.onTypingChange?.(eventData.userId || '', true);
+          callbacksRef.current.onTypingChange?.(parsed.data.userId || '', true);
           break;
 
         case 'typing.stop':
           setPartnerTyping(false);
-          callbacksRef.current.onTypingChange?.(eventData.userId || '', false);
+          callbacksRef.current.onTypingChange?.(parsed.data.userId || '', false);
           break;
 
         case 'presence.online':
           setPartnerOnline(true);
-          callbacksRef.current.onPresenceChange?.(eventData.userId || '', PresenceStatus.ONLINE);
+          callbacksRef.current.onPresenceChange?.(parsed.data.userId || '', PresenceStatus.ONLINE);
           break;
 
         case 'presence.offline':
           setPartnerOnline(false);
           setPartnerTyping(false);
-          callbacksRef.current.onPresenceChange?.(eventData.userId || '', PresenceStatus.OFFLINE);
+          callbacksRef.current.onPresenceChange?.(parsed.data.userId || '', PresenceStatus.OFFLINE);
           break;
 
         case 'presence.away':
-          callbacksRef.current.onPresenceChange?.(eventData.userId || '', PresenceStatus.AWAY);
+          callbacksRef.current.onPresenceChange?.(parsed.data.userId || '', PresenceStatus.AWAY);
           break;
 
         case 'stage.progress':
         case 'stage.waiting':
-          if (eventData.stage !== undefined) {
-            setPartnerStage(eventData.stage);
+          if (parsed.data.stage !== undefined) {
+            setPartnerStage(parsed.data.stage);
             callbacksRef.current.onStageProgress?.(
-              eventData.userId || '',
-              eventData.stage,
-              (eventData as Record<string, unknown>).status as string || 'unknown'
+              parsed.data.userId || '',
+              parsed.data.stage,
+              parsed.data.status || 'unknown'
             );
           }
           break;
@@ -285,29 +423,36 @@ export function useRealtime(config: RealtimeConfig): RealtimeState & RealtimeAct
         // Fire-and-forget message events
         case 'message.ai_response':
           if (callbacksRef.current.onAIResponse) {
-            const aiPayload = eventData as unknown as MessageAIResponsePayload;
             // Only handle if this message is for the current user
-            if (aiPayload.forUserId === currentUserId) {
-              console.log('[Realtime] AI response received:', aiPayload.message?.id);
-              callbacksRef.current.onAIResponse(aiPayload);
+            if (parsed.data.forUserId === currentUserId) {
+              // Wire-derived: dev only. Sentry's console integration turns
+              // console args into breadcrumbs in production.
+              if (__DEV__) {
+                console.log('[Realtime] AI response received:', parsed.data.message?.id);
+              }
+              callbacksRef.current.onAIResponse(
+                parsed.data as unknown as MessageAIResponsePayload
+              );
             }
           }
           break;
 
         case 'message.error':
           if (callbacksRef.current.onAIError) {
-            const errorPayload = eventData as unknown as MessageErrorPayload;
             // Only handle if this error is for the current user
-            if (errorPayload.forUserId === currentUserId) {
-              console.log('[Realtime] AI error received:', errorPayload.error);
-              callbacksRef.current.onAIError(errorPayload);
+            if (parsed.data.forUserId === currentUserId) {
+              // Wire-derived error text: dev only (see note above).
+              if (__DEV__) {
+                console.log('[Realtime] AI error received:', parsed.data.error);
+              }
+              callbacksRef.current.onAIError(parsed.data as unknown as MessageErrorPayload);
             }
           }
           break;
 
         default:
           // Generic session event
-          callbacksRef.current.onSessionEvent?.(eventName, eventData);
+          callbacksRef.current.onSessionEvent?.(eventName, eventData as SessionEventData);
           break;
       }
     },
@@ -729,13 +874,22 @@ export function useUserSessionUpdates(
 
   const handleEvent = useCallback(
     (eventName: UserEventType, _data: UserEventData) => {
-      console.log('[UserSessionUpdates] Received event:', eventName, _data);
+      // The payload is wire-derived and can carry private content, so it is
+      // logged in dev only; production keeps just the sanitized event name.
+      if (__DEV__) {
+        console.log('[UserSessionUpdates] Received event:', eventName, _data);
+      } else {
+        console.log('[UserSessionUpdates] Received event:', safeEventName(eventName, 'user'));
+      }
 
       // Handle memory suggestions targeted to this specific user
       if (eventName === 'memory.suggested') {
         const suggestion = (_data as { suggestion?: { id: string; suggestedContent: string; category: string; confidence: string; evidence: string } }).suggestion;
         if (suggestion && optionsRef.current?.onMemorySuggestion) {
-          console.log('[UserSessionUpdates] Memory suggestion received:', suggestion);
+          // Carries suggestedContent — the user's own private text. Dev only.
+          if (__DEV__) {
+            console.log('[UserSessionUpdates] Memory suggestion received:', suggestion);
+          }
           optionsRef.current.onMemorySuggestion({
             ...suggestion,
             sessionId: _data.sessionId,
@@ -804,8 +958,43 @@ export function useUserSessionUpdates(
         await channel.subscribe((message: Ably.Message) => {
           if (isCleanedUp || !isMountedRef.current) return;
           const eventName = message.name as UserEventType;
-          const eventData = message.data as UserEventData;
-          handleEvent(eventName, eventData);
+          // Validate against the shared contract before the payload reaches a
+          // handler. Unknown event names fall through untyped as before, so a
+          // newer backend event still triggers the refetch path.
+          const validated = isKnownUserEventName(eventName)
+            ? parseUserEventData(eventName, message.data)
+            : (message.data as UserEventData | null);
+
+          if (!validated) {
+            // memory.suggested is the only user event whose handler reads the
+            // payload, so it is the only one worth dropping. Every other user
+            // event just triggers a session-list refetch and ignores its data —
+            // dropping those would lose a refresh for no safety benefit.
+            if (eventName === 'memory.suggested') {
+              console.warn(
+                '[UserSessionUpdates] Dropping malformed memory.suggested payload'
+              );
+              reportRealtimeValidationFailure({
+                channel: 'user',
+                eventName: message.name,
+                reason: 'invalid-payload',
+                dropped: true,
+              });
+              return;
+            }
+            console.warn(
+              '[UserSessionUpdates] Malformed payload; refetching anyway:',
+              __DEV__ ? message.name : safeEventName(message.name, 'user')
+            );
+            reportRealtimeValidationFailure({
+              channel: 'user',
+              eventName: message.name,
+              reason: 'invalid-payload',
+              dropped: false,
+            });
+          }
+
+          handleEvent(eventName, (validated ?? {}) as UserEventData);
         });
 
         console.log('[UserSessionUpdates] Subscription setup complete');

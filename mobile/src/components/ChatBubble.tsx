@@ -1,6 +1,14 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { View, Text, Animated, Easing, TouchableOpacity } from 'react-native';
 import { MessageRole, SharedContentDeliveryStatus } from '@meet-without-fear/shared';
+import {
+  classifyChatBubble,
+  deriveBubbleReveal,
+  deriveUserEntranceAnimation,
+  getSharedContentStatusText,
+  getSharedFrameLabel,
+  isSharedFrameKind,
+} from '../lib/chat/render/bubble';
 import { createStyles } from '../theme/styled';
 import { designFonts, useAppAppearance } from '../theme';
 import { TypewriterText } from './TypewriterText';
@@ -78,30 +86,30 @@ export function ChatBubble({
   onPress,
 }: ChatBubbleProps) {
   const styles = useStyles();
-  const isUser = message.role === MessageRole.USER;
-  const isSystem = message.role === MessageRole.SYSTEM;
-  const isEmpathyStatement = message.role === MessageRole.EMPATHY_STATEMENT;
-  const isSharedContext =
-    (message.role as string) === 'SHARED_CONTEXT' ||
-    (message.role as string) === 'VALIDATION_FEEDBACK';
-  const isValidationFeedback = (message.role as string) === 'VALIDATION_FEEDBACK';
-  const isShareSuggestion = (message.role as string) === 'SHARE_SUGGESTION';
-  const isAI = !isUser && !isSystem && !isEmpathyStatement && !isSharedContext && !isShareSuggestion;
+  const kind = classifyChatBubble(message.role);
+  const isUser = kind === 'user';
+  const isSystem = kind === 'system';
+  const isEmpathyStatement = kind === 'empathy-statement';
+  const isShareSuggestion = kind === 'share-suggestion';
+  const isAI = kind === 'ai';
   const isIntervention = message.isIntervention ?? false;
-  const shouldAnimateUserEntrance =
-    isUser &&
-    enableTypewriter &&
-    (message.status === 'sending' || message.id.startsWith('optimistic-user-'));
 
   // Track if this specific message instance has completed animation
   const hasAnimatedRef = useRef(false);
   const hasStartedRef = useRef(false);
   const animationIdentityRef = useRef(animationIdentity ?? message.id);
   const userEntrancePlayedRef = useRef(false);
-  const userEntranceAnim = useRef(new Animated.Value(shouldAnimateUserEntrance ? 0 : 1)).current;
 
-  // Determine if this message type uses fade-in animation (non-AI, non-USER animated messages)
-  const willAnimate = !isUser && !isAI && enableTypewriter && !message.skipTypewriter;
+  // Independent of the reveal queue, so it is safe to evaluate before the
+  // identity-reset block below.
+  const shouldAnimateUserEntrance = deriveUserEntranceAnimation({
+    kind,
+    enableTypewriter,
+    status: message.status,
+    id: message.id,
+  });
+
+  const userEntranceAnim = useRef(new Animated.Value(shouldAnimateUserEntrance ? 0 : 1)).current;
 
   // Animated value for fade-in (non-typewriter messages)
   // Always start at 1 (visible) — the fade-in effect sets to 0 and animates when triggered
@@ -127,23 +135,26 @@ export function ChatBubble({
   onCompleteRef.current = onAnimationComplete;
   onProgressRef.current = onAnimationProgress;
 
-  // Determine if we should use typewriter effect (AI messages only)
-  const shouldUseTypewriter = isAI && enableTypewriter && !message.skipTypewriter && !hasAnimatedRef.current;
-
-  // Determine if we should use fade-in effect (non-AI, non-USER messages that should animate)
-  const shouldUseFadeIn = !isUser && !isAI && enableTypewriter && !message.skipTypewriter && !hasAnimatedRef.current;
-
   // Track whether this message is next to animate (callback is provided).
   // Animatable live messages that are not next stay hidden so they do not pop
   // in fully rendered before their queued animation turn.
   const isNextToAnimate = onAnimationStart !== undefined;
-  const isWaitingForAnimationTurn =
-    !isUser &&
-    enableTypewriter &&
-    !message.skipTypewriter &&
-    !hasAnimatedRef.current &&
-    !isNextToAnimate &&
-    !hasStartedRef.current;
+
+  // Read AFTER the identity-reset block above: a row whose identity just
+  // changed must be judged fresh, not on the previous identity's history.
+  const {
+    useTypewriter: shouldUseTypewriter,
+    useFadeIn: shouldUseFadeIn,
+    isFadeInActive: isFadeInAnimating,
+    isWaitingForTurn: isWaitingForAnimationTurn,
+  } = deriveBubbleReveal({
+    kind,
+    enableTypewriter,
+    skipTypewriter: message.skipTypewriter ?? false,
+    hasAnimated: hasAnimatedRef.current,
+    hasStarted: hasStartedRef.current,
+    isNextToAnimate,
+  });
 
   // Handle fade-in animation for non-typewriter messages
   // Only starts when this message is next in the animation queue (onAnimationStart is provided)
@@ -202,23 +213,6 @@ export function ChatBubble({
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const getSharedContentStatusText = (status: SharedContentDeliveryStatus | undefined): string => {
-    switch (status) {
-      case 'sending':
-        return 'Sending...';
-      case 'pending':
-        return 'Submitted for review';
-      case 'delivered':
-        return 'Delivered';
-      case 'seen':
-        return '✓ Seen';
-      case 'superseded':
-        return 'Updated version below';
-      default:
-        return 'Submitted for review';
-    }
-  };
-
   const isSendingStatus = (status: SharedContentDeliveryStatus | undefined): boolean => {
     return status === 'sending';
   };
@@ -231,7 +225,7 @@ export function ChatBubble({
     return status === 'superseded';
   };
 
-  const isSharedFrame = isEmpathyStatement || isSharedContext;
+  const isSharedFrame = isSharedFrameKind(kind);
   const sharedFrameDirection: 'sent' | 'received' =
     message.sharedContentDirection === 'sent' ? 'sent' : 'received';
 
@@ -264,11 +258,6 @@ export function ChatBubble({
     return styles.text;
   };
 
-  // Check if fade-in animation should be active
-  // Only animate when it's this message's turn (isNextToAnimate)
-  // Messages waiting their turn render with full opacity (never hidden)
-  const isFadeInAnimating = willAnimate && !hasAnimatedRef.current && isNextToAnimate;
-
   const renderContent = () => {
     if (isWaitingForAnimationTurn) {
       return null;
@@ -281,15 +270,7 @@ export function ChatBubble({
         !!deliveryStatus && sharedFrameDirection !== 'received';
 
       // Top-rule label: voice-distinct between content types
-      const label = isEmpathyStatement
-        ? sharedFrameDirection === 'received'
-          ? (partnerName ? `Empathy from ${partnerName}` : 'Empathy from your partner')
-          : (partnerName ? `Empathy shared with ${partnerName}` : 'Empathy shared')
-        : isValidationFeedback
-          ? (partnerName ? `Feedback from ${partnerName}` : 'Feedback from your partner')
-          : sharedFrameDirection === 'sent'
-            ? (partnerName ? `Context shared with ${partnerName}` : 'Context shared')
-            : (partnerName ? `Context from ${partnerName}` : 'Context from your partner');
+      const label = getSharedFrameLabel({ kind, direction: sharedFrameDirection, partnerName });
 
       const labelStyle =
         sharedFrameDirection === 'sent'

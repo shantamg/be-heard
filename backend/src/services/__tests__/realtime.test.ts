@@ -59,6 +59,7 @@ describe('Realtime Service', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    delete process.env.E2E_AUTH_BYPASS;
     // Always set ABLY_API_KEY for tests (required now)
     process.env.ABLY_API_KEY = 'test-api-key';
     resetAblyClient();
@@ -68,6 +69,7 @@ describe('Realtime Service', () => {
 
   afterAll(() => {
     delete process.env.ABLY_API_KEY;
+    delete process.env.E2E_AUTH_BYPASS;
   });
 
   describe('getSessionChannelName', () => {
@@ -90,7 +92,7 @@ describe('Realtime Service', () => {
       resetAblyClient();
 
       await expect(
-        publishSessionEvent(testSessionId, 'partner.signed_compact', { userId: testUserId })
+        publishSessionEvent(testSessionId, 'partner.signed_compact', { signedBy: testUserId })
       ).rejects.toThrow('ABLY_API_KEY not configured');
     });
 
@@ -198,7 +200,7 @@ describe('Realtime Service', () => {
       const mockSendPush = pushService.sendPushNotification as jest.Mock;
 
       await notifyPartner(testSessionId, testPartnerId, 'partner.needs_shared', {
-        needsCount: 3,
+        sharedBy: testUserId,
       });
 
       // Should publish to Ably, not send push
@@ -224,6 +226,25 @@ describe('Realtime Service', () => {
   });
 
   describe('notifyPartnerWithFallback', () => {
+    it('does not require Ably or send push in Ably-less E2E mode', async () => {
+      process.env.E2E_AUTH_BYPASS = 'true';
+      delete process.env.ABLY_API_KEY;
+      resetAblyClient();
+
+      const mockSendPush = pushService.sendPushNotification as jest.Mock;
+
+      await expect(
+        notifyPartnerWithFallback(testSessionId, testPartnerId, 'session.joined', {
+          joinedBy: testPartnerId,
+          userName: 'Test Partner',
+        })
+      ).resolves.toBeUndefined();
+
+      expect(mockPublish).not.toHaveBeenCalled();
+      expect(mockPresenceGet).not.toHaveBeenCalled();
+      expect(mockSendPush).not.toHaveBeenCalled();
+    });
+
     it('publishes to Ably and sends push when partner is offline', async () => {
       mockPresenceGet.mockResolvedValueOnce({ items: [] });
 

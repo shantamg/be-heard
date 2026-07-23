@@ -234,6 +234,22 @@ export function useEmpathyStatus(
     },
     enabled: !!sessionId,
     staleTime: 30_000, // Ably events deliver status updates in real-time via setQueryData
+    // Reconciliation runs after the consent request returns. The first person
+    // to share remains HELD until their partner shares, and without an Ably
+    // event that cached state would never learn that reconciliation started.
+    // Poll only in those transient states; terminal states remain event-driven.
+    refetchInterval: (query) => {
+      const status = query.state.data;
+      if (status?.analyzing || status?.myAttempt?.status === 'READY') return 2_000;
+      if (
+        status?.myAttempt?.status === 'HELD' ||
+        status?.myAttempt?.status === 'AWAITING_SHARING' ||
+        status?.myAttempt?.status === 'REVEALED'
+      ) {
+        return 5_000;
+      }
+      return false;
+    },
     ...options,
   });
 }

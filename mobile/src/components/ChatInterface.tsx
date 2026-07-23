@@ -13,80 +13,69 @@ import {
   LayoutChangeEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { MessageDTO, SharedContentDeliveryStatus } from '@meet-without-fear/shared';
 import { MessageRole } from '@meet-without-fear/shared';
-import { ChatBubble, ChatBubbleMessage, MessageDeliveryStatus } from './ChatBubble';
+import { ChatBubble, ChatBubbleMessage } from './ChatBubble';
 import { TypingIndicator } from './TypingIndicator';
 import { ChatInput } from './ChatInput';
 import { EmotionSlider } from './EmotionSlider';
 import { ChatIndicator, ChatIndicatorType } from './ChatIndicator';
 import { EmpathyValidationCard } from './EmpathyValidationCard';
+import { assembleChatItems } from '../lib/chat/render/chatItems';
+import {
+  isCustomCard,
+  isCustomEmptyState,
+  isIndicator,
+  isValidationCard,
+} from '../lib/chat/render/types';
+import type {
+  ChatCustomCardItem,
+  ChatIndicatorItem,
+  ChatListItem,
+  ChatMessage,
+  ChatValidationCardItem,
+} from '../lib/chat/render/types';
 import { createStyles } from '../theme/styled';
 import { designFonts, useAppAppearance } from '../theme';
 import { useSpeech, useAutoSpeech } from '../hooks/useSpeech';
-import { getAnimationIdentity, isPreRegisteredAnimatedId } from '../utils/animationBridge';
 import { hasLinkedKeyboardController, KeyboardStickyComposer } from '../utils/keyboardController';
+import {
+  createLocalAnimationScope,
+  getAnimationIdentity,
+  getSeenAnimatedItemIds,
+  isPreRegisteredAnimatedId,
+} from '../lib/chat/render/animationIdentity';
+import {
+  isAtOrBeforeSeenBoundary as isAtOrBeforeSeenBoundaryPure,
+  resolveAnimationLock,
+  selectItemIdsToMarkSeen,
+  selectNextAnimatableIdentity,
+  shouldAnimateItem as shouldAnimateItemPure,
+} from '../lib/chat/render/animationQueue';
+import {
+  deriveTypingIndicatorState,
+  TYPING_INDICATOR_DELAY_MS,
+} from '../lib/chat/render/typingIndicator';
+import {
+  createStickToBottomController,
+  type StickToBottomController,
+} from '../lib/chat/render/stickToBottom';
 
 // ============================================================================
 // Types
 // ============================================================================
-
-export interface ChatMessage extends MessageDTO {
-  status?: MessageDeliveryStatus;
-  /** Delivery status for shared content (empathy statements, shared context) */
-  sharedContentDeliveryStatus?: SharedContentDeliveryStatus;
-  /** Whether the shared artifact was sent by the current user or received from partner */
-  sharedContentDirection?: 'sent' | 'received';
-}
+// Item shapes, type guards, and ordering live in ../lib/chat/render so they can
+// be tested without React Native. They are re-exported here because this module
+// is the public entry point every caller already imports from.
 
 export { ChatIndicatorType } from './ChatIndicator';
-
-export interface ChatIndicatorItem {
-  type: 'indicator';
-  indicatorType: ChatIndicatorType;
-  id: string;
-  timestamp?: string;
-  /** Optional metadata for dynamic indicator text */
-  metadata?: {
-    /** Whether this content is from the current user (vs partner) */
-    isFromMe?: boolean;
-    /** Partner's display name (for "Context from {name}" text) */
-    partnerName?: string;
-    /** Stage name for stage-chapter indicators */
-    stageName?: string;
-    /** Stage accent color for stage-chapter bar background */
-    stageColor?: string;
-  };
-}
-
-export interface CustomEmptyStateItem {
-  type: 'custom-empty-state';
-  id: string;
-}
-
-export interface ChatValidationCardItem {
-  type: 'validation-card';
-  id: string;
-  timestamp: string;
-  partnerName: string;
-  empathyContent: string;
-  status: 'pending' | 'validated' | 'feedback-given' | 'superseded';
-  attemptId: string;
-}
-
-export interface ChatCustomCardItem {
-  type: 'custom-card';
-  id: string;
-  timestamp: string;
-  /** Whether this card participates in the same animation queue as AI messages. */
-  animate?: boolean;
-  render: (options?: {
-    skipAnimation: boolean;
-    onAnimationComplete?: () => void;
-  }) => React.ReactNode;
-}
-
-export type ChatListItem = ChatMessage | ChatIndicatorItem | ChatValidationCardItem | ChatCustomCardItem | CustomEmptyStateItem;
+export type {
+  ChatCustomCardItem,
+  ChatIndicatorItem,
+  ChatListItem,
+  ChatMessage,
+  ChatValidationCardItem,
+  CustomEmptyStateItem,
+} from '../lib/chat/render/types';
 
 const AUXILIARY_CONTROLS_LAYOUT_ANIMATION_MS = 110;
 
@@ -105,41 +94,61 @@ const auxiliaryControlsLayoutAnimation = {
   },
 };
 
-function isIndicator(item: ChatListItem): item is ChatIndicatorItem {
-  return 'type' in item && item.type === 'indicator';
+/** Emotion slider shown above the composer. Omit the whole object to hide it. */
+export interface ChatEmotionSliderProps {
+  value?: number;
+  onChange: (value: number) => void;
+  onHighEmotion?: (value: number) => void;
+  compact?: boolean;
 }
 
-function isValidationCard(item: ChatListItem): item is ChatValidationCardItem {
-  return 'type' in item && item.type === 'validation-card';
+/** Older-history paging. Omit to disable paging entirely. */
+export interface ChatPaginationProps {
+  onLoadMore: () => void;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
 }
 
-function isCustomCard(item: ChatListItem): item is ChatCustomCardItem {
-  return 'type' in item && item.type === 'custom-card';
+/** Where the reader had got to, used to decide what counts as history. */
+export interface ChatReadBoundaryProps {
+  /** ID of the last chat item the user has seen - used to show "New messages" separator */
+  lastSeenChatItemId?: string | null;
+  /** Server-backed timestamp from before this screen marked the session viewed. */
+  lastViewedAt?: string | null;
 }
 
-function isCustomEmptyState(item: ChatListItem): item is CustomEmptyStateItem {
-  return 'type' in item && item.type === 'custom-empty-state';
+/** Inline empathy-validation cards and their two explicit responses. */
+export interface ChatValidationProps {
+  /** Validation cards to render inline (e.g., partner's empathy attempt for validation) */
+  cards?: ChatValidationCardItem[];
+  /** Callback when user taps "Yes, mostly" on a validation card */
+  onValidateAccurate?: () => void;
+  /** Callback when user taps "Not quite yet" on a validation card */
+  onValidateNotQuite?: () => void;
 }
 
-function getSameMomentSortRank(item: ChatListItem): number {
-  if (isIndicator(item)) {
-    switch (item.indicatorType) {
-      case 'invitation-sent':
-      case 'invitation-accepted':
-      case 'feel-heard':
-        return 0;
-      case 'stage-chapter':
-        return 1;
-      default:
-        return 1;
-    }
-  }
+/** Caller-supplied render slots around the transcript and composer. */
+export interface ChatSlotProps {
+  /** Render guided action content after the input so chat remains attached to the transcript. */
+  aboveInput?: () => React.ReactNode;
+  /** Render content below the input area (e.g., persistent review affordances) */
+  belowInput?: () => React.ReactNode;
+  /** Render content above the emotion slider / input area (e.g., inline cards) */
+  belowChat?: () => React.ReactNode;
+  /** Render extra content below a message bubble (e.g., draft cards in refinement chat) */
+  messageExtra?: (message: ChatMessage) => React.ReactNode;
+}
 
-  // Validation cards should appear before the same-moment AI explanation so
-  // the user sees the thing being reviewed first, then the framing text.
-  if (isValidationCard(item)) return 1.5;
-  if (isCustomCard(item)) return 3;
-  return 2;
+/** Composer affordances that are not about sending the message itself. */
+export interface ChatComposerProps {
+  /** Optional voice press handler -- passed through to ChatInput; renders mic button when provided */
+  onVoicePress?: () => void;
+  /** Content of a failed message to restore to the input field */
+  failedMessage?: string | null;
+  /** Pre-fill the input with provided text and focus it. */
+  prefillText?: string | null;
+  /** Callback invoked once a prefill has been applied. */
+  onPrefillConsumed?: () => void;
 }
 
 interface ChatInterfaceProps {
@@ -169,24 +178,8 @@ interface ChatInterfaceProps {
   hideInput?: boolean;
   emptyStateTitle?: string;
   emptyStateMessage?: string;
-  showEmotionSlider?: boolean;
-  emotionValue?: number;
-  onEmotionChange?: (value: number) => void;
-  onHighEmotion?: (value: number) => void;
-  compactEmotionSlider?: boolean;
-  /** Render guided action content after the input so chat remains attached to the transcript. */
-  renderAboveInput?: () => React.ReactNode;
-  /** Render content below the input area (e.g., persistent review affordances) */
-  renderBelowInput?: () => React.ReactNode;
-  /** Render content above the emotion slider / input area (e.g., inline cards) */
-  renderBelowChat?: () => React.ReactNode;
   /** Render card-shaped content in the chronological chat stream */
   customCards?: ChatCustomCardItem[];
-  /** Render extra content below a message bubble (e.g., draft cards in refinement chat) */
-  renderMessageExtra?: (message: ChatMessage) => React.ReactNode;
-  onLoadMore?: () => void;
-  hasMore?: boolean;
-  isLoadingMore?: boolean;
   /** Callback when the latest AI message's typewriter animation completes */
   onTypewriterComplete?: () => void;
   /** Callback to report if typewriter is currently animating */
@@ -195,24 +188,10 @@ interface ChatInterfaceProps {
   onInitialRenderReady?: () => void;
   /** Custom element to render when there are no messages (e.g., onboarding compact) */
   customEmptyState?: React.ReactNode;
-  /** Deprecated: ChatInterface now uses the actual keyboard frame instead of offset guessing. */
-  keyboardVerticalOffset?: number;
   /** Skip marking initial messages as history - animate them instead (e.g., after compact signing + mood check) */
   skipInitialHistory?: boolean;
   /** Partner's name for personalized messages */
   partnerName?: string;
-  /** Optional voice press handler -- passed through to ChatInput; renders mic button when provided */
-  onVoicePress?: () => void;
-  /** Content of a failed message to restore to the input field */
-  failedMessage?: string | null;
-  /** Pre-fill the input with provided text and focus it. */
-  prefillText?: string | null;
-  /** Callback invoked once a prefill has been applied. */
-  onPrefillConsumed?: () => void;
-  /** ID of the last chat item the user has seen - used to show "New messages" separator */
-  lastSeenChatItemId?: string | null;
-  /** Server-backed timestamp from before this screen marked the session viewed. */
-  lastViewedAt?: string | null;
   /** Callback when "Context shared" indicator is tapped - navigates to Sharing Status
    * @param timestamp - The timestamp of the shared context (for scrolling to it)
    */
@@ -221,12 +200,12 @@ interface ChatInterfaceProps {
     isFromMe?: boolean,
     indicatorType?: ChatIndicatorType,
   ) => void;
-  /** Validation cards to render inline (e.g., partner's empathy attempt for validation) */
-  validationCards?: ChatValidationCardItem[];
-  /** Callback when user taps "Yes, mostly" on a validation card */
-  onValidateAccurate?: () => void;
-  /** Callback when user taps "Not quite yet" on a validation card */
-  onValidateNotQuite?: () => void;
+  emotionSlider?: ChatEmotionSliderProps;
+  pagination?: ChatPaginationProps;
+  readBoundary?: ChatReadBoundaryProps;
+  validation?: ChatValidationProps;
+  slots?: ChatSlotProps;
+  composer?: ChatComposerProps;
 }
 
 // ============================================================================
@@ -236,23 +215,6 @@ interface ChatInterfaceProps {
 const DEFAULT_EMPTY_TITLE = 'Start the Conversation';
 const DEFAULT_EMPTY_MESSAGE =
   "Share what's on your mind. I'm here to listen and help you work through it.";
-
-const seenAnimatedItemIdsByScope = new Map<string, Set<string>>();
-let localAnimationScopeCounter = 0;
-
-function createLocalAnimationScope(): string {
-  localAnimationScopeCounter += 1;
-  return `__local_chat_animation_scope_${localAnimationScopeCounter}`;
-}
-
-function getSeenAnimatedItemIds(scope: string): Set<string> {
-  let ids = seenAnimatedItemIdsByScope.get(scope);
-  if (!ids) {
-    ids = new Set<string>();
-    seenAnimatedItemIdsByScope.set(scope, ids);
-  }
-  return ids;
-}
 
 export function ChatInterface({
   sessionId,
@@ -265,51 +227,50 @@ export function ChatInterface({
   hideInput = false,
   emptyStateTitle = DEFAULT_EMPTY_TITLE,
   emptyStateMessage = DEFAULT_EMPTY_MESSAGE,
-  showEmotionSlider = false,
-  emotionValue = 5,
-  onEmotionChange,
-  onHighEmotion,
-  compactEmotionSlider = false,
-  renderAboveInput,
-  renderBelowInput,
-  renderBelowChat,
   customCards,
-  renderMessageExtra,
-  onLoadMore,
-  hasMore = false,
-  isLoadingMore = false,
   onTypewriterComplete,
   onTypewriterStateChange,
   onInitialRenderReady,
   customEmptyState,
   skipInitialHistory = false,
   partnerName,
-  lastSeenChatItemId,
-  lastViewedAt,
   onContextSharedPress,
-  validationCards,
-  onValidateAccurate,
-  onValidateNotQuite,
-  onVoicePress,
-  failedMessage,
-  prefillText,
-  onPrefillConsumed,
+  emotionSlider,
+  pagination,
+  readBoundary,
+  validation,
+  slots,
+  composer,
 }: ChatInterfaceProps) {
+  // Grouped props are unpacked here so the rest of the component — and every
+  // hook dependency list — still reads individual values with their original
+  // defaults. Passing a group is what enables the feature; the defaults inside
+  // it match what the flat props used to default to.
+  const { onLoadMore, hasMore = false, isLoadingMore = false } = pagination ?? {};
+  const { lastSeenChatItemId, lastViewedAt } = readBoundary ?? {};
+  const {
+    cards: validationCards,
+    onValidateAccurate,
+    onValidateNotQuite,
+  } = validation ?? {};
+  const {
+    aboveInput: renderAboveInput,
+    belowInput: renderBelowInput,
+    belowChat: renderBelowChat,
+    messageExtra: renderMessageExtra,
+  } = slots ?? {};
+  const { onVoicePress, failedMessage, prefillText, onPrefillConsumed } = composer ?? {};
   const styles = useStyles();
   const safeAreaInsets = useSafeAreaInsets();
   const flatListRef = useRef<FlatList<ChatListItem>>(null);
   const flatListContainerRef = useRef<View>(null);
   const composerContainerRef = useRef<View>(null);
-  const scrollMetricsRef = useRef({
-    offset: 0,
-    contentHeight: 0,
-    layoutHeight: 0,
-  });
-  const isNearBottomRef = useRef(true);
-  const shouldStickToBottomRef = useRef(true);
-  const initialBottomScrollCompleteRef = useRef(false);
+  const stickToBottomRef = useRef<StickToBottomController | null>(null);
+  if (stickToBottomRef.current === null) {
+    stickToBottomRef.current = createStickToBottomController();
+  }
+  const stickToBottom = stickToBottomRef.current;
   const hasReportedInitialRenderReadyRef = useRef(false);
-  const userHasDraggedTranscriptRef = useRef(false);
   const scrollRetryTimeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const scrollRetryAnimationFrameRef = useRef<number | null>(null);
   const localAnimationScopeRef = useRef<string | null>(null);
@@ -332,7 +293,7 @@ export function ChatInterface({
 
   const reportInitialRenderReady = useCallback(() => {
     if (hasReportedInitialRenderReadyRef.current) return;
-    if (scrollMetricsRef.current.layoutHeight <= 0) return;
+    if (stickToBottom.getMetrics().layoutHeight <= 0) return;
 
     hasReportedInitialRenderReadyRef.current = true;
     requestAnimationFrame(() => {
@@ -340,7 +301,7 @@ export function ChatInterface({
         onInitialRenderReady?.();
       });
     });
-  }, [onInitialRenderReady]);
+  }, [onInitialRenderReady, stickToBottom]);
 
   const scrollToBottom = useCallback((animated: boolean) => {
     scrollRetryTimeoutsRef.current.forEach(clearTimeout);
@@ -350,13 +311,12 @@ export function ChatInterface({
     }
 
     const run = () => {
-      const { contentHeight, layoutHeight } = scrollMetricsRef.current;
-      const maxOffset = Math.max(0, contentHeight - layoutHeight);
+      const target = stickToBottom.resolveScrollTarget();
 
-      if (contentHeight > 0 && layoutHeight > 0) {
-        flatListRef.current?.scrollToOffset({ offset: maxOffset, animated });
+      if (target.kind === 'offset') {
+        flatListRef.current?.scrollToOffset({ offset: target.offset, animated });
         if (!animated) {
-          initialBottomScrollCompleteRef.current = true;
+          stickToBottom.markInitialBottomScrollComplete();
           reportInitialRenderReady();
         }
         return;
@@ -373,13 +333,19 @@ export function ChatInterface({
       setTimeout(run, 500),
       setTimeout(run, 800),
     ];
-  }, [reportInitialRenderReady]);
+  }, [reportInitialRenderReady, stickToBottom]);
+
+  /** Follow the transcript only if the reader has not scrolled away from it. */
+  const scrollToBottomIfAnchored = useCallback((animated: boolean) => {
+    if (!stickToBottom.isAnchored()) return;
+    stickToBottom.anchor();
+    scrollToBottom(animated);
+  }, [scrollToBottom, stickToBottom]);
 
   useEffect(() => {
-    initialBottomScrollCompleteRef.current = false;
+    stickToBottom.resetForSession();
     hasReportedInitialRenderReadyRef.current = false;
-    userHasDraggedTranscriptRef.current = false;
-  }, [sessionId]);
+  }, [sessionId, stickToBottom]);
 
   useEffect(() => {
     return () => {
@@ -409,7 +375,9 @@ export function ChatInterface({
       setAuxiliaryControlsVisible(true);
       setIsKeyboardVisible(true);
       updateKeyboardLift(event);
-      if (isNearBottomRef.current || shouldStickToBottomRef.current) {
+      // Unlike the other follow sites this one does not assert the anchor: the
+      // keyboard opening should not re-attach a reader who had scrolled away.
+      if (stickToBottom.isAnchored()) {
         scrollToBottom(false);
       }
     });
@@ -430,43 +398,18 @@ export function ChatInterface({
       shownSub.remove();
       hiddenSub.remove();
     };
-  }, [safeAreaInsets.bottom, scrollToBottom]);
+  }, [safeAreaInsets.bottom, scrollToBottom, stickToBottom]);
 
   // ---------------------------------------------------------------------------
   // Cache-First Architecture: Derive "waiting for AI" from last message role
   // ---------------------------------------------------------------------------
-  // If the last message is from USER, we're waiting for AI response → show typing indicator
-  // If the last message is from AI/SYSTEM, response has arrived → hide typing indicator
-  // This eliminates the need for a separate waitingForAIResponse boolean state
-  const newestChatFlowMessage = useMemo(() => {
-    if (messages.length === 0) return null;
-    // Find the newest message by timestamp among chat-flow roles (USER/AI).
-    // Synthetic messages (EMPATHY_STATEMENT, SHARED_CONTEXT, etc.) may be
-    // appended at the end of the array but have older timestamps — using
-    // array position would incorrectly suppress the typing indicator.
-    let newest: ChatMessage | null = null;
-    let newestTime = 0;
-    for (const m of messages) {
-      if (m.role !== MessageRole.USER && m.role !== MessageRole.AI) continue;
-      const t = new Date(m.timestamp).getTime();
-      if (t >= newestTime) {
-        newestTime = t;
-        newest = m;
-      }
-    }
-    return newest;
-  }, [messages]);
-  const isWaitingForAI = newestChatFlowMessage?.role === MessageRole.USER;
-  const shouldDelayTypingIndicator =
-    isWaitingForAI &&
-    !isLoading &&
-    (newestChatFlowMessage?.status === 'sending' || newestChatFlowMessage?.id.startsWith('optimistic-user-'));
-
-  // Combined loading state: explicit isLoading OR derived from last message
-  // This allows both:
-  // 1. Legacy behavior (passing isLoading for initial fetch, confirmation, etc.)
-  // 2. Cache-First behavior (deriving from last message role)
-  const showTypingIndicator = isLoading || isWaitingForAI;
+  // The indicator is never a flag the sender sets — it is read back out of the
+  // transcript, so it survives remounts, refetches, and partner updates.
+  // See lib/chat/render/typingIndicator.ts for the rules.
+  const { showTypingIndicator, shouldDelay: shouldDelayTypingIndicator } = useMemo(
+    () => deriveTypingIndicatorState(messages, { isLoading }),
+    [messages, isLoading],
+  );
   const [showDelayedTypingIndicator, setShowDelayedTypingIndicator] = useState(false);
 
   useEffect(() => {
@@ -482,17 +425,16 @@ export function ChatInterface({
 
     const timeoutId = setTimeout(() => {
       setShowDelayedTypingIndicator(true);
-    }, 420);
+    }, TYPING_INDICATOR_DELAY_MS);
 
     return () => clearTimeout(timeoutId);
   }, [showTypingIndicator, shouldDelayTypingIndicator]);
 
   useEffect(() => {
-    if (showDelayedTypingIndicator && (isNearBottomRef.current || shouldStickToBottomRef.current)) {
-      shouldStickToBottomRef.current = true;
-      scrollToBottom(false);
+    if (showDelayedTypingIndicator) {
+      scrollToBottomIfAnchored(false);
     }
-  }, [showDelayedTypingIndicator, scrollToBottom]);
+  }, [showDelayedTypingIndicator, scrollToBottomIfAnchored]);
 
   // Track the ID of the chat item currently being animated.
   const [animatingItemId, setAnimatingItemId] = useState<string | null>(null);
@@ -514,80 +456,21 @@ export function ChatInterface({
     seenAnimatedItemIdsRef.current.add(animationIdentity);
   }, []);
 
-  // STABLE SORT: Ensure order never flip-flops if timestamps are identical
-  const listItems = useMemo((): ChatListItem[] => {
-    // 1. Combine messages, indicators, and validation cards
-    const items: ChatListItem[] = [...messages, ...indicators, ...(validationCards || []), ...(customCards || [])];
-
-    // 2. Sort Oldest First so native sticky headers own the visual start of
-    // each section. New messages are kept at the bottom via explicit scroll.
-    items.sort((a, b) => {
-      const aTime = 'timestamp' in a && a.timestamp ? new Date(a.timestamp).getTime() : 0;
-      const bTime = 'timestamp' in b && b.timestamp ? new Date(b.timestamp).getTime() : 0;
-      // Primary sort: Time (oldest first). Chat messages must keep exact
-      // chronological order; otherwise a fast AI reply can land before the
-      // user message that triggered it and get suppressed by the animation
-      // queue's "user already replied" guard.
-      const timeDiff = aTime - bTime;
-
-      const rankDiff = getSameMomentSortRank(a) - getSameMomentSortRank(b);
-      if (Math.abs(timeDiff) <= 1000 && rankDiff !== 0) return rankDiff;
-      if (timeDiff !== 0) return timeDiff;
-
-      // For items within 1 second: indicators should appear above messages at
-      // the same time.
-      const aIsIndicator = isIndicator(a);
-      const bIsIndicator = isIndicator(b);
-      if (aIsIndicator && !bIsIndicator) return -1;
-      if (bIsIndicator && !aIsIndicator) return 1;
-
-      // Validation cards should appear ABOVE messages at the same time.
-      // The follow-up AI copy explains the card after the user sees it.
-      const aIsValidation = isValidationCard(a);
-      const bIsValidation = isValidationCard(b);
-      if (aIsValidation && !bIsValidation) return -1;
-      if (bIsValidation && !aIsValidation) return 1;
-
-      // Custom cards should appear below the prompt/message that introduced them.
-      const aIsCustomCard = isCustomCard(a);
-      const bIsCustomCard = isCustomCard(b);
-      if (aIsCustomCard && !bIsCustomCard) return 1;
-      if (bIsCustomCard && !aIsCustomCard) return -1;
-
-      // Fallback: ID comparison for stability
-      return a.id.localeCompare(b.id);
-    });
-
-    // 3. Inject Compact Item (Custom Empty State)
-    // Condition: We have a custom state and NO messages
-    // This handles both:
-    // - New sessions (no indicators): Compact appears as first item
-    // - Accepted invitations (with indicators): Compact appears below indicators
-    if (customEmptyState && messages.length === 0) {
-      items.push({
-        type: 'custom-empty-state',
-        id: 'custom-empty-state-item',
-      });
-    }
-
-    return items;
-  }, [messages, indicators, validationCards, customCards, customEmptyState, lastSeenChatItemId, lastViewedAt]);
-
-  // Track when we're actively loading history to prevent scroll interference
-  const isLoadingHistoryRef = useRef(false);
-
-  // Snapshot of scroll state when history load started - used to restore position
-  const historyLoadSnapshotRef = useRef<{
-    contentHeight: number;
-    scrollOffset: number;
-  } | null>(null);
-
-  // SCROLL LOGIC: Track newest message TIMESTAMP to detect new messages vs history
-  const newestMessageTimestampRef = useRef<number>(0);
+  // `lastSeenChatItemId`/`lastViewedAt` do not affect assembly, but they stay in
+  // the dependency list so the read-boundary changes still yield a fresh list
+  // reference for the downstream scroll and animation effects.
+  const listItems = useMemo((): ChatListItem[] => assembleChatItems({
+    messages,
+    indicators,
+    validationCards,
+    customCards,
+    hasCustomEmptyState: Boolean(customEmptyState),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [messages, indicators, validationCards, customCards, customEmptyState, lastSeenChatItemId, lastViewedAt]);
 
   useEffect(() => {
     // Skip scroll-to-bottom logic entirely while loading/restoring history
-    if (isLoadingHistoryRef.current) {
+    if (stickToBottom.isLoadingHistory()) {
       return;
     }
 
@@ -598,28 +481,22 @@ export function ChatInterface({
       ? new Date(newestItem.timestamp).getTime()
       : 0;
 
-    const previousTimestamp = newestMessageTimestampRef.current;
-
-    // Update ref immediately
-    newestMessageTimestampRef.current = currentTimestamp;
-
-    // If this is the very first load, jump to the bottom after layout.
-    if (previousTimestamp === 0) {
-      shouldStickToBottomRef.current = true;
-      scrollToBottom(false);
-      return;
+    // A newer newest-item means a genuinely new turn arrived, which does follow
+    // to the bottom. Streaming text into an existing turn leaves the newest
+    // timestamp alone, so it never moves a reader who scrolled away.
+    switch (stickToBottom.observeNewestItemTimestamp(currentTimestamp)) {
+      case 'initial-jump':
+        stickToBottom.anchor();
+        scrollToBottom(false);
+        break;
+      case 'follow-new-item':
+        stickToBottom.anchor();
+        scrollToBottom(true);
+        break;
+      case 'none':
+        break;
     }
-
-    // If the new message is NEWER than what we saw before, it's a new chat message
-    // SCROLL TO BOTTOM
-    if (currentTimestamp > previousTimestamp) {
-      shouldStickToBottomRef.current = true;
-      scrollToBottom(true);
-    }
-
-    // If currentTimestamp === previousTimestamp, we just loaded history
-    // DO NOT SCROLL - the newest message hasn't changed
-  }, [listItems, scrollToBottom]);
+  }, [listItems, scrollToBottom, stickToBottom]);
 
   // Snapshot boundary: captures all message IDs present on first meaningful render.
   // Messages in the snapshot render instantly. Messages not in the snapshot may animate.
@@ -644,7 +521,7 @@ export function ChatInterface({
   }
 
   // Add pagination messages to snapshot (they're history, not new)
-  if (isLoadingHistoryRef.current && messages.length > 0) {
+  if (stickToBottom.isLoadingHistory() && messages.length > 0) {
     messages.forEach((m) => {
       mountSnapshotIdsRef.current.add(m.id);
       seenAnimatedItemIdsRef.current.add(m.id);
@@ -670,62 +547,22 @@ export function ChatInterface({
     return listItems.findIndex((item) => item.id === lastSeenChatItemId);
   }, [listItems, lastSeenChatItemId]);
 
-  const isAtOrBeforeSeenBoundary = useCallback((item: ChatListItem, index: number) => {
-    if (lastSeenItemIndex >= 0 && index <= lastSeenItemIndex) {
-      return true;
-    }
+  const isAtOrBeforeSeenBoundary = useCallback((item: ChatListItem, index: number) => (
+    isAtOrBeforeSeenBoundaryPure(item, index, { lastSeenItemIndex, lastViewedAtTime })
+  ), [lastSeenItemIndex, lastViewedAtTime]);
 
-    if (lastViewedAtTime !== null && 'timestamp' in item && item.timestamp) {
-      const itemTime = new Date(item.timestamp).getTime();
-      if (Number.isFinite(itemTime) && itemTime <= lastViewedAtTime) {
-        return true;
-      }
-    }
-
-    return false;
-  }, [lastSeenItemIndex, lastViewedAtTime]);
-
-  const shouldAnimateItem = useCallback((item: ChatListItem, index: number) => {
-    if (isIndicator(item) || isValidationCard(item) || isCustomEmptyState(item)) return false;
-    const animationIdentity = getAnimationIdentity(item.id);
-    if (animatedItemIdsRef.current.has(item.id) || animatedItemIdsRef.current.has(animationIdentity)) return false;
-    if (seenAnimatedItemIdsRef.current.has(item.id) || seenAnimatedItemIdsRef.current.has(animationIdentity)) return false;
-    if (isPreRegisteredAnimatedId(item.id) || isPreRegisteredAnimatedId(animationIdentity)) return false;
-
-    if (isCustomCard(item)) {
-      if (isAtOrBeforeSeenBoundary(item, index)) return false;
-      return item.animate === true;
-    }
-
-    const message = item as ChatMessage;
-    if (message.role === MessageRole.USER) return false;
-    if (message.id.startsWith('optimistic-')) return false;
-    const wasPresentAtMount = mountSnapshotIdsRef.current.has(message.id);
-    // Anything present in the first rendered transcript is history for this
-    // screen open. Keep the unread separator if needed, but do not replay
-    // persisted messages one-by-one on entry; that makes restored sessions
-    // appear to load progressively and shifts the viewport.
-    if (wasPresentAtMount) return false;
-
-    // If the user has already replied after this assistant/system message,
-    // the message must be visible immediately. It is no longer a live pending
-    // animation candidate, and hiding it leaves blank transcript gaps.
-    for (let i = index + 1; i < listItems.length; i++) {
-      const laterItem = listItems[i];
-      if (isIndicator(laterItem) || isValidationCard(laterItem) || isCustomEmptyState(laterItem) || isCustomCard(laterItem)) continue;
-      if ((laterItem as ChatMessage).role === MessageRole.USER) {
-        return false;
-      }
-    }
-
-    // If there is no server read boundary yet, fall back to the original
-    // mount snapshot so loaded history does not animate on first render.
-    if (lastSeenItemIndex < 0 && lastViewedAtTime === null && mountSnapshotIdsRef.current.has(message.id)) {
-      return false;
-    }
-
-    return true;
-  }, [isAtOrBeforeSeenBoundary, lastSeenItemIndex, lastViewedAtTime, listItems]);
+  const shouldAnimateItem = useCallback((item: ChatListItem, index: number) => (
+    shouldAnimateItemPure(item, index, {
+      items: listItems,
+      animatedItemIds: animatedItemIdsRef.current,
+      seenAnimatedItemIds: seenAnimatedItemIdsRef.current,
+      mountSnapshotIds: mountSnapshotIdsRef.current,
+      lastSeenItemIndex,
+      lastViewedAtTime,
+      getAnimationIdentity,
+      isPreRegisteredAnimatedId,
+    })
+  ), [lastSeenItemIndex, lastViewedAtTime, listItems]);
 
   // Auto-speech: speak new AI messages when enabled
   useEffect(() => {
@@ -763,75 +600,30 @@ export function ChatInterface({
 
   // Find the OLDEST non-user message that should animate
   // Sequential animation: oldest to newest (top to bottom visually)
-  const nextAnimatableMessageId = useMemo(() => {
-    if (animatingItemId !== null) return null;
-
-    // listItems is sorted oldest first. Iterate forward to animate in
-    // chronological order.
-    for (let i = 0; i < listItems.length; i++) {
-      const item = listItems[i];
-      if (!shouldAnimateItem(item, i)) continue;
-
-      // Skip if a user message exists after this AI message chronologically
-      // (user already saw and responded — no need to animate)
-      let hasUserResponseAfter = false;
-      for (let j = i + 1; j < listItems.length; j++) {
-        const laterItem = listItems[j];
-        if (isIndicator(laterItem) || isValidationCard(laterItem) || isCustomEmptyState(laterItem) || isCustomCard(laterItem)) continue;
-        if ((laterItem as ChatMessage).role === MessageRole.USER) {
-          hasUserResponseAfter = true;
-          break;
-        }
-      }
-      if (hasUserResponseAfter) continue;
-      return getAnimationIdentity(item.id);
-    }
-    return null;
-  }, [listItems, animatingItemId, shouldAnimateItem]);
+  const nextAnimatableMessageId = useMemo(() => selectNextAnimatableIdentity(listItems, {
+    animatingItemId,
+    shouldAnimate: shouldAnimateItem,
+    getAnimationIdentity,
+  }), [listItems, animatingItemId, shouldAnimateItem]);
 
   // Once a non-user chat item renders in full, it should never be eligible for
   // a later typewriter pass. This prevents refetches/status changes after
   // button-only actions from replaying older visible messages one by one.
   useEffect(() => {
-    if (animatingItemId !== null) {
-      const animatingIndex = listItems.findIndex((item) => getAnimationIdentity(item.id) === animatingItemId);
-      const animatingItem = animatingIndex >= 0 ? listItems[animatingIndex] : null;
-
-      if (animatingItem && !isIndicator(animatingItem) && !isValidationCard(animatingItem) && !isCustomEmptyState(animatingItem) && !isCustomCard(animatingItem)) {
-        const message = animatingItem as ChatMessage;
-        const hasUserResponseAfter = listItems.slice(animatingIndex + 1).some((laterItem) => {
-          if (isIndicator(laterItem) || isValidationCard(laterItem) || isCustomEmptyState(laterItem) || isCustomCard(laterItem)) return false;
-          return (laterItem as ChatMessage).role === MessageRole.USER;
-        });
-
-        if (message.status !== 'streaming' && hasUserResponseAfter) {
-          markItemAnimationSeen(animatingItemId);
-          setAnimatingItemId(null);
-        }
-      } else if (!animatingItem) {
-        setAnimatingItemId(null);
+    const lock = resolveAnimationLock(listItems, { animatingItemId, getAnimationIdentity });
+    if (lock.action !== 'keep') {
+      if (lock.action === 'release-and-mark-seen' && animatingItemId !== null) {
+        markItemAnimationSeen(animatingItemId);
       }
+      setAnimatingItemId(null);
     }
 
-    listItems.forEach((item, index) => {
-      if (isIndicator(item) || isValidationCard(item) || isCustomEmptyState(item)) return;
-      const animationIdentity = getAnimationIdentity(item.id);
-      if (animationIdentity === nextAnimatableMessageId || animationIdentity === animatingItemId) return;
-
-      if (isCustomCard(item)) {
-        if (item.animate === true && !shouldAnimateItem(item, index)) {
-          markItemAnimationSeen(item.id);
-        }
-        return;
-      }
-
-      const message = item as ChatMessage;
-      if (message.role === MessageRole.USER) return;
-      if (message.id.startsWith('optimistic-')) return;
-      if (!shouldAnimateItem(message, index)) {
-        markItemAnimationSeen(message.id);
-      }
-    });
+    selectItemIdsToMarkSeen(listItems, {
+      animatingItemId,
+      nextAnimatableIdentity: nextAnimatableMessageId,
+      shouldAnimate: shouldAnimateItem,
+      getAnimationIdentity,
+    }).forEach(markItemAnimationSeen);
   }, [listItems, nextAnimatableMessageId, animatingItemId, shouldAnimateItem, markItemAnimationSeen]);
 
   // Notify parent when typewriter state changes
@@ -839,11 +631,10 @@ export function ChatInterface({
     const isAnimating = animatingItemId !== null;
     onTypewriterStateChange?.(isAnimating);
 
-    if (isAnimating && (isNearBottomRef.current || shouldStickToBottomRef.current)) {
-      shouldStickToBottomRef.current = true;
-      scrollToBottom(false);
+    if (isAnimating) {
+      scrollToBottomIfAnchored(false);
     }
-  }, [animatingItemId, onTypewriterStateChange, scrollToBottom]);
+  }, [animatingItemId, onTypewriterStateChange, scrollToBottomIfAnchored]);
 
   const renderItem: ListRenderItem<ChatListItem> = useCallback(({ item, index }) => {
     const nextItem = listItems[index + 1];
@@ -965,12 +756,7 @@ export function ChatInterface({
           message={bubbleMessage}
           animationIdentity={animationIdentity}
           onAnimationStart={isNextAnimatable ? () => setAnimatingItemId(animationIdentity) : undefined}
-          onAnimationProgress={() => {
-            if (isNearBottomRef.current || shouldStickToBottomRef.current) {
-              shouldStickToBottomRef.current = true;
-              scrollToBottom(false);
-            }
-          }}
+          onAnimationProgress={() => scrollToBottomIfAnchored(false)}
           onAnimationComplete={(isNextAnimatable || isCurrentlyAnimating) ? () => {
             markItemAnimationSeen(message.id);
             setAnimatingItemId(null);
@@ -992,7 +778,7 @@ export function ChatInterface({
         {renderMessageExtra?.(message)}
       </>
     );
-  }, [listItems, shouldAnimateItem, nextAnimatableMessageId, animatingItemId, onTypewriterComplete, isSpeaking, currentId, handleSpeakerPress, customEmptyState, styles, partnerName, renderMessageExtra, onContextSharedPress, onValidateAccurate, onValidateNotQuite, markItemAnimationSeen, scrollToBottom]);
+  }, [listItems, shouldAnimateItem, nextAnimatableMessageId, animatingItemId, onTypewriterComplete, isSpeaking, currentId, handleSpeakerPress, customEmptyState, styles, partnerName, renderMessageExtra, onContextSharedPress, onValidateAccurate, onValidateNotQuite, markItemAnimationSeen, scrollToBottomIfAnchored]);
 
   const keyExtractor = useCallback((item: ChatListItem) => getAnimationIdentity(item.id), []);
 
@@ -1003,17 +789,12 @@ export function ChatInterface({
     return (
       <View
         style={styles.typingIndicatorContainer}
-        onLayout={() => {
-          if (isNearBottomRef.current || shouldStickToBottomRef.current) {
-            shouldStickToBottomRef.current = true;
-            scrollToBottom(false);
-          }
-        }}
+        onLayout={() => scrollToBottomIfAnchored(false)}
       >
         {showDelayedTypingIndicator && <TypingIndicator />}
       </View>
     );
-  }, [showDelayedTypingIndicator, styles, scrollToBottom]);
+  }, [showDelayedTypingIndicator, styles, scrollToBottomIfAnchored]);
 
   // Memoize the empty state element (not a callback!) to prevent remounts
   // NOTE: styles are excluded from deps because useStyles() creates new refs each render
@@ -1051,61 +832,30 @@ export function ChatInterface({
   }, [isLoadingMore, styles]);
 
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    const distanceFromBottom = Math.max(
-      0,
-      contentSize.height - layoutMeasurement.height - contentOffset.y,
-    );
-    const isNearBottom = distanceFromBottom < 80;
-
-    scrollMetricsRef.current = {
-      offset: contentOffset.y,
-      contentHeight: contentSize.height,
-      layoutHeight: layoutMeasurement.height,
-    };
-    isNearBottomRef.current = isNearBottom;
-    shouldStickToBottomRef.current = isNearBottom;
-  }, []);
+    stickToBottom.observeScroll(event.nativeEvent);
+  }, [stickToBottom]);
 
   const handleContentSizeChange = useCallback((_width: number, height: number) => {
-    const snapshot = historyLoadSnapshotRef.current;
+    const resolution = stickToBottom.observeContentSize(height);
 
-    // Always keep scroll metrics updated
-    scrollMetricsRef.current.contentHeight = height;
-
-    // If we're not in history loading mode, keep the bottom pinned only when
-    // the user was already reading at the bottom.
-    if (!isLoadingHistoryRef.current || !snapshot) {
-      scrollMetricsRef.current.contentHeight = height;
-      if (isNearBottomRef.current || shouldStickToBottomRef.current) {
-        scrollToBottom(false);
-      }
+    if (resolution.kind === 'restore-history') {
+      // History was prepended above the viewport; move down by exactly what was
+      // added so the reader's anchor does not appear to shift.
+      flatListRef.current?.scrollToOffset({ offset: resolution.offset, animated: false });
       return;
     }
 
-    // Check if content has grown (history was prepended)
-    if (snapshot.contentHeight > 0 && height > snapshot.contentHeight) {
-      // Calculate how much content was added above the current view
-      const delta = height - snapshot.contentHeight;
-
-      // Restore scroll position: add the delta to maintain viewport anchor
-      flatListRef.current?.scrollToOffset({
-        offset: snapshot.scrollOffset + delta,
-        animated: false,
-      });
-
-      // Clear the snapshot and loading flag - restoration complete
-      historyLoadSnapshotRef.current = null;
-      isLoadingHistoryRef.current = false;
-    }
-  }, [scrollToBottom]);
-
-  const handleListLayout = useCallback((event: LayoutChangeEvent) => {
-    scrollMetricsRef.current.layoutHeight = event.nativeEvent.layout.height;
-    if (isNearBottomRef.current || shouldStickToBottomRef.current) {
+    if (resolution.kind === 'stick-to-bottom') {
       scrollToBottom(false);
     }
-  }, [scrollToBottom]);
+  }, [scrollToBottom, stickToBottom]);
+
+  const handleListLayout = useCallback((event: LayoutChangeEvent) => {
+    stickToBottom.observeLayoutHeight(event.nativeEvent.layout.height);
+    if (stickToBottom.isAnchored()) {
+      scrollToBottom(false);
+    }
+  }, [scrollToBottom, stickToBottom]);
 
   const updateMessageListBottomInset = useCallback(() => {
     if (!isKeyboardVisible) {
@@ -1162,42 +912,35 @@ export function ChatInterface({
   }, [isKeyboardVisible, renderAboveInput, renderBelowInput]);
 
   const handleEndReached = useCallback(() => {
-    if (!initialBottomScrollCompleteRef.current || !userHasDraggedTranscriptRef.current) {
+    if (!stickToBottom.canLoadMoreHistory()) {
       return;
     }
 
     if (hasMore && !isLoadingMore && onLoadMore) {
-      // Set flag BEFORE calling onLoadMore to prevent any scroll effects
-      isLoadingHistoryRef.current = true;
-
-      // Capture current scroll state to restore after content loads
-      historyLoadSnapshotRef.current = {
-        contentHeight: scrollMetricsRef.current.contentHeight,
-        scrollOffset: scrollMetricsRef.current.offset,
-      };
-
+      // Snapshot scroll state BEFORE calling onLoadMore so no scroll effect can
+      // run against stale metrics.
+      stickToBottom.beginHistoryLoad();
       onLoadMore();
     }
-  }, [hasMore, isLoadingMore, onLoadMore]);
+  }, [hasMore, isLoadingMore, onLoadMore, stickToBottom]);
 
   const handleScrollBeginDrag = useCallback(() => {
-    userHasDraggedTranscriptRef.current = true;
-  }, []);
+    stickToBottom.markUserDragged();
+  }, [stickToBottom]);
 
   // Cleanup: If loading finishes but no content was added, reset state
   useEffect(() => {
-    if (!isLoadingMore && isLoadingHistoryRef.current) {
+    if (!isLoadingMore && stickToBottom.isLoadingHistory()) {
       // Give handleContentSizeChange a chance to fire first
       const timeoutId = setTimeout(() => {
-        if (isLoadingHistoryRef.current) {
-          isLoadingHistoryRef.current = false;
-          historyLoadSnapshotRef.current = null;
+        if (stickToBottom.isLoadingHistory()) {
+          stickToBottom.abortHistoryLoad();
         }
       }, 500);
 
       return () => clearTimeout(timeoutId);
     }
-  }, [isLoadingMore]);
+  }, [isLoadingMore, stickToBottom]);
 
   const stickyHeaderIndices = useMemo(() => {
     // VirtualizedList counts ListHeaderComponent as scroll child 0, so data
@@ -1241,12 +984,12 @@ export function ChatInterface({
       style={[styles.bottomContainer, isKeyboardVisible && styles.bottomContainerKeyboardOpen]}
       onLayout={handleComposerLayout}
     >
-      {showEmotionSlider && onEmotionChange && (
+      {emotionSlider && (
         <EmotionSlider
-          value={emotionValue}
-          onChange={onEmotionChange}
-          onHighEmotion={onHighEmotion}
-          compact={compactEmotionSlider}
+          value={emotionSlider.value ?? 5}
+          onChange={emotionSlider.onChange}
+          onHighEmotion={emotionSlider.onHighEmotion}
+          compact={emotionSlider.compact ?? false}
           testID="chat-emotion-slider"
         />
       )}

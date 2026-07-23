@@ -172,6 +172,19 @@ status: living
 
 ## Security Considerations
 
+**Both Partners' Empathy Status Broadcast on the Shared Session Channel (Not Resolved):**
+- Issue: Three publishers send **both** partners' full empathy status over the session-scoped Ably channel, which both participants subscribe to. Each device therefore receives the *other* user's private Stage 2 content.
+- Files:
+  - `backend/src/controllers/sessions.ts` (1124) — `partner.session_viewed`
+  - `backend/src/controllers/sessions.ts` (1192) — `partner.share_tab_viewed`
+  - `backend/src/controllers/stage2.ts` (242) — `empathy.status_updated`
+  - All three publish the result of `buildEmpathyExchangeStatusForBothUsers()` (`backend/src/services/empathy-status.ts:276`), a `{ [userId]: EmpathyExchangeStatusResponse }` map, as the `empathyStatuses` field.
+- Exposed per partner (`shared/src/dto/empathy.ts:240`): `myAttempt` (their empathy attempt content, *before* the reconciler reveals it), `sharedContext.content`, `mySharedContext.content`, `refinementHint` (coaching on how their attempt fell short), and `myReconcilerResult.gapSummary`.
+- Risk: This inverts the core Stage 2 privacy model, in which an empathy attempt stays private until the reconciler judges it ready and the subject consents. The data is published unconditionally as soon as either partner opens the session or the Share tab.
+- Why current mitigation is insufficient: the mobile client self-selects its own entry by key (`mobile/src/screens/UnifiedSessionScreen.tsx:866`, `:878`, `:1084`), but that is a *display* filter, not a confidentiality boundary — the partner's content has already reached a device that should never have received it, where it is visible in memory, network inspectors, and Ably debug tooling. `excludeUserId` does not help: it is passed at both `sessions.ts` sites but only suppresses the *actor's* own echo, not the partner who is the subject of the data.
+- Fix approach: publish only the recipient's own status per recipient, using the `forUserId` + single `empathyStatus` shape that `empathy.status_updated` already uses at its other two publishers (`stage2.ts:1247`, `services/reconciler/state.ts:336`). The mobile addressing filter (`isRealtimePayloadAddressedToCurrentUser`) already drops payloads not addressed to the current user, and `forUserId` is now typed as a string on all addressed events (`shared/src/contracts/realtime.ts`), so the client side largely exists. Then retire the `empathyStatuses` field and its three self-select reads. This preserves the round-trip saving the map was introduced for — each user still gets their status pushed, just only their own.
+- Note: this is a behavior change, so it was deliberately left out of the behavior-preserving chat-modernization program that identified it (2026-07-22).
+
 **E2E Auth Bypass (Not Resolved):**
 - Issue: E2E auth bypass (`E2E_AUTH_BYPASS=true` environment variable) is built into production auth middleware
 - Status: `backend/src/middleware/e2e-auth.ts` was created but is **never imported** anywhere. The bypass logic (`handleE2EAuthBypass()`, lines 74-121) still lives inline in `backend/src/middleware/auth.ts`. The bypass was duplicated to a separate file but not actually extracted from `auth.ts` — production auth middleware still contains E2E bypass logic.

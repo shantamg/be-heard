@@ -740,5 +740,71 @@ describe('sendMessageStream characterization', () => {
       expect(chunkText).not.toContain('Second part after disconnect.');
       expect(handle.events().map((e) => e.event)).not.toContain('complete');
     });
+
+    it('records nothing on the truncated row that would mark it incomplete', async () => {
+      const chunks = [
+        { type: 'text', text: '<thinking>t</thinking>\n' },
+        { type: 'text', text: 'First visible part. This is long enough to exit the tag trap safely, well over the fifty character minimum. ' },
+        { type: 'text', text: 'Second part after disconnect.' },
+        { type: 'done' },
+      ];
+
+      // Run the same turn twice: once with a mid-stream disconnect, once
+      // without. Comparing the two persisted payloads (rather than checking a
+      // hardcoded key list) catches ANY disconnect-specific field or value
+      // under ANY name, while staying green as the Message model evolves.
+      async function runTurn(disconnectAfterFirstVisibleChunk: boolean) {
+        stubDb(1);
+        (prisma.message.create as jest.Mock).mockClear();
+        let fireClose: () => void = () => undefined;
+        const req = createMockRequest({
+          user: mockUser,
+          body: { content: savedUserMessage.content },
+          onClose: (fire) => {
+            fireClose = fire;
+          },
+        });
+
+        async function* generator() {
+          for (const chunk of chunks) {
+            if (
+              disconnectAfterFirstVisibleChunk &&
+              chunk.text === 'Second part after disconnect.'
+            ) {
+              fireClose();
+            }
+            yield chunk;
+          }
+        }
+        (getSonnetStreamingResponse as jest.Mock).mockReturnValue(generator());
+
+        const handle = createMockResponse();
+        await sendMessageStream(req as Request, handle.res as Response);
+
+        return (prisma.message.create as jest.Mock).mock.calls.find(
+          ([arg]) => arg.data.role === 'AI'
+        )[0].data;
+      }
+
+      const truncated = await runTurn(true);
+      const complete = await runTurn(false);
+
+      // Sanity: the disconnect really did truncate, so the comparison below is
+      // between a truncated row and a complete one.
+      expect(truncated.content).not.toEqual(complete.content);
+      expect(complete.content).toContain('Second part after disconnect.');
+
+      // The ONLY difference is the text itself. Nothing on the row varies with
+      // whether the stream was cut short. This catches a marker under any name
+      // whose VALUE distinguishes the two runs.
+      expect(Object.keys(truncated).sort()).toEqual(Object.keys(complete).sort());
+      expect({ ...truncated, content: '<text>' }).toEqual({ ...complete, content: '<text>' });
+
+      // The comparison above cannot see a marker written with the SAME value
+      // on both paths (e.g. a hardcoded completionStatus), so also assert that
+      // no completeness-flavoured field exists at all.
+      expect(Object.keys(truncated).filter((k) => /complet|truncat|partial|finish/i.test(k)))
+        .toEqual([]);
+    });
   });
 });

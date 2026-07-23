@@ -17,6 +17,14 @@ import {
   MessageDTO,
   ContextUpdatedPayload,
 } from '@meet-without-fear/shared';
+import type {
+  SessionEventPublishData,
+  UserEventPublishData,
+  SessionEventEnvelope,
+  UserEventEnvelope,
+  NoExtraSessionEventKeys,
+  NoExtraUserEventKeys,
+} from '@meet-without-fear/shared';
 
 /**
  * Session events for real-time communication between partners.
@@ -75,6 +83,10 @@ function getAblyClient(): Ably.Rest {
 
 // Lazy-initialized Ably client
 let ablyClient: Ably.Rest | undefined;
+
+function shouldSkipAblyInE2E(): boolean {
+  return process.env.E2E_AUTH_BYPASS === 'true' && !process.env.ABLY_API_KEY;
+}
 
 export function getAbly(): Ably.Rest {
   if (ablyClient === undefined) {
@@ -146,6 +158,11 @@ export async function publishTopicFrameUpdated(
   topicFrame: string,
   confirmed: boolean
 ): Promise<void> {
+  if (shouldSkipAblyInE2E()) {
+    logger.info(`[Realtime] E2E mode without ABLY_API_KEY - skipping session.topic_frame_updated publish for session ${sessionId}`);
+    return;
+  }
+
   const cbStats = ablyCircuitBreaker.getStats();
   if (cbStats.state === 'OPEN') {
     logger.warn(`[Realtime] Ably circuit breaker OPEN - skipping topic_frame_updated for ${sessionId}`);
@@ -154,12 +171,15 @@ export async function publishTopicFrameUpdated(
   const ably = getAbly();
   try {
     const channel = ably.channels.get(REALTIME_CHANNELS.session(sessionId));
-    await channel.publish('session.topic_frame_updated', {
+    // Published directly rather than via publishSessionEvent: topic-frame drafts
+    // are high-frequency and must not touch session.updatedAt / notify members.
+    const payload: SessionEventPublishData<'session.topic_frame_updated'> = {
       sessionId,
       timestamp: Date.now(),
       topicFrame,
       confirmed,
-    });
+    };
+    await channel.publish('session.topic_frame_updated', payload);
     ablyCircuitBreaker.recordSuccess();
     logger.info(`[Realtime] Published session.topic_frame_updated to session ${sessionId}`);
   } catch (error) {
@@ -169,13 +189,25 @@ export async function publishTopicFrameUpdated(
   }
 }
 
-export async function publishSessionEvent(
+/**
+ * Publishes a session event, typed against the shared realtime contract.
+ *
+ * `event` must be a known `SessionEventType` and `data` must match that event's
+ * schema in `shared/src/contracts/realtime.ts`. An unknown event name is a
+ * compile error, as is an unknown or misspelled payload key that is statically
+ * visible at the call site (see the scope note in the contract's docblock). To
+ * add a field, add it to the contract first; both sides then pick it up.
+ */
+export async function publishSessionEvent<
+  E extends SessionEventType,
+  T extends SessionEventPublishData<E>,
+>(
   sessionId: string,
-  event: SessionEvent | SessionEventType,
-  data: Record<string, unknown>,
+  event: E,
+  data: T & NoExtraSessionEventKeys<E, T>,
   excludeUserId?: string
 ): Promise<void> {
-  if (process.env.E2E_AUTH_BYPASS === 'true' && !process.env.ABLY_API_KEY) {
+  if (shouldSkipAblyInE2E()) {
     logger.info(`[Realtime] E2E mode without ABLY_API_KEY - skipping ${event} publish for session ${sessionId}`);
     return;
   }
@@ -189,11 +221,19 @@ export async function publishSessionEvent(
 
   const ably = getAbly();
 
-  const eventData: SessionEventData = {
-    sessionId,
+  // Typed as the contract envelope rather than SessionEventData: caller data is
+  // spread over `timestamp` and may legitimately override it with an ISO string
+  // (controllers/sessions.ts does exactly that for invitation.confirmed).
+  //
+  // sessionId is stamped AFTER the spread. It has to match the channel we are
+  // publishing to, so a caller must not be able to override it — or blank it by
+  // passing `sessionId: undefined`, which would produce an event the consumer
+  // boundary drops.
+  const eventData: SessionEventEnvelope & Record<string, unknown> = {
     timestamp: Date.now(),
     excludeUserId,
     ...data,
+    sessionId,
   };
 
   try {
@@ -226,11 +266,19 @@ export async function publishSessionEvent(
  * @param data - The event data payload (must include sessionId)
  * @returns Promise<void>
  */
-export async function publishUserEvent(
+export async function publishUserEvent<
+  E extends UserEventType,
+  T extends UserEventPublishData<E>,
+>(
   userId: string,
-  event: UserEventType,
-  data: { sessionId: string;[key: string]: unknown }
+  event: E,
+  data: T & NoExtraUserEventKeys<E, T>
 ): Promise<void> {
+  if (shouldSkipAblyInE2E()) {
+    logger.info(`[Realtime] E2E mode without ABLY_API_KEY - skipping ${event} publish for user ${userId}`);
+    return;
+  }
+
   // Circuit breaker fast-fail
   const userCbStats = ablyCircuitBreaker.getStats();
   if (userCbStats.state === 'OPEN') {
@@ -240,7 +288,9 @@ export async function publishUserEvent(
 
   const ably = getAbly();
 
-  const eventData: UserEventData = {
+  // Typed as the contract envelope rather than UserEventData: `data` is now the
+  // generic exact-payload type, which carries no index signature.
+  const eventData: UserEventEnvelope & Record<string, unknown> = {
     ...data,
     timestamp: Date.now(),
   };
@@ -333,6 +383,10 @@ export async function notifySessionMembers(
  * @returns Promise<boolean> - true if user is present
  */
 export async function isUserPresent(sessionId: string, userId: string): Promise<boolean> {
+  if (shouldSkipAblyInE2E()) {
+    return false;
+  }
+
   const ably = getAbly();
 
   try {
@@ -354,6 +408,10 @@ export async function isUserPresent(sessionId: string, userId: string): Promise<
  * @returns Promise<string[]> - Array of user IDs currently present
  */
 export async function getSessionPresence(sessionId: string): Promise<string[]> {
+  if (shouldSkipAblyInE2E()) {
+    return [];
+  }
+
   const ably = getAbly();
 
   try {
@@ -593,14 +651,17 @@ export async function publishSessionResolved(
  * @param options - Optional configuration
  * @param options.excludeUserId - User ID to exclude from receiving the Ably event (typically the actor)
  */
-export async function notifyPartner(
+export async function notifyPartner<
+  E extends SessionEvent,
+  T extends SessionEventPublishData<E>,
+>(
   sessionId: string,
   partnerId: string,
-  event: SessionEvent,
-  data: Record<string, unknown>,
+  event: E,
+  data: T & NoExtraSessionEventKeys<E, T>,
   options?: { excludeUserId?: string }
 ): Promise<void> {
-  if (process.env.E2E_AUTH_BYPASS === 'true' && !process.env.ABLY_API_KEY) {
+  if (shouldSkipAblyInE2E()) {
     logger.info(`[Realtime] E2E mode without ABLY_API_KEY - skipping partner ${event} notification for session ${sessionId}`);
     return;
   }
@@ -628,12 +689,20 @@ export async function notifyPartner(
  * @param event - The event type
  * @param data - The event data payload
  */
-export async function notifyPartnerWithFallback(
+export async function notifyPartnerWithFallback<
+  E extends SessionEvent,
+  T extends SessionEventPublishData<E>,
+>(
   sessionId: string,
   partnerId: string,
-  event: SessionEvent,
-  data: Record<string, unknown>
+  event: E,
+  data: T & NoExtraSessionEventKeys<E, T>
 ): Promise<void> {
+  if (shouldSkipAblyInE2E()) {
+    logger.info(`[Realtime] E2E mode without ABLY_API_KEY - skipping partner ${event} fallback notification for session ${sessionId}`);
+    return;
+  }
+
   // Always publish to Ably for clients that might reconnect
   // Note: publishSessionEvent automatically notifies all session members
   await publishSessionEvent(sessionId, event, data);
@@ -713,6 +782,30 @@ export async function publishSessionCreated(
 // ============================================================================
 
 /**
+ * The metadata tail of a `message.ai_response`, derived FROM the contract rather
+ * than declared alongside it.
+ *
+ * This matters: `metadata` is spread into the payload, and TypeScript does not
+ * excess-check properties introduced through a spread. If this were an inline
+ * literal type, a field added here would ship on the wire without ever touching
+ * the contract or the DTO. Deriving it means adding a statically-visible field
+ * requires adding it to `contracts/realtime.ts` first — see the scope note in
+ * that module's docblock for what type-level checking cannot cover.
+ */
+type MessageAIResponseMetadata = Omit<
+  SessionEventPublishData<'message.ai_response'>,
+  'sessionId' | 'timestamp' | 'excludeUserId' | 'forUserId' | 'message'
+>;
+
+/**
+ * Rejects metadata keys the contract does not declare, including via a widened
+ * variable — excess-property checking alone only covers fresh object literals.
+ */
+type NoExtraMetadataKeys<T> = {
+  [K in Exclude<keyof T, keyof MessageAIResponseMetadata>]?: never;
+};
+
+/**
  * Publish an AI response message via Ably for fire-and-forget message flow.
  * Called after background AI processing completes.
  *
@@ -721,20 +814,23 @@ export async function publishSessionCreated(
  * @param message - The AI response message DTO
  * @param metadata - Optional metadata for UI updates (feel heard check, invitation, etc.)
  */
-export async function publishMessageAIResponse(
+export async function publishMessageAIResponse<T extends MessageAIResponseMetadata>(
   sessionId: string,
   forUserId: string,
   message: MessageDTO,
-  metadata?: {
-    offerFeelHeardCheck?: boolean;
-    offerReadyToShare?: boolean;
-    proposedEmpathyStatement?: string | null;
-    expectingMore?: boolean;
-  }
+  metadata?: T & NoExtraMetadataKeys<T>
 ): Promise<void> {
+  if (shouldSkipAblyInE2E()) {
+    logger.info(`[Realtime] E2E mode without ABLY_API_KEY - skipping message.ai_response publish for session ${sessionId}`);
+    return;
+  }
+
   const ably = getAbly();
 
-  const payload: MessageAIResponsePayload = {
+  // Typed against BOTH the DTO and the contract, so the two cannot drift apart
+  // without a compile error.
+  const payload: MessageAIResponsePayload &
+    SessionEventPublishData<'message.ai_response'> = {
     sessionId,
     timestamp: Date.now(),
     forUserId,
@@ -775,9 +871,14 @@ export async function publishMessageError(
   errorMessage: string,
   canRetry: boolean = true
 ): Promise<void> {
+  if (shouldSkipAblyInE2E()) {
+    logger.info(`[Realtime] E2E mode without ABLY_API_KEY - skipping message.error publish for session ${sessionId}`);
+    return;
+  }
+
   const ably = getAbly();
 
-  const payload: MessageErrorPayload = {
+  const payload: MessageErrorPayload & SessionEventPublishData<'message.error'> = {
     sessionId,
     timestamp: Date.now(),
     forUserId,
@@ -854,9 +955,14 @@ export async function publishContextUpdated(
   userId: string,
   assembledAt: string
 ): Promise<void> {
+  if (shouldSkipAblyInE2E()) {
+    logger.info(`[Realtime] E2E mode without ABLY_API_KEY - skipping context.updated publish for session ${sessionId}`);
+    return;
+  }
+
   const ably = getAbly();
 
-  const payload: ContextUpdatedPayload = {
+  const payload: ContextUpdatedPayload & SessionEventPublishData<'context.updated'> = {
     sessionId,
     timestamp: Date.now(),
     userId,
