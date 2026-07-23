@@ -1372,6 +1372,7 @@ export async function sendMessageStream(req: Request, res: Response): Promise<vo
     // Stream AI response (with analysis block trap)
     // =========================================================================
     let accumulatedText = '';
+    let rawAccumulatedText = ''; // tag-stripped but NOT planner-scrubbed; used as fallback
     let metadata: SessionStateToolInput = {};
     let streamError: Error | null = null;
 
@@ -1494,6 +1495,11 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
         // This removes newlines at the start without breaking word spacing in subsequent chunks
         if (!firstChunkTime && cleanText.length > 0) {
           cleanText = cleanText.trimStart();
+        }
+
+        // Track tag-stripped text before planner scrubbing (fallback if scrubbing empties everything)
+        if (cleanText.length > 0) {
+          rawAccumulatedText += cleanText;
         }
 
         const scrubbed = scrubVisibleAIText(cleanText, { preserveBoundaryWhitespace: true });
@@ -1696,14 +1702,22 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
 
       // Guard: empty AI response after parsing + dispatch means the model emitted
       // no usable user-facing text, or the upstream stream failed without
-      // producing text. Treat this as a failed turn so the frontend can show its
-      // retry/error state instead of saving a misleading canned response.
+      // producing text.
       if (!accumulatedText.trim()) {
-        logger.error(`[sendMessageStream:${requestId}] Empty AI response after tag stripping`, {
-          dispatchTag: dispatchTag ?? null,
-          scrubbedPlannerText: scrubbedResponse.scrubbed,
-        });
-        throw new Error('AI response was empty after tag stripping');
+        if (rawAccumulatedText.trim()) {
+          // Scrubbing removed all visible content (e.g. only planner lines survived
+          // tag stripping). Fall back to the pre-scrub text — showing slightly raw
+          // text is far better than throwing and deleting the user message.
+          logger.warn(`[sendMessageStream:${requestId}] Scrubbing produced empty response; falling back to pre-scrub text (${rawAccumulatedText.trim().length} chars)`);
+          accumulatedText = rawAccumulatedText.trim();
+          sendSSE(res, { event: 'chunk', data: { text: accumulatedText } });
+        } else {
+          logger.error(`[sendMessageStream:${requestId}] Empty AI response after tag stripping`, {
+            dispatchTag: dispatchTag ?? null,
+            scrubbedPlannerText: scrubbedResponse.scrubbed,
+          });
+          throw new Error('AI response was empty after tag stripping');
+        }
       }
 
       finalizeTurnMetrics(turnId);

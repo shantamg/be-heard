@@ -899,6 +899,91 @@ describe('Messages API (Fire-and-Forget)', () => {
         })
       );
     });
+
+    it('falls back to pre-scrub text when scrubbing empties the response', async () => {
+      // Regression #672: if the visible portion after </thinking> consists entirely
+      // of planner lines that scrubVisibleAIText removes, the guard throws and
+      // deletes the user message. The fix falls back to the pre-scrub text.
+      const stage1Progress = {
+        id: 'progress-1',
+        sessionId: mockSessionId,
+        userId: mockUser.id,
+        stage: 1,
+        status: 'IN_PROGRESS',
+        gatesSatisfied: {},
+      };
+      const session = {
+        id: mockSessionId,
+        status: 'ACTIVE',
+        relationship: {
+          members: [{ userId: mockUser.id }, { userId: 'partner-1' }],
+        },
+      };
+      const userMessage = {
+        id: 'msg-user-scrub-empty',
+        sessionId: mockSessionId,
+        senderId: mockUser.id,
+        role: 'USER',
+        content: 'Tell me more.',
+        stage: 1,
+        timestamp: new Date('2026-05-25T18:00:00Z'),
+      };
+
+      (prisma.session.findFirst as jest.Mock).mockResolvedValue(session);
+      (prisma.session.findUnique as jest.Mock).mockResolvedValue(session);
+      (prisma.stageProgress.findFirst as jest.Mock).mockResolvedValue(stage1Progress);
+      (prisma.stageProgress.findUnique as jest.Mock).mockResolvedValue(stage1Progress);
+      (prisma.message.create as jest.Mock).mockImplementation(async ({ data }) => (
+        data.role === 'USER'
+          ? { ...userMessage, content: data.content }
+          : {
+              id: 'msg-ai-scrub-empty',
+              sessionId: mockSessionId,
+              senderId: null,
+              forUserId: mockUser.id,
+              role: 'AI',
+              content: data.content,
+              stage: data.stage,
+              timestamp: new Date('2026-05-25T18:00:02Z'),
+            }
+      ));
+      (prisma.message.findMany as jest.Mock).mockResolvedValue([userMessage]);
+      (prisma.message.count as jest.Mock).mockResolvedValue(1);
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({ name: 'Partner' });
+      (prisma.userVessel.findUnique as jest.Mock).mockResolvedValue(null);
+
+      // Model responds with <thinking> then ONLY planner lines that get scrubbed
+      async function* llmStream() {
+        yield { type: 'text', text: '<thinking>\nI need to respond carefully.\n</thinking>\n' };
+        yield { type: 'text', text: 'I should acknowledge what they said.\n' };
+        yield { type: 'text', text: "Here's my plan to address their concern." };
+        yield { type: 'done' };
+      }
+      (getSonnetStreamingResponse as jest.Mock).mockReturnValue(llmStream());
+
+      const req = createMockRequest({
+        user: mockUser,
+        params: { id: mockSessionId },
+        body: { content: userMessage.content },
+      });
+      const { res, writeMock } = createMockResponse();
+
+      await sendMessageStream(req as Request, res as Response);
+
+      const sseOutput = writeMock.mock.calls.map(([chunk]) => String(chunk)).join('');
+      // Should NOT throw or delete user message
+      expect(prisma.message.delete).not.toHaveBeenCalled();
+      // Should contain fallback text (the pre-scrub planner lines)
+      expect(sseOutput).toContain('acknowledge what they said');
+      // AI reply persisted
+      expect(prisma.message.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            role: 'AI',
+          }),
+        })
+      );
+    });
   });
 
   describe('POST /sessions/:id/feel-heard (confirmFeelHeard)', () => {
