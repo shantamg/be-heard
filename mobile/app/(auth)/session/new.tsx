@@ -58,7 +58,6 @@ export default function NewSessionScreen() {
 
   const [mode, setMode] = useState<'pick' | 'new'>('pick');
   const [selectedPerson, setSelectedPerson] = useState<PersonSummaryDTO | null>(null);
-  const [bypassDuplicateCheck, setBypassDuplicateCheck] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [innerThoughtsContext, setInnerThoughtsContext] = useState<GenerateContextResponse | null>(null);
@@ -113,7 +112,6 @@ export default function NewSessionScreen() {
     if (person) {
       setSelectedPerson(person);
       setMode('pick');
-      setBypassDuplicateCheck(false);
     }
   }, [partnerId, people, selectedPerson]);
 
@@ -123,7 +121,7 @@ export default function NewSessionScreen() {
   // Effective mode: if no people exist, treat as 'new' regardless of state
   const effectiveMode = hasPeople ? mode : 'new';
 
-  const createSessionFromForm = async () => {
+  const createSessionFromForm = async (forceCreate = false) => {
     // Build optional context and innerThoughtsId for session creation
     const context = innerThoughtsContext?.contextSummary;
     const linkedInnerThoughtsId = innerThoughtsId;
@@ -138,9 +136,10 @@ export default function NewSessionScreen() {
           ...(context && { context }),
           ...(linkedInnerThoughtsId && { innerThoughtsId: linkedInnerThoughtsId }),
           ...(linkedAtMessageId && { linkedAtMessageId }),
+          ...(forceCreate && { forceCreate: true }),
         });
         // Handle existing active session response
-        if ('existingActiveSession' in response && !bypassDuplicateCheck) {
+        if ('existingActiveSession' in response) {
           const existing = (response as { existingActiveSession: { id: string; status: string } }).existingActiveSession;
           Alert.alert(
             `Active session with ${selectedPerson.name}`,
@@ -154,8 +153,7 @@ export default function NewSessionScreen() {
                 text: 'Start New Anyway',
                 style: 'default',
                 onPress: () => {
-                  setBypassDuplicateCheck(true);
-                  // Re-submit will bypass the check
+                  void createSessionFromForm(true);
                 },
               },
             ]
@@ -337,10 +335,7 @@ export default function NewSessionScreen() {
                         styles.personCard,
                         selectedPerson?.id === person.id && styles.personCardSelected,
                       ]}
-                      onPress={() => {
-                        setSelectedPerson(person);
-                        setBypassDuplicateCheck(false);
-                      }}
+                      onPress={() => setSelectedPerson(person)}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: selectedPerson?.id === person.id }}
                     >
@@ -374,7 +369,7 @@ export default function NewSessionScreen() {
             )}
 
             {/* Active Session Warning */}
-            {effectiveMode === 'pick' && selectedPerson && selectedPerson.activeSessionCount > 0 && !bypassDuplicateCheck && (
+            {effectiveMode === 'pick' && selectedPerson && selectedPerson.activeSessionCount > 0 && (
               <View style={styles.activeWarningBanner}>
                 <Text style={styles.activeWarningText}>
                   You have an active session with {selectedPerson.name}

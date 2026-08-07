@@ -108,6 +108,9 @@ export interface CreateSessionRequest {
   innerThoughtsId?: string;
   // Optional: Inner Thoughts message where the user tapped the start-session action
   linkedAtMessageId?: string;
+
+  // Explicit confirmation that the user wants another session despite an active one
+  forceCreate?: boolean;
 }
 
 export interface CreateSessionResponse {

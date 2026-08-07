@@ -48,6 +48,22 @@ describe('createSessionRequestSchema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts an explicit force-create confirmation', () => {
+    const result = createSessionRequestSchema.safeParse({
+      personId: 'clxxxxxxxxxxxxxxxxxx123',
+      forceCreate: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a non-boolean force-create value', () => {
+    const result = createSessionRequestSchema.safeParse({
+      personId: 'clxxxxxxxxxxxxxxxxxx123',
+      forceCreate: 'true',
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('rejects context over 500 chars', () => {
     const result = createSessionRequestSchema.safeParse({
       inviteName: 'My Partner',

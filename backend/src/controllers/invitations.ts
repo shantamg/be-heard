@@ -33,6 +33,7 @@ const createSessionSchema = z.object({
   context: z.string().optional(),
   innerThoughtsId: z.string().optional(),
   linkedAtMessageId: z.string().optional(),
+  forceCreate: z.boolean().optional(),
 }).refine(
   (data) => data.personId || data.inviteName,
   { message: 'Must provide personId or inviteName' }
@@ -314,7 +315,14 @@ export async function createSession(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const { personId, inviteName, innerThoughtsId, linkedAtMessageId, context } = parseResult.data;
+    const {
+      personId,
+      inviteName,
+      innerThoughtsId,
+      linkedAtMessageId,
+      context,
+      forceCreate,
+    } = parseResult.data;
     let inviteeDisplayName = inviteName?.trim() || undefined;
 
     if (personId === user.id) {
@@ -428,7 +436,7 @@ export async function createSession(req: Request, res: Response): Promise<void> 
       orderBy: { updatedAt: 'desc' },
     });
 
-    if (existingActiveSession) {
+    if (existingActiveSession && !forceCreate) {
       successResponse(res, {
         existingActiveSession: {
           id: existingActiveSession.id,

@@ -77,6 +77,7 @@ export const createSessionRequestSchema = z
     context: z.string().max(500, 'Context too long').optional(),
     innerThoughtsId: z.string().cuid().optional(), // Link to originating Inner Thoughts session
     linkedAtMessageId: z.string().cuid().optional(),
+    forceCreate: z.boolean().optional(),
   })
   .refine(data => data.personId || data.inviteName, {
     message: 'Must provide personId or inviteName',

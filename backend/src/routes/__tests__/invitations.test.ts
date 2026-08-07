@@ -167,6 +167,93 @@ describe('Invitations API', () => {
       );
     });
 
+    it('returns the existing active session unless force creation is confirmed', async () => {
+      const mockUser = { id: 'user-1', email: 'inviter@example.com', name: 'Inviter' };
+      const mockRelationship = {
+        id: 'rel-1',
+        members: [{ nickname: null }],
+      };
+      const existingSession = {
+        id: 'session-existing',
+        status: 'ACTIVE',
+        updatedAt: new Date('2026-08-07T20:51:20.000Z'),
+      };
+
+      (prisma.relationshipMember.findFirst as jest.Mock).mockResolvedValue({
+        relationship: mockRelationship,
+        user: { firstName: 'Jason', name: 'Jason Person' },
+      });
+      (prisma.session.findFirst as jest.Mock).mockResolvedValue(existingSession);
+
+      const req = createMockRequest({
+        user: mockUser,
+        body: { personId: 'user-2' },
+      });
+      const { res, statusMock, jsonMock } = createMockResponse();
+
+      await createSession(req as Request, res as Response);
+
+      expect(statusMock).toHaveBeenCalledWith(200);
+      expect(jsonMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: {
+            existingActiveSession: {
+              id: 'session-existing',
+              status: 'ACTIVE',
+              updatedAt: '2026-08-07T20:51:20.000Z',
+            },
+          },
+        })
+      );
+      expect(prisma.session.create).not.toHaveBeenCalled();
+    });
+
+    it('creates another session after force creation is confirmed', async () => {
+      const mockUser = { id: 'user-1', email: 'inviter@example.com', name: 'Inviter' };
+      const mockRelationship = {
+        id: 'rel-1',
+        members: [{ nickname: null }],
+      };
+      const mockSession = { id: 'session-new', status: 'CREATED', createdAt: new Date() };
+      const mockInvitation = { id: 'inv-new' };
+
+      (prisma.relationshipMember.findFirst as jest.Mock).mockResolvedValue({
+        relationship: mockRelationship,
+        user: { firstName: 'Jason', name: 'Jason Person' },
+      });
+      (prisma.session.findFirst as jest.Mock).mockResolvedValue({
+        id: 'session-existing',
+        status: 'ACTIVE',
+        updatedAt: new Date(),
+      });
+      (prisma.session.create as jest.Mock).mockResolvedValue(mockSession);
+      (prisma.invitation.create as jest.Mock).mockResolvedValue(mockInvitation);
+      (prisma.stageProgress.create as jest.Mock).mockResolvedValue({});
+      (prisma.userVessel.create as jest.Mock).mockResolvedValue({});
+      (prisma.sharedVessel.create as jest.Mock).mockResolvedValue({});
+
+      const req = createMockRequest({
+        user: mockUser,
+        body: { personId: 'user-2', forceCreate: true },
+      });
+      const { res, statusMock, jsonMock } = createMockResponse();
+
+      await createSession(req as Request, res as Response);
+
+      expect(prisma.session.create).toHaveBeenCalled();
+      expect(statusMock).toHaveBeenCalledWith(201);
+      expect(jsonMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            session: expect.objectContaining({ id: 'session-new' }),
+            invitationId: 'inv-new',
+          }),
+        })
+      );
+    });
+
     it('requires authentication', async () => {
       const req = createMockRequest({
         body: { inviteName: 'Partner Name' },
