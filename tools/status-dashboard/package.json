@@ -11,19 +11,19 @@
   "dependencies": {
     "@clerk/clerk-react": "^5.61.1",
     "@clerk/themes": "^2.4.55",
-    "ably": "^2.16.0",
+    "ably": "^2.26.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "react-router-dom": "^7.12.0",
-    "react-window": "^1.8.11",
-    "recharts": "^3.7.0",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.0"
+    "react-router-dom": "^7.18.2",
+    "react-window": "^2.3.0",
+    "recharts": "^3.10.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "@types/react-window": "^1.8.8",
-    "@vitejs/plugin-react": "^5.1.2"
+    "@types/react-window": "^2.0.0",
+    "@vitejs/plugin-react": "^6.0.5"
   }
 }

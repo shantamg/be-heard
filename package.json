@@ -54,19 +54,19 @@
     "node": "20.x"
   },
   "devDependencies": {
-    "better-sqlite3": "^12.5.0",
-    "concurrently": "^9.2.1",
-    "webpack": "5.95.0"
+    "better-sqlite3": "^13.0.3",
+    "concurrently": "^10.0.4",
+    "webpack": "5.109.2"
   },
   "dependencies": {
-    "@vercel/blob": "^2.3.3",
+    "@vercel/blob": "^2.6.1",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },
   "overrides": {
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "webpack": "5.95.0",
+    "webpack": "5.109.2",
     "@types/express-serve-static-core": "5.1.0",
     "@anthropic-ai/sdk": ">=0.91.1",
     "fast-uri": ">=3.1.2",
