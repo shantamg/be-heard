@@ -405,7 +405,7 @@ function ProposalCard({
       ))}
 
       {showStance && (
-        <>
+        <View style={styles.stanceDivider}>
           <Text style={styles.stanceLabel}>Your stance</Text>
           <View style={styles.segmentedControl}>
             {[
@@ -444,7 +444,7 @@ function ProposalCard({
           <Text style={styles.partnerState}>
             {partnerStateLabel(partnerName, proposal.partnerDecisionVisible)}
           </Text>
-        </>
+        </View>
       )}
     </View>
   );
@@ -1192,8 +1192,10 @@ const makeStyles = (palette: Palette) => StyleSheet.create({
   proposalCard: {
     backgroundColor: palette.bgPane,
     borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: palette.border,
+    padding: 14,
+    marginBottom: 16,
   },
   proposalHeader: {
     flexDirection: 'row',
@@ -1203,10 +1205,15 @@ const makeStyles = (palette: Palette) => StyleSheet.create({
   },
   proposalKind: {
     color: palette.accentText,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
+    backgroundColor: palette.accentSoft,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
   },
   ownerLabel: {
     color: palette.textMuted,
@@ -1217,21 +1224,27 @@ const makeStyles = (palette: Palette) => StyleSheet.create({
     color: palette.text,
     fontSize: 15,
     lineHeight: 21,
+    marginBottom: 2,
   },
   proposalMeta: {
-    color: palette.textMuted,
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 6,
+    color: palette.textFaint,
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  stanceDivider: {
+    borderTopWidth: 1,
+    borderTopColor: palette.border,
+    marginTop: 14,
+    paddingTop: 12,
   },
   stanceLabel: {
     color: palette.textMuted,
     fontSize: 12,
-    fontWeight: '600',
-    marginTop: 14,
-    marginBottom: 6,
+    fontWeight: '700',
+    marginBottom: 8,
     textTransform: 'uppercase',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
   segmentedControl: {
     flexDirection: 'row',
