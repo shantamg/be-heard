@@ -3,6 +3,7 @@ title: Security Architecture
 sidebar_position: 1
 description: Security implementation for Meet Without Fear, focusing on privacy isolation and consent enforcement.
 slug: /backend/security
+updated: 2026-06-12
 ---
 # Security Architecture
 
@@ -18,6 +19,12 @@ API-level authorization and role-based access (user vs admin vs AI acting-on-beh
 
 ### Encryption
 Data encryption at rest and in transit (Render Postgres + TLS everywhere). Field-level AES-256-GCM encryption for sensitive PII fields (message content, conversation summaries, notable facts, etc.) via Prisma client extension — see `backend/src/lib/prisma-encryption-middleware.ts`.
+
+### Application Logging
+Therapy content is stripped from application logs to prevent session fragments from leaking to Render logs and Sentry breadcrumbs. Instead of logging content substrings, we log metadata-only: character counts, SHA-256 content hashes, or tag lengths. Applied in:
+- Message handling: hidden needs, need-actions, stage 4 walkthroughs, and dispatch tags logged as `{length: N}`
+- Duplicate detection: using content hash instead of substring
+- Reconciler sharing: post-share continuation logged with content length only
 
 ### Audit Logging
 Consent decisions and retrieval attempts recorded for review

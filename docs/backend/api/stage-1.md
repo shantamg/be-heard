@@ -4,7 +4,7 @@ sidebar_position: 6
 description: Endpoints for the witness stage - being heard by the AI.
 slug: /backend/api/stage-1
 created: 2026-03-11
-updated: 2026-05-02
+updated: 2026-06-12
 status: living
 ---
 # Stage 1 API: The Witness
