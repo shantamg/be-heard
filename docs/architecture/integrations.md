@@ -3,7 +3,7 @@ title: External Integrations
 sidebar_position: 6
 description: "Analysis Date: 2026-03-11"
 created: 2026-03-11
-updated: 2026-05-31
+updated: 2026-06-01
 status: living
 ---
 # External Integrations
@@ -89,9 +89,11 @@ status: living
 **Push Notifications:**
 - Expo Push Service - Mobile push notifications
   - SDK: `expo-server-sdk`
+  - Auth: `EXPO_ACCESS_TOKEN` (backend only, credentials for Expo push service)
   - Tokens: Stored in `User.pushToken` in database
   - Fallback: Ably realtime messages when push unavailable
-  - File: `backend/src/services/push.ts`
+  - Test push notification: `sendTestPushNotification(userId)` sends a test notification (accessible via `POST /api/v1/auth/test-push-notification` to approved internal accounts only)
+  - Files: `backend/src/services/push.ts`, `mobile/app/(auth)/settings/index.tsx`
 
 **Analytics & Monitoring:**
 - Mixpanel - Event analytics
@@ -223,6 +225,7 @@ status: living
 - `BEDROCK_HAIKU_MODEL_ID`, `BEDROCK_SONNET_MODEL_ID` - Claude model IDs
 - `RESEND_API_KEY` - Email service
 - `FROM_EMAIL` - Sender email address
+- `EXPO_ACCESS_TOKEN` - Expo push service credentials
 - `PORT` - Server port (default: 3000)
 
 **Optional env vars (Backend):**
