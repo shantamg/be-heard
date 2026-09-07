@@ -85,7 +85,7 @@ const VALID_CATEGORIES: MemoryCategory[] = [
 // ============================================================================
 
 /** Valid categories for notable facts */
-const VALID_FACT_CATEGORIES = ['People', 'Logistics', 'Conflict', 'Emotional', 'History'];
+const VALID_FACT_CATEGORIES = ['People', 'Logistics', 'Conflict', 'Emotional', 'History', 'Process'];
 
 /**
  * Build the unified classification prompt.
@@ -137,6 +137,7 @@ CATEGORIES (use these exact names):
 - Conflict: specific disagreements, triggers, patterns
 - Emotional: feelings, frustrations, fears, hopes
 - History: past events, relationship timeline, backstory
+- Process: conversation dynamics — engagement patterns, repeated behaviors, frame shifts, resistance or openness signals
 
 RULES:
 - Each fact MUST have a category and fact text

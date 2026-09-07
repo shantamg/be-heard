@@ -3,7 +3,7 @@ title: Backend Prompting Architecture Audit
 sidebar_position: 5
 description: "Last Updated: 2026-03-11"
 created: 2026-03-11
-updated: 2026-05-10
+updated: 2026-05-26
 status: living
 ---
 # Backend Prompting Architecture Audit
@@ -475,7 +475,7 @@ graph TD
    - Session summary (for long sessions)
    - Inner Thoughts reflections (if linked)
    - User memories (preferences, names, communication style)
-   - **Categorized session facts** (People, Logistics, Conflict, Emotional, History)
+   - **Categorized session facts** (People, Logistics, Conflict, Emotional, History, Process)
    - Retrieved context (cross-session, relevant history)
 
 4. **Surface-Specific Formatting (Slack):**
@@ -579,7 +579,7 @@ graph TD
 **Categorized Fact Format:**
 ```typescript
 interface CategorizedFact {
-  category: string;  // People, Logistics, Conflict, Emotional, History
+  category: string;  // People, Logistics, Conflict, Emotional, History, Process
   fact: string;      // 1 sentence max
 }
 ```

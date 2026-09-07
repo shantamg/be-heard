@@ -68,9 +68,9 @@ CONSOLIDATION RULES:
 1. Keep the most important, lasting facts about the user
 2. Merge similar or duplicate facts into single entries
 3. Update outdated facts with newer information (newer takes precedence)
-4. Prioritize facts about: People (names, relationships), Emotional patterns, Conflict patterns, Key events
+4. Prioritize facts about: People (names, relationships), Emotional patterns, Conflict patterns, Process dynamics, Key events
 5. Remove session-specific details that won't be relevant in future sessions
-6. Use these categories: People, Logistics, Conflict, Emotional, History
+6. Use these categories: People, Logistics, Conflict, Emotional, History, Process
 7. Keep each fact concise (1 sentence max)
 
 OUTPUT JSON only:

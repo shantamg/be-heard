@@ -330,12 +330,13 @@ CATEGORIES (use these exact names):
 - Conflict: specific disagreements, triggers, patterns
 - Emotional: feelings, frustrations, fears, hopes
 - History: past events, relationship timeline, backstory
+- Process: conversation dynamics — engagement patterns, repeated behaviors, frame shifts, resistance or openness signals (e.g., "User has deflected the same question 3 times", "User shifted from short answers to detailed sharing", "User expressed frustration with the process itself")
 
 WHAT TO EXCLUDE:
-- Meta-commentary about the session/process
 - Questions to the AI
 - Session style preferences
 - Requests to "remember" things (ignore these)
+- Trivial single-turn behaviors (only note Process patterns spanning 3+ turns or representing a significant shift)
 
 CRITICAL - NEVER ASSUME:
 - Do NOT assume the relationship type between the user and the person discussed
@@ -387,12 +388,13 @@ CATEGORIES (use these exact names):
 - Conflict: specific disagreements, triggers, patterns
 - Emotional: feelings, frustrations, fears, hopes
 - History: past events, relationship timeline, backstory
+- Process: conversation dynamics — engagement patterns, repeated behaviors, frame shifts, resistance or openness signals (e.g., "User has deflected the same question 3 times", "User shifted from short answers to detailed sharing", "User expressed frustration with the process itself")
 
 WHAT TO EXCLUDE:
-- Meta-commentary about the session/process
 - Questions to the AI
 - Session style preferences
 - Requests to "remember" things (ignore these)
+- Trivial single-turn behaviors (only note Process patterns spanning 3+ turns or representing a significant shift)
 
 CRITICAL - NEVER ASSUME:
 - Do NOT assume the relationship type between the user and the person discussed
@@ -420,7 +422,7 @@ OUTPUT JSON only:
 }
 
 /** Valid categories for notable facts */
-const VALID_FACT_CATEGORIES = ['People', 'Logistics', 'Conflict', 'Emotional', 'History'];
+const VALID_FACT_CATEGORIES = ['People', 'Logistics', 'Conflict', 'Emotional', 'History', 'Process'];
 
 /**
  * Normalize a fact's category to title case if it's a known category
