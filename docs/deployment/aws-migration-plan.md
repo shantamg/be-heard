@@ -1,6 +1,6 @@
 # AWS Lightsail migration plan
 
-Status: **AWS cutover and web/native acceptance passed on 2026-09-07. Protected main merge and Render retirement remain; see [migration status](aws-migration-status.md).**
+Status: **Completed on 2026-09-07, including web/native acceptance, deployment from main, and Render retirement. See [migration status](aws-migration-status.md) for final evidence and recovery details.**
 
 Prepared: 2026-09-07.
 
@@ -174,6 +174,8 @@ Use GitHub OIDC for AWS deployment permissions where applicable. Restrict SSH ac
 
 ## Rollback
 
+The following describes the migration window. Render resources were retired after acceptance; recovery now uses AWS/S3 backups.
+
 - Before AWS receives writes: resume the unchanged Render service and restore the previous DNS record if needed.
 - After AWS receives writes: freeze AWS writes and copy the latest data back to Render before routing clients there, or repair AWS in place. Switching DNS back to an outdated Render database would lose new changes.
 - Retain the original Render resources until application acceptance succeeds. Deleting Render ends the immediate rollback option; recovery then uses AWS backups and reproducible infrastructure.
@@ -188,9 +190,9 @@ Use GitHub OIDC for AWS deployment permissions where applicable. Restrict SSH ac
 - [x] Production bypass/mock settings are disabled and database ports are private.
 - [x] An S3 backup has been restored successfully and nightly backup scheduling is installed.
 - [x] A host restart preserves data and restores services.
-- [ ] Ongoing deployment and production database consumers use AWS.
+- [x] Ongoing deployment and production database consumers use AWS.
 - [x] The user has a concise deployment/recovery runbook.
-- [ ] This project's Render API and database are retired; unrelated Render services are untouched.
+- [x] This project's Render API and database are retired; unrelated Render services are untouched.
 
 ## Later move to RDS
 
