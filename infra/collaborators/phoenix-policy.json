@@ -1,0 +1,260 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockCatalog",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:ListFoundationModels",
+        "bedrock:GetFoundationModel",
+        "bedrock:ListInferenceProfiles",
+        "bedrock:GetInferenceProfile"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "BedrockInference",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": [
+        "arn:aws:bedrock:*::foundation-model/*",
+        "arn:aws:bedrock:*:679575633563:inference-profile/*",
+        "arn:aws:bedrock:*:679575633563:application-inference-profile/*"
+      ]
+    },
+    {
+      "Sid": "S3ConsoleDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListAllMyBuckets",
+        "s3:GetAccountPublicAccessBlock"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "SandboxBucket",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetBucketOwnershipControls",
+        "s3:GetBucketTagging",
+        "s3:ListBucketMultipartUploads"
+      ],
+      "Resource": "arn:aws:s3:::mwf-phoenix-sandbox-679575633563-us-west-2"
+    },
+    {
+      "Sid": "SandboxObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts"
+      ],
+      "Resource": "arn:aws:s3:::mwf-phoenix-sandbox-679575633563-us-west-2/*"
+    },
+    {
+      "Sid": "MWFBucketLocations",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::mwf-api-backups-679575633563-us-west-2",
+        "arn:aws:s3:::mwf-api-tfstate-679575633563-us-west-2"
+      ]
+    },
+    {
+      "Sid": "MWFBackupPrefixes",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::mwf-api-backups-679575633563-us-west-2",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "nightly/",
+            "nightly/*",
+            "preserved/",
+            "preserved/*",
+            "releases/artifacts/",
+            "releases/artifacts/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "MWFBackupsRead",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::mwf-api-backups-679575633563-us-west-2/nightly/*",
+        "arn:aws:s3:::mwf-api-backups-679575633563-us-west-2/preserved/*",
+        "arn:aws:s3:::mwf-api-backups-679575633563-us-west-2/releases/artifacts/*"
+      ]
+    },
+    {
+      "Sid": "MWFStateList",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::mwf-api-tfstate-679575633563-us-west-2",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "production/",
+            "production/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "MWFStateRead",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject"
+      ],
+      "Resource": "arn:aws:s3:::mwf-api-tfstate-679575633563-us-west-2/production/terraform.tfstate"
+    },
+    {
+      "Sid": "LightsailDiscovery",
+      "Effect": "Allow",
+      "Action": [
+        "lightsail:GetInstances",
+        "lightsail:GetInstance",
+        "lightsail:GetInstanceState",
+        "lightsail:GetInstancePortStates",
+        "lightsail:GetInstanceMetricData",
+        "lightsail:GetBlueprints",
+        "lightsail:GetBundles",
+        "lightsail:GetRegions",
+        "lightsail:GetActiveNames",
+        "lightsail:GetKeyPair",
+        "lightsail:GetKeyPairs",
+        "lightsail:GetOperations",
+        "lightsail:GetOperation",
+        "lightsail:GetOperationsForResource",
+        "lightsail:GetStaticIps",
+        "lightsail:GetStaticIp",
+        "lightsail:GetInstanceSnapshots",
+        "lightsail:GetInstanceSnapshot",
+        "lightsail:GetRelationalDatabases",
+        "lightsail:GetRelationalDatabase",
+        "lightsail:GetRelationalDatabaseBlueprints",
+        "lightsail:GetRelationalDatabaseBundles"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-west-2"
+        }
+      }
+    },
+    {
+      "Sid": "CreateSandboxCompute",
+      "Effect": "Allow",
+      "Action": [
+        "lightsail:CreateInstances",
+        "lightsail:CreateKeyPair",
+        "lightsail:CreateRelationalDatabase"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-west-2",
+          "aws:RequestTag/Project": "meet-without-fear",
+          "aws:RequestTag/Owner": "phoenix",
+          "aws:RequestTag/Environment": "sandbox"
+        }
+      }
+    },
+    {
+      "Sid": "ManageOwnedCompute",
+      "Effect": "Allow",
+      "Action": [
+        "lightsail:StartInstance",
+        "lightsail:StopInstance",
+        "lightsail:RebootInstance",
+        "lightsail:DeleteInstance",
+        "lightsail:GetInstanceAccessDetails",
+        "lightsail:PutInstancePublicPorts",
+        "lightsail:OpenInstancePublicPorts",
+        "lightsail:CloseInstancePublicPorts",
+        "lightsail:UpdateInstanceMetadataOptions",
+        "lightsail:SetIpAddressType",
+        "lightsail:DeleteKeyPair",
+        "lightsail:StartRelationalDatabase",
+        "lightsail:StopRelationalDatabase",
+        "lightsail:RebootRelationalDatabase",
+        "lightsail:DeleteRelationalDatabase",
+        "lightsail:UpdateRelationalDatabase",
+        "lightsail:UpdateRelationalDatabaseParameters",
+        "lightsail:GetRelationalDatabaseMasterUserPassword"
+      ],
+      "Resource": "arn:aws:lightsail:us-west-2:679575633563:*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-west-2",
+          "aws:ResourceTag/Project": "meet-without-fear",
+          "aws:ResourceTag/Owner": "phoenix",
+          "aws:ResourceTag/Environment": "sandbox"
+        }
+      }
+    },
+    {
+      "Sid": "TagOwnedResources",
+      "Effect": "Allow",
+      "Action": [
+        "lightsail:TagResource"
+      ],
+      "Resource": "arn:aws:lightsail:us-west-2:679575633563:*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-west-2",
+          "aws:ResourceTag/Project": "meet-without-fear",
+          "aws:ResourceTag/Owner": "phoenix",
+          "aws:ResourceTag/Environment": "sandbox"
+        },
+        "StringEqualsIfExists": {
+          "aws:RequestTag/Project": "meet-without-fear",
+          "aws:RequestTag/Owner": "phoenix",
+          "aws:RequestTag/Environment": "sandbox"
+        }
+      }
+    },
+    {
+      "Sid": "ProtectProductionLightsail",
+      "Effect": "Deny",
+      "Action": [
+        "lightsail:TagResource",
+        "lightsail:UntagResource",
+        "lightsail:GetInstanceAccessDetails",
+        "lightsail:StartInstance",
+        "lightsail:StopInstance",
+        "lightsail:RebootInstance",
+        "lightsail:DeleteInstance",
+        "lightsail:PutInstancePublicPorts",
+        "lightsail:OpenInstancePublicPorts",
+        "lightsail:CloseInstancePublicPorts",
+        "lightsail:UpdateInstanceMetadataOptions",
+        "lightsail:SetIpAddressType"
+      ],
+      "Resource": "arn:aws:lightsail:us-west-2:679575633563:Instance/2ec640a2-7c02-439a-84b3-c305db779398"
+    }
+  ]
+}
