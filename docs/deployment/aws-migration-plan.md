@@ -1,6 +1,6 @@
 # AWS Lightsail migration plan
 
-Status: **implementation authorized by the user on 2026-09-07; in progress. DNS changes remain user-operated.**
+Status: **AWS cutover and web/native acceptance passed on 2026-09-07. Protected main merge and Render retirement remain; see [migration status](aws-migration-status.md).**
 
 Prepared: 2026-09-07.
 
@@ -181,15 +181,15 @@ Use GitHub OIDC for AWS deployment permissions where applicable. Restrict SSH ac
 
 ## Completion criteria
 
-- [ ] Terraform owns the agreed resources, state is recoverable in S3, and a clean plan shows no unexplained drift.
-- [ ] The normal HTTPS API hostname serves AWS and existing app clients function.
-- [ ] Final source/target database checks agree, including migration state and required roles.
-- [ ] Authentication, real Bedrock responses, persistence, streaming, and realtime behavior pass.
-- [ ] Production bypass/mock settings are disabled and database ports are private.
-- [ ] An S3 backup has been restored successfully and nightly backup scheduling is installed.
-- [ ] A host restart preserves data and restores services.
+- [x] Terraform owns the agreed resources, state is recoverable in S3, and a clean plan shows no unexplained drift.
+- [x] The normal HTTPS API hostname serves AWS and existing app clients function.
+- [x] Final source/target database checks agree, including migration state and required roles.
+- [x] Authentication, real Bedrock responses, persistence, streaming, and realtime behavior pass.
+- [x] Production bypass/mock settings are disabled and database ports are private.
+- [x] An S3 backup has been restored successfully and nightly backup scheduling is installed.
+- [x] A host restart preserves data and restores services.
 - [ ] Ongoing deployment and production database consumers use AWS.
-- [ ] The user has a concise deployment/recovery runbook.
+- [x] The user has a concise deployment/recovery runbook.
 - [ ] This project's Render API and database are retired; unrelated Render services are untouched.
 
 ## Later move to RDS

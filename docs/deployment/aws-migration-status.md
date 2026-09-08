@@ -1,6 +1,6 @@
 # AWS migration status — 2026-09-07
 
-Status: **AWS is serving the normal HTTPS hostname; native-device acceptance and protected main merge are pending.**
+Status: **AWS is serving the normal HTTPS hostname; web and native-device acceptance passed; protected main merge and Render retirement are pending.**
 
 ## Resources
 
@@ -25,7 +25,7 @@ Status: **AWS is serving the normal HTTPS hostname; native-device acceptance and
 - Secrets excluded from Git, Terraform inputs/state, source archives and image layers. Production integration settings came from Render, not development `.env` files.
 - PostgreSQL application role is non-superuser. Recreated readonly role has SELECT access and fails CREATE. Administrative credentials remain separate.
 - All **69 public tables** matched source/target row counts and deterministic content hashes, including all **74 Prisma migration records**, after the final copy. Source fingerprints before/after the final dump also matched. Baseline: **9 users and 1,042 messages**.
-- Render deployment workflow disabled; Render API suspended. Its database role defaults to read-only; application connections were gone before the cutover handoff. Render resources remain intact for rollback until acceptance.
+- Render deployment workflow disabled; Render API suspended. Its database role defaults to read-only; application connections were gone before the cutover handoff. Render resources remain intact pending the protected main merge and verification of its AWS deployment.
 - Real Clerk sign-in and authenticated API reads succeeded for the operator’s Shantam account. Unauthorized requests and production E2E bypass headers returned 401.
 - An unshared rehearsal session received a real AI response: **48 SSE chunks**, first event **182 ms**, completion about **11 seconds**. Both user message and AI reply were readable afterward. This rehearsal-only session was removed by the final database copy.
 - Real Ably session events were received through an API-issued scoped token. WebSocket upgrade succeeded and invalid authentication closed with policy code 1008. Voice transcription itself was already unconfigured in the source production environment (no AssemblyAI key); no new voice integration was introduced.
@@ -35,11 +35,11 @@ Status: **AWS is serving the normal HTTPS hostname; native-device acceptance and
 - PostgreSQL binds **127.0.0.1:5432 only**; API has no published port. SSH allows only the operator IP and bot IP. Bot uses a separate no-shell account restricted to forwarding PostgreSQL; CI uses OIDC/S3 and has no SSH key.
 - Bot readonly configuration now uses its persistent SSH tunnel. Operator production access uses `infra/aws/prod-query.py` and protected `~/.config/mwf/production.json`; development DATABASE_URL remains unchanged.
 
-## Remaining acceptance
+## Cutover acceptance and remaining completion
 
 1. User saved Namecheap A `54.189.24.241`; authoritative DNS, Cloudflare and Google DNS agree. No conflicting AAAA. HTTPS certificate is valid (Let’s Encrypt, expires 2026-12-06).
-2. Normal-hostname authenticated API/AI/SSE/Ably tests passed, and both user and AI messages remained visible in the web client after reload. The native-device check is awaiting the user: the previous TestFlight build expired, and the user started `npm run deploy:mobile:ios` to build and submit a fresh version. Render retirement remains on hold until that test succeeds.
-3. Finish protected main merge (PR #698) and verify its deployment. The final Terraform drift check remains clean.
+2. Normal-hostname authenticated API/AI/SSE/Ably tests passed, and both user and AI messages remained visible in the web client after reload. The user installed the refreshed TestFlight app and confirmed successful sign-in and access to past conversations on 2026-09-07. Native-client acceptance passed.
+3. Finish protected main merge (PR #698) and verify its deployment. Required CI passed at `10ecef52`; GitHub still requires one approving review or explicit administrator-merge authorization. The final Terraform drift check remains clean.
 4. Delete only Render `srv-d58bj73uibrs73akacd0` and `dpg-d58660shg0os73bkkpmg-a` after acceptance; remove the obsolete hook. Record retirement here.
 
 No email or push-notification test was sent to another recipient.
