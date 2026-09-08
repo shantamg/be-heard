@@ -26,7 +26,7 @@ for _attempt in $(seq 1 40); do
 done
 [ "$status" = healthy ] || { echo 'API readiness failed; inspect logs and schema before rollback' >&2; exit 1; }
 compose up -d --no-deps --force-recreate caddy
-curl --fail --silent --show-error http://127.0.0.1:8080/health >/dev/null
+curl --fail --silent --show-error --retry 15 --retry-all-errors --retry-delay 1 --max-time 5 --retry-max-time 30 http://127.0.0.1:8080/health >/dev/null
 printf '%s\n' "$previous" > /var/lib/mwf/previous-image
 cp "$manifest" /var/lib/mwf/current-release.json
 # Keep only this and the last verified app image. Never prune database volumes.
