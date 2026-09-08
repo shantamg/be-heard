@@ -38,7 +38,7 @@ Status: **AWS is serving the normal HTTPS hostname; native-device acceptance and
 ## Remaining acceptance
 
 1. User saved Namecheap A `54.189.24.241`; authoritative DNS, Cloudflare and Google DNS agree. No conflicting AAAA. HTTPS certificate is valid (Let’s Encrypt, expires 2026-12-06).
-2. Normal-hostname authenticated API/AI/SSE/Ably tests passed, and both user and AI messages remained visible in the web client after reload. The native-device check is awaiting the user.
+2. Normal-hostname authenticated API/AI/SSE/Ably tests passed, and both user and AI messages remained visible in the web client after reload. The native-device check is awaiting the user: the previous TestFlight build expired, and the user started `npm run deploy:mobile:ios` to build and submit a fresh version. Render retirement remains on hold until that test succeeds.
 3. Finish protected main merge (PR #698) and verify its deployment. The final Terraform drift check remains clean.
 4. Delete only Render `srv-d58bj73uibrs73akacd0` and `dpg-d58660shg0os73bkkpmg-a` after acceptance; remove the obsolete hook. Record retirement here.
 
