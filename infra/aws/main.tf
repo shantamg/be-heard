@@ -70,8 +70,12 @@ resource "aws_lightsail_instance" "api" {
   bundle_id         = "small_3_0"
   key_pair_name     = aws_lightsail_key_pair.operator.name
   ip_address_type   = "ipv4"
-  user_data         = file("${path.module}/bootstrap.sh")
-  lifecycle { prevent_destroy = true }
+  user_data         = "bash <<'MWF_BOOTSTRAP'\n${file("${path.module}/bootstrap.sh")}\nMWF_BOOTSTRAP\n"
+  lifecycle {
+    prevent_destroy = true
+    # User data is first-boot only. Apply bootstrap fixes explicitly to existing hosts.
+    ignore_changes = [user_data]
+  }
 }
 resource "aws_lightsail_static_ip" "api" {
   name = "${var.name}-ip"

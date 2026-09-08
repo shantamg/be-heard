@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# shellcheck source=/dev/null
 source /opt/mwf/common.sh
 kind=${1:-nightly}
 case "$kind" in nightly|preserved) ;; *) echo 'Expected nightly or preserved' >&2; exit 2;; esac

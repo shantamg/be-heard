@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# shellcheck source=/dev/null
 source /opt/mwf/common.sh
 compose ps
 compose exec -T api node /app/infra/aws/healthcheck.cjs

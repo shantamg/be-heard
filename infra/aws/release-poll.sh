@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# shellcheck source=/dev/null
 source /opt/mwf/common.sh
 [ ! -f /etc/mwf/deploy-paused ] || exit 0
 exec 7>/var/lib/mwf/release-poll.lock

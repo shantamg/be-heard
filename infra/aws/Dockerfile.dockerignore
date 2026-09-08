@@ -8,6 +8,6 @@
 **/*.tfvars
 **/*.dump
 **/*.pem
-**/*token*
+**/*.credentials
 **/backend.hcl
 **/backend.tf

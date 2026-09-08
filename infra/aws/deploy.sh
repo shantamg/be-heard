@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Deploy a verified image already loaded by release-poll.sh or an operator.
 set -euo pipefail
+# shellcheck source=/dev/null
 source /opt/mwf/common.sh
 image=${1:?Usage: deploy.sh mwf-api:release-id manifest.json}
 manifest=${2:?Manifest file required}
@@ -18,7 +19,7 @@ mv /etc/mwf/release.env.next /etc/mwf/release.env
 # Keep failed deployments stopped. Never automatically reverse migrations.
 compose run --rm --no-deps api node /app/node_modules/prisma/build/index.js migrate deploy --schema=/app/backend/prisma/schema.prisma
 compose up -d --no-deps api
-for attempt in $(seq 1 40); do
+for _attempt in $(seq 1 40); do
   status=$(docker inspect --format '{{.State.Health.Status}}' "$(compose ps -q api)")
   [ "$status" != healthy ] || break
   sleep 3

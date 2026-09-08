@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The operator downloads the S3 artifact using their own read credentials.
 set -euo pipefail
+# shellcheck source=/dev/null
 source /opt/mwf/common.sh
 archive=${1:?Usage: restore.sh /absolute/database.dump target_database [replace-production]}
 target=${2:?Explicit target database required}

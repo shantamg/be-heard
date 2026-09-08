@@ -4,6 +4,7 @@ umask 077
 cd /opt/mwf
 set -a
 # Root-owned shell configuration contains non-secret bucket/image identifiers.
+# shellcheck source=/dev/null
 source /etc/mwf/operations.env
 set +a
 compose() { docker compose --env-file /etc/mwf/release.env -f /opt/mwf/compose.yaml "$@"; }
