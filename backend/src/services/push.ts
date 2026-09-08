@@ -558,6 +558,68 @@ export async function sendPushNotifications(
   return results.filter(Boolean).length;
 }
 
+export interface TestPushNotificationResult {
+  sent: boolean;
+  reason?: string;
+}
+
+/**
+ * Sends a diagnostic push notification with fixed content.
+ */
+export async function sendTestPushNotification(userId: string): Promise<TestPushNotificationResult> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { pushToken: true },
+    });
+
+    if (!user?.pushToken) {
+      logger.info(`[Push] No push token for test notification user ${userId}`);
+      return { sent: false, reason: 'No push token is registered for this account' };
+    }
+
+    if (!Expo.isExpoPushToken(user.pushToken)) {
+      logger.warn(`[Push] Invalid test push token format for user ${userId}: ${user.pushToken}`);
+      return { sent: false, reason: 'The stored push token is not a valid Expo token' };
+    }
+
+    const expo = getExpo();
+    const tickets = await expo.sendPushNotificationsAsync([
+      {
+        to: user.pushToken,
+        sound: 'default',
+        title: 'Push notification test',
+        body: 'This is your scheduled Meet Without Fear test notification.',
+        data: {
+          screen: 'settings',
+          event: 'test.push_notification',
+        },
+      },
+    ]);
+
+    const ticket = tickets[0];
+    if (ticket.status === 'ok') {
+      logger.info(`[Push] Sent test notification to user ${userId}`);
+      return { sent: true };
+    }
+
+    logger.error(`[Push] Failed to send test notification to user ${userId}:`, ticket.message);
+    if (ticket.details?.error === 'DeviceNotRegistered' || ticket.details?.error === 'InvalidCredentials') {
+      await prisma.user.update({
+        where: { id: userId },
+        data: { pushToken: null },
+      });
+    }
+    return { sent: false, reason: ticket.message };
+  } catch (error) {
+    logger.error(`[Push] Error sending test notification to user ${userId}:`, error);
+    return {
+      sent: false,
+      reason: error instanceof Error ? error.message : 'Unknown push notification error',
+    };
+  }
+}
+
 /**
  * Validates if a string is a valid Expo push token.
  *

@@ -124,6 +124,26 @@ I've been doing some reflecting. I realize that while I've been feeling overwhel
 Does this capture what you'd like to express to them?
 `,
     },
+    // Response 6: Refine empathy after receiving privacy-protected shared context.
+    {
+      user: 'I can see now how exhausted and unappreciated they have been feeling at work',
+      ai: `<thinking>
+Mode: EMPATHY_BUILDING
+Intensity: 4
+FeelHeardCheck: N
+ReadyShare: Y
+Strategy: Integrate the newly shared context into a revised empathy statement
+</thinking>
+
+That new context adds an important layer to what you understand about their experience.
+
+<draft>
+I can see now that the stress you are carrying is not just about being busy. You have been feeling deeply exhausted and unappreciated at work, and that depletion makes it harder to be emotionally present even though you still care about us. I want to understand that strain and support you without treating your need for space as rejection.
+</draft>
+
+Does this revised understanding capture what you want to share?
+`,
+    },
   ],
 
   // Operation-specific mock responses for non-streaming AI calls (Stage 3-4)

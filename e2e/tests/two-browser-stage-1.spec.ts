@@ -20,8 +20,8 @@ import { TwoBrowserHarness } from '../helpers';
 import {
   signCompact,
   handleMoodCheck,
+  completeInviterInvitationFlow,
   sendAndWaitForPanel,
-  confirmInvitationTopicAndContinue,
   confirmFeelHeard,
 } from '../helpers/test-utils';
 
@@ -65,15 +65,14 @@ test.describe('Stage 1: Witnessing - Feel Heard', () => {
     // STAGE 0 PREREQUISITE
     // ==========================================
 
-    // Set up User B after session is created (sequential, not parallel)
-    await harness.setupUserB(browser, request);
-    await harness.acceptInvitation();
-
-    // Both users navigate, sign compact, handle mood check
+    // The inviter must confirm the topic before the invitation is acceptable.
     await harness.navigateUserA();
     await signCompact(harness.userAPage);
     await handleMoodCheck(harness.userAPage);
+    await completeInviterInvitationFlow(harness.userAPage);
 
+    await harness.setupUserB(browser, request);
+    await harness.acceptInvitation();
     await harness.navigateUserB();
     await signCompact(harness.userBPage);
     await handleMoodCheck(harness.userBPage);
@@ -86,32 +85,14 @@ test.describe('Stage 1: Witnessing - Feel Heard', () => {
     // USER A: WITNESSING CONVERSATION
     // ==========================================
 
-    // User A sends messages matching user-a-full-journey fixture
-    // Note: Response 1 triggers invitation panel which we need to dismiss
+    // The first two fixture turns were consumed while preparing the invitation.
     const userAMessages = [
-      "Hi, I'm having a conflict with my partner",           // Response 0: initial greeting
-      "We keep arguing about household chores",              // Response 1: invitation draft - triggers invitation panel
       "Thanks, I sent the invitation",                       // Response 2: post-invitation
       "I feel like I do most of the work and they don't notice or appreciate it", // Response 3: FeelHeardCheck: Y
     ];
 
-    // Send first 2 messages to trigger invitation panel
-    for (let i = 0; i < 2; i++) {
-      const chatInput = harness.userAPage.getByTestId('chat-input');
-      const sendButton = harness.userAPage.getByTestId('send-button');
-      await chatInput.fill(userAMessages[i]);
-      await sendButton.click();
-      // Wait for typing indicator to disappear (streaming complete)
-      await expect(harness.userAPage.getByTestId('typing-indicator')).not.toBeVisible({ timeout: 60000 });
-      await harness.userAPage.waitForTimeout(500);
-    }
-
-    await confirmInvitationTopicAndContinue(harness.userAPage);
-    await harness.userAPage.waitForTimeout(500);
-
     // Send remaining messages until feel-heard panel appears
-    const remainingMessages = userAMessages.slice(2);
-    await sendAndWaitForPanel(harness.userAPage, remainingMessages, 'feel-heard-yes', remainingMessages.length);
+    await sendAndWaitForPanel(harness.userAPage, userAMessages, 'feel-heard-yes', userAMessages.length);
 
     // User A confirms feel-heard
     await confirmFeelHeard(harness.userAPage);

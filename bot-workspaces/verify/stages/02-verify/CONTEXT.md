@@ -21,7 +21,7 @@ git checkout <branch-name>
 npm install
 ```
 
-If lockfile is out of date, note it as a finding but continue with `pnpm install`.
+If lockfile is out of date, note it as a finding but continue with `npm install`.
 
 ### 3. Run tests
 
@@ -29,7 +29,7 @@ If lockfile is out of date, note it as a finding but continue with `pnpm install
 npm run test
 ```
 
-This runs all tests across the monorepo (vitest for backend, jest-expo for mobile).
+This runs all tests across the monorepo (jest for backend, jest-expo for mobile).
 
 Record:
 - Total test count and suite count

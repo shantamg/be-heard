@@ -1,52 +1,48 @@
 # Test Patterns
 
-## Backend Tests (vitest)
+MWF is an **npm-workspaces monorepo**. Both backend and mobile use **Jest**
+(backend: ts-jest; mobile: jest-expo). There is no vitest and no pnpm.
 
-Backend services use vitest. Tests live alongside source files or in `__tests__/` directories.
+## Backend Tests (Jest + ts-jest)
 
-### Mock Pattern
+Tests live in `__tests__/` directories alongside source (e.g.
+`backend/src/middleware/__tests__/auth.test.ts`). `describe/it/expect/jest` are
+global; the mock helper imports `jest` from `@jest/globals`.
 
-Always use `vi.hoisted()` + `vi.mock()` for dependency mocking:
+### Prisma Mock Pattern
+
+The Prisma client lives at `backend/src/lib/prisma` and has a manual mock at
+`backend/src/lib/__mocks__/prisma.ts` (every model pre-stubbed). Activate it with
+a bare `jest.mock` of the prisma module — Jest auto-uses the `__mocks__` version —
+then drive individual calls by casting to `jest.Mock`:
 
 ```typescript
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { prisma } from '../../lib/prisma';
+import { handler } from '../route-handler';
 
-// 1. Hoist mock definitions (runs before imports)
-const mockPrisma = vi.hoisted(() => ({
-  recording: {
-    findUnique: vi.fn(),
-    update: vi.fn(),
-  },
+// Auto-mock — Jest picks up backend/src/lib/__mocks__/prisma.ts
+jest.mock('../../lib/prisma');
+
+// Mock collaborating services as needed
+jest.mock('../../services/empathy-state-machine', () => ({
+  advanceEmpathyState: jest.fn(),
 }));
-
-const mockService = vi.hoisted(() => ({
-  processRecording: vi.fn(),
-}));
-
-// 2. Mock modules
-vi.mock('../../../packages/prisma', () => ({
-  prisma: mockPrisma,
-}));
-
-vi.mock('../services/recordingService', () => ({
-  recordingService: mockService,
-}));
-
-// 3. Import the module under test AFTER mocks
-import { handler } from './route-handler';
 
 describe('handler', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
   });
 
-  it('should handle the happy path', async () => {
-    mockPrisma.recording.findUnique.mockResolvedValue({ id: '123' });
+  it('handles the happy path', async () => {
+    (prisma.session.findUnique as jest.Mock).mockResolvedValue({
+      id: 'abc',
+      status: 'ACTIVE',
+    });
     // ... test logic
   });
 
-  it('should handle the error case (regression test for bug)', async () => {
-    mockPrisma.recording.findUnique.mockResolvedValue(null);
+  it('handles a missing session (regression test for bug)', async () => {
+    (prisma.session.findUnique as jest.Mock).mockResolvedValue(null);
     // ... assert the fix works
   });
 });
@@ -55,14 +51,16 @@ describe('handler', () => {
 ### Running Backend Tests
 
 ```bash
-cd && pnpm test
-# Or target a specific file:
-cd && pnpm vitest run apps/gateway/src/services/insights/__tests__/healthService.test.ts
+npm test --workspace backend
+# Target a specific file:
+cd backend && npx jest src/services/__tests__/empathy-state-machine.test.ts
+# See console output while debugging (backend runs silent by default):
+npm test --workspace backend -- --verbose
 ```
 
 ## Mobile Tests (jest-expo)
 
-Mobile app uses jest-expo with React Native Testing Library.
+Mobile uses jest-expo with React Native Testing Library.
 
 ### Component Test Pattern
 
@@ -93,9 +91,9 @@ describe('MyComponent', () => {
 ### Running Mobile Tests
 
 ```bash
-cd && pnpm test -- --selectProjects mobile
-# Or target a specific file:
-cd repo root apps/mobile && npx jest src/components/__tests__/MyComponent.test.tsx
+npm test --workspace mobile
+# Target a specific file:
+cd mobile && npx jest src/components/__tests__/MyComponent.test.tsx
 ```
 
 ## Bug Fix Test Strategy
@@ -108,7 +106,10 @@ When fixing a bug, write tests that:
 
 Name regression tests clearly:
 ```typescript
-it('should not crash when health score is null (fixes #423)', () => {
+it('does not fire Felt Heard Response with empty session_id (fixes #NNN)', () => {
   // ...
 });
 ```
+
+> Before considering a fix done, run `npm run check` (types across all workspaces)
+> and `npm run test` (all workspaces), per the repo's verification practice.

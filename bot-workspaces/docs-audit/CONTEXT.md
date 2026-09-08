@@ -16,13 +16,16 @@ Detect documentation drift by comparing docs against code. Two modes: incrementa
 
 ## Code-to-Doc Mapping
 
+Authoritative mapping lives in `docs/code-to-docs-mapping.json` (the `docs-impact`
+GitHub Action uses it) — consult it first. Quick reference:
+
 | Code area | Docs to check |
 |---|---|
-| `apps/identity/`, `apps/recording/`, etc. | `docs/architecture/services.md` |
-| `packages/prisma/` | `docs/architecture/data-model.md` |
-| `apps/insights/`, health scoring | `docs/architecture/health-scoring.md`, `docs/science/` |
-| `apps/mobile/` | `docs/mobile/` |
-| `apps/workbench/` | `docs/workbench/` |
-| `render.yaml`, `vercel.json`, `.github/workflows/` | `docs/infrastructure/` |
-| `packages/shared/` | Any doc referencing shared types |
-| `.claude/commands/`, `CLAUDE.md` | `docs/processes/`, `docs/guides/` |
+| `backend/src/controllers/`, `backend/src/routes/` | `docs/backend/api/index.md`, `docs/architecture/backend-overview.md` |
+| `backend/src/services/` (AI / prompting / reconciler) | `docs/backend/prompting-architecture.md`, `docs/backend/reconciler-flow.md` |
+| `backend/prisma/schema.prisma` | `docs/backend/data-model/prisma-schema.md` |
+| `backend/src/**` (security / RLS) | `docs/backend/security/index.md` |
+| `mobile/` | `docs/architecture/structure.md`, `docs/mobile/wireframes/` |
+| `shared/` | Any doc referencing shared types / DTOs |
+| Ably / Clerk / Bedrock / Mixpanel integration | `docs/architecture/integrations.md` |
+| `render.yaml`, `.github/workflows/`, deploy scripts | `docs/deployment/`, `docs/infrastructure/` |

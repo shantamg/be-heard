@@ -14,11 +14,12 @@
   ],
   "scripts": {
     "deploy:mobile:ios": "node scripts/update-build-number.js && cd mobile && eas build --platform ios --profile production --auto-submit",
-    "deploy:mobile:android": "node scripts/update-build-number.js && cd mobile && eas build --platform android --profile android-apk",
+    "deploy:mobile:android": "node scripts/update-build-number.js && cd mobile && eas build --platform android --profile android-apk && cd .. && node scripts/publish-android-github-release.js",
     "deploy:mobile:ota": "cd mobile && ./scripts/publish-ota.sh",
     "deploy:ios:prepare": "node scripts/deploy-ios-prepare.js",
     "deploy:ios:release": "node scripts/deploy-ios-release.js",
     "deploy:android:prepare": "node scripts/deploy-android-prepare.js",
+    "deploy:android:github-release": "node scripts/publish-android-github-release.js",
     "deploy:android:release": "node scripts/deploy-android-release.js",
     "build:mobile": "npm run build --workspace=mobile",
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:website\" \"sleep 2 && npm run dev:mobile\"",

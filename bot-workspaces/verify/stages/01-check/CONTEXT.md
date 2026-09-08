@@ -76,23 +76,23 @@ From the diff, determine:
 
 | Question | How to determine |
 |---|---|
-| Which packages are affected? | File paths (`apps/`, `packages/`) |
+| Which packages are affected? | File paths (`backend/`, `mobile/`, `shared/`, `website/`) |
 | Are there tests? | Look for `*.test.ts`, `*.spec.ts` files in the diff |
-| Are there new API endpoints? | Route files in `apps/*/src/routes/` |
-| Are there UI changes? | Files in `apps/workbench/`, `apps/mobile/` |
-| Are there schema changes? | `packages/prisma/prisma/schema.prisma` in the diff |
-| Is there a migration? | Files in `packages/prisma/prisma/migrations/` |
+| Are there new API endpoints? | Route files in `backend/src/routes/` |
+| Are there UI changes? | Files in `website/`, `mobile/` |
+| Are there schema changes? | `backend/prisma/schema.prisma` in the diff |
+| Is there a migration? | Files in `backend/prisma/migrations/` |
 
 ### 4. Build verification strategy
 
 Based on the analysis, build a checklist of what to verify:
 
 **Always run:**
-- `pnpm test` (scoped to affected packages if possible)
-- `pnpm check` (TypeScript type checking)
+- `npm run test` (scoped to affected packages if possible)
+- `npm run check` (TypeScript type checking)
 
 **Conditionally run:**
-- `pnpm build` for affected apps (if build-related changes)
+- `npm run build:mobile` / `npm run website:build` for affected apps (if build-related changes)
 - Staging endpoint checks (if API changes and deployment detected)
 - Sentry error check (if recently deployed)
 

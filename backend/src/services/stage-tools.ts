@@ -5,7 +5,7 @@
  * These tools replace the JSON wrapper format for structured AI responses.
  */
 
-import type { CapturedNeedInput, ParsedNeedAction } from '@meet-without-fear/shared';
+import type { CapturedNeedInput, ParsedNeedAction, StreamMetadata } from '@meet-without-fear/shared';
 import { NeedCategory, Stage4ProposalKind } from '@meet-without-fear/shared';
 import type { AnthropicToolDef } from '../lib/bedrock';
 import type {
@@ -127,31 +127,13 @@ Call this tool before your visible conversational response whenever the latest t
 export const SESSION_STATE_TOOL_NAME = 'update_session_state';
 
 /**
- * Type for the parsed tool input from SESSION_STATE_TOOL
+ * Type for the parsed tool input from SESSION_STATE_TOOL.
+ *
+ * This is exactly the structured-metadata payload that crosses the SSE wire,
+ * so it is defined once in the shared streaming contract
+ * (`shared/src/contracts/stream.ts`) and aliased here.
  */
-export interface SessionStateToolInput {
-  offerFeelHeardCheck?: boolean;
-  offerReadyToShare?: boolean;
-  proposedEmpathyStatement?: string;
-  proposedStrategies?: string[];
-  stage4Proposals?: ParsedStage4ProposalInput[];
-  stage4WalkthroughAction?: ParsedStage4WalkthroughAction;
-  proposedNeeds?: CapturedNeedInput[];
-  proposedNeed?: CapturedNeedInput;
-  needAction?: ParsedNeedAction;
-  needParseError?: string;
-  needsCaptured?: boolean;
-  stage4Capture?: {
-    appliedOperationCount: number;
-    skippedOperationCount: number;
-    selectionCaptured: boolean;
-    closureSignalCaptured?: boolean;
-    autoClosed?: boolean;
-    confidence: number;
-  };
-  /** Stage 0: AI's proposed topic frame extracted from <draft> tag */
-  topicFrame?: string;
-}
+export type SessionStateToolInput = StreamMetadata;
 
 /**
  * Validate and normalize session state tool input.

@@ -29,7 +29,7 @@
    - Do not over-engineer or add unrequested features
 
 5. **Run tests**:
-   - Run relevant test suites (`pnpm test` or targeted test commands)
+   - Run relevant test suites (`npm run test` or targeted test commands)
    - If tests fail, fix until green
    - Add tests for new behavior if the area has existing test coverage
 

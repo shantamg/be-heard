@@ -34,7 +34,7 @@ Launch sub-agents in parallel to gather evidence:
 | B | Mixpanel events (`shared/diagnostics/check-mixpanel.md`) | User-facing issues |
 | C | Database anomalies (`shared/diagnostics/check-db.md`) | Data-related bugs |
 | D | Gateway logs (`shared/diagnostics/render-logs.md`) | Server-side errors |
-| E | Pipeline health (`shared/diagnostics/check-pipeline-health.md`) | Recording/coding pipeline issues |
+| E | Conversation health (`shared/diagnostics/check-pipeline-health.md`) | Stuck turns (AI reply missing) / stage stalls |
 
 For `bot-pr` issues (implementation requests), skip diagnostics -- go straight to code research.
 
@@ -49,7 +49,7 @@ For `bot-pr` issues (implementation requests), skip diagnostics -- go straight t
 
 - Cross-reference Sentry errors with log timestamps
 - Match Mixpanel event drops with deployment times
-- Check pipeline progression if recording-related
+- Check conversation/turn progression if a session seems stuck
 - Look for patterns across diagnostic sources
 
 ### 5. Assess fixability

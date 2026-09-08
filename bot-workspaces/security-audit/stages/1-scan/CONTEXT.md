@@ -15,7 +15,7 @@ Launch specialist agents in batches of 4:
 4. **Network & Application Security** — TLS, CORS, input validation, OWASP Top 10, rate limiting, CSP headers, secrets management.
 
 ### Batch 2
-5. **Vulnerability & Dependencies** — `pnpm audit`, outdated packages, third-party security, supply chain risks.
+5. **Vulnerability & Dependencies** — `npm audit`, outdated packages, third-party security, supply chain risks.
 6. **Logging & Monitoring** — Sentry coverage, audit trails, PII in logs, incident response, alerting.
 7. **Compliance & Documentation** — DPAs with vendors, privacy policy, data retention, deletion capability (GDPR/CCPA).
 

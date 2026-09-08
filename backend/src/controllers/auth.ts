@@ -9,7 +9,7 @@ import { Request, Response } from 'express';
 import { logger } from '../lib/logger';
 import { prisma } from '../lib/prisma';
 import { getUser, AuthUser } from '../middleware/auth';
-import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errors';
+import { asyncHandler, ForbiddenError, NotFoundError, ValidationError } from '../middleware/errors';
 import {
   ApiResponse,
   GetMeResponse,
@@ -38,6 +38,7 @@ import {
   updatePrivacyPreferencesRequestSchema,
 } from '@meet-without-fear/shared';
 import { deleteAccountWithNotifications } from '../services/account-deletion';
+import { sendTestPushNotification } from '../services/push';
 
 // ============================================================================
 // Helper Functions
@@ -312,6 +313,32 @@ export const deletePushToken = asyncHandler(async (req: Request, res: Response):
     success: true,
     data: {
       registered: false,
+    },
+  };
+
+  res.json(response);
+});
+
+// ============================================================================
+// POST /auth/test-push-notification
+// ============================================================================
+
+export const scheduleTestPushNotification = asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const user = getUser(req);
+
+  if (user.email.toLowerCase() !== 'jason@galuten.com') {
+    throw new ForbiddenError('Test push notifications are not available for this account');
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 10_000));
+  const result = await sendTestPushNotification(user.id);
+
+  const response: ApiResponse<{ sent: boolean; delaySeconds: number; reason?: string }> = {
+    success: true,
+    data: {
+      sent: result.sent,
+      delaySeconds: 10,
+      ...(result.reason ? { reason: result.reason } : {}),
     },
   };
 

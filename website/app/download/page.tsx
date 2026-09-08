@@ -8,6 +8,9 @@ import { trackAppDownload } from "@/lib/mixpanel";
 
 type Platform = "ios" | "android";
 
+const ANDROID_APK_URL =
+  "https://github.com/shantamg/meet-without-fear/releases/download/android-beta-latest/meet-without-fear.apk";
+
 export default function DownloadPage() {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>("ios");
 
@@ -22,7 +25,7 @@ export default function DownloadPage() {
   }, []);
 
   const testFlightUrl = process.env.NEXT_PUBLIC_TESTFLIGHT_URL || "https://testflight.apple.com/join/YOUR_CODE";
-  const androidApkUrl = process.env.NEXT_PUBLIC_ANDROID_APK_URL || "https://github.com/YOUR_ORG/releases/latest/download/app.apk";
+  const androidApkUrl = process.env.NEXT_PUBLIC_ANDROID_APK_URL || ANDROID_APK_URL;
 
   const handleDownloadClick = (platform: Platform) => {
     trackAppDownload(platform, "download_page");
@@ -134,17 +137,23 @@ export default function DownloadPage() {
             ) : (
               <div className="space-y-8">
                 {/* Download button for mobile only */}
-                <a
-                  href={androidApkUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  download
-                  onClick={() => handleDownloadClick("android")}
-                  className="md:hidden inline-flex items-center justify-center gap-3 bg-brand-orange text-accent-foreground px-8 py-4 rounded-full font-medium text-lg transition-all hover:opacity-90"
-                >
-                  <Smartphone className="w-6 h-6" />
-                  Download APK
-                </a>
+                {androidApkUrl ? (
+                  <a
+                    href={androidApkUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    onClick={() => handleDownloadClick("android")}
+                    className="md:hidden inline-flex items-center justify-center gap-3 bg-brand-orange text-accent-foreground px-8 py-4 rounded-full font-medium text-lg transition-all hover:opacity-90"
+                  >
+                    <Smartphone className="w-6 h-6" />
+                    Download APK
+                  </a>
+                ) : (
+                  <p className="md:hidden text-muted-foreground text-sm max-w-md mx-auto">
+                    Android beta download is temporarily unavailable.
+                  </p>
+                )}
 
                 {/* Android Instructions for mobile only */}
                 <div className="md:hidden bg-card border border-border rounded-2xl p-6 text-left max-w-md mx-auto">

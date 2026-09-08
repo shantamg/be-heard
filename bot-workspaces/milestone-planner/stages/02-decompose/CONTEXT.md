@@ -18,7 +18,7 @@
    - Independently buildable by a single agent
 
 4. **For each sub-issue, draft**:
-   - **Title**: concise, action-oriented (e.g., "Add retry logic to recording upload")
+   - **Title**: concise, action-oriented (e.g., "Add retry logic to LLM turn requests")
    - **Body**: context, requirements, success criteria, relevant references
    - **Labels**: which `bot:*` workspace label applies
    - **Acceptance criteria**: bullet list of what must be true when done

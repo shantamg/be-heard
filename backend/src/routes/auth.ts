@@ -14,6 +14,7 @@ import {
   updateProfile,
   updatePushToken,
   deletePushToken,
+  scheduleTestPushNotification,
   getAblyToken,
   updateBiometricPreference,
   getMemoryPreferences,
@@ -79,6 +80,17 @@ router.post('/push-token', updatePushToken);
  * - registered: boolean (always false)
  */
 router.delete('/push-token', deletePushToken);
+
+/**
+ * POST /auth/test-push-notification
+ *
+ * Schedule a test push notification for approved internal accounts.
+ *
+ * Response:
+ * - scheduled: true
+ * - delaySeconds: number
+ */
+router.post('/test-push-notification', scheduleTestPushNotification);
 
 /**
  * GET /auth/ably-token

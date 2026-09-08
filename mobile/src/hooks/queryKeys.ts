@@ -109,12 +109,6 @@ export const messageKeys = {
 // Timeline Query Keys
 // ============================================================================
 
-export const timelineKeys = {
-  all: ['timeline'] as const,
-  session: (sessionId: string) => [...timelineKeys.all, sessionId] as const,
-  infinite: (sessionId: string) => [...timelineKeys.all, 'infinite', sessionId] as const,
-};
-
 // ============================================================================
 // Takeaway Query Keys
 // ============================================================================

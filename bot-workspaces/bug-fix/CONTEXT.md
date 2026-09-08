@@ -16,7 +16,7 @@ End-to-end bug fixing: from issue selection through investigation, implementatio
 ## Workspace References
 
 - `references/branch-naming.md` -- Branch and PR title conventions by issue label
-- `references/test-patterns.md` -- Backend (vitest) and mobile (jest-expo) test patterns
+- `references/test-patterns.md` -- Backend (jest) and mobile (jest-expo) test patterns
 - `references/pr-conventions.md` -- PR body format, reviewer requirements, issue linking
 
 ## Shared Resources Used

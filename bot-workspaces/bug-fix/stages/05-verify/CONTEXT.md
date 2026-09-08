@@ -10,10 +10,10 @@
 ### 1. Run tests
 
 ```bash
-cd && pnpm test
+cd && npm run test
 ```
 
-This runs all tests across the monorepo (vitest for backend, jest-expo for mobile).
+This runs all tests across the monorepo (jest for backend, jest-expo for mobile). Backend tests run silent by default; `-- --verbose` shows console output.
 
 If tests fail:
 - Read the failure output carefully
@@ -24,7 +24,7 @@ If tests fail:
 ### 2. Run type checks
 
 ```bash
-cd && pnpm check
+cd && npm run check
 ```
 
 This runs TypeScript type checking across all packages. Fix any type errors introduced by the change.
@@ -60,8 +60,8 @@ git push -u origin <branch-name>
 
 ## Exit Criteria
 
-- `pnpm test` passes (exit code 0)
-- `pnpm check` passes (exit code 0)
+- `npm run test` passes (exit code 0)
+- `npm run check` passes (exit code 0)
 - Branch pushed to remote
 
 ## Completion

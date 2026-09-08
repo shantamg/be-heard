@@ -1,10 +1,9 @@
-import { messageKeys, notificationKeys, sessionKeys, stageKeys, timelineKeys } from '../hooks/queryKeys';
+import { messageKeys, notificationKeys, sessionKeys, stageKeys } from '../hooks/queryKeys';
 
 export function getPersistedMessageRefreshQueryKeys(sessionId: string) {
   return [
     messageKeys.infinite(sessionId),
     messageKeys.list(sessionId),
-    timelineKeys.infinite(sessionId),
     sessionKeys.state(sessionId),
   ];
 }

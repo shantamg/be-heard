@@ -12,6 +12,13 @@ module.exports = ({ config }) => {
     config.android.package = process.env.EXPO_PUBLIC_BUNDLE_ID;
   }
 
+  if (config.android?.package === 'com.meetwithoutfear.app') {
+    config.android = {
+      ...config.android,
+      googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
+    };
+  }
+
   // Add apiUrl and websiteUrl to extra for access via Constants.expoConfig
   // websiteUrl is only set if explicitly provided via EXPO_PUBLIC_WEBSITE_URL
   // Otherwise, the runtime code will use __DEV__ to determine the URL

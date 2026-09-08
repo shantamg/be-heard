@@ -4,7 +4,7 @@ Create a pull request with pre-flight checks, documentation updates, and issue l
 
 ## Stages
 
-1. **Pre-flight** — verify not on main or bot/staging, run `pnpm test` and `pnpm check`
+1. **Pre-flight** — verify not on main or bot/staging, run `npm run test` and `npm run check`
 2. **Docs update** — review diff, update affected docs, archive completed plans
    1. Run `git diff main...HEAD --name-only` to identify all changed files
    2. Check `docs/code-to-docs-mapping.json` — it maps code paths to their corresponding docs. For each changed file, find matching entries and read those docs. Also consult the docs routing table in `CLAUDE.md` for any areas not covered by the mapping.

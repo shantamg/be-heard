@@ -46,15 +46,24 @@ describe('Stage 2 user-facing copy', () => {
     expect(messagesSource).not.toContain('protected attempt');
   });
 
-  it('does not force optional share suggestions ahead of empathy reveal from the Stage 2 controller', () => {
+  it('maps reconciler sharing recommendations into the Stage 2 sharing flow', () => {
     const source = fs.readFileSync(
       path.join(__dirname, '..', 'stage2.ts'),
       'utf8'
     );
 
-    expect(source).toContain('const hasSignificantGapsA = false');
-    expect(source).toContain('const hasSignificantGapsB = false');
-    expect(source).not.toContain("recommendation.action === 'OFFER_OPTIONAL' &&");
+    expect(source).toContain(
+      "result.aUnderstandingB.recommendation.action === 'OFFER_SHARING'"
+    );
+    expect(source).toContain(
+      "result.bUnderstandingA.recommendation.action === 'OFFER_SHARING'"
+    );
+    expect(source).toContain(
+      "result.aUnderstandingB.recommendation.action === 'OFFER_OPTIONAL'"
+    );
+    expect(source).toContain(
+      "result.bUnderstandingA.recommendation.action === 'OFFER_OPTIONAL'"
+    );
   });
 
   it('treats validated empathy attempts as already processed in symmetric reconciliation', () => {

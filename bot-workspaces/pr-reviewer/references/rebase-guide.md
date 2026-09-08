@@ -15,8 +15,8 @@ Files: `label-registry.json`, `bot-workspaces/CLAUDE.md`, `package.json`
 Strategy: **Accept target branch**, then re-apply bot's additions (new entries only)
 
 ### Lock files
-Files: `pnpm-lock.yaml`, `package-lock.json`
-Strategy: **Accept target branch**, then run `pnpm install` to regenerate
+Files: `package-lock.json`
+Strategy: **Accept target branch**, then run `npm install` to regenerate
 
 ### Workspace files (bot-workspaces/)
 Strategy: **Accept PR branch** — the PR is adding new content

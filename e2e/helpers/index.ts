@@ -17,6 +17,7 @@ export {
   navigateToSession,
   navigateToShareFromSession,
   signCompact,
+  completeInviterInvitationFlow,
   confirmInvitationTopicAndContinue,
   confirmFeelHeard,
   expectNeedsSummaryFromApi,

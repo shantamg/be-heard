@@ -92,7 +92,7 @@ git rebase "origin/$BASE_BRANCH"
 See `references/rebase-guide.md`. Default rules:
 
 - `label-registry.json`, root `CLAUDE.md`: prefer target branch (shared config)
-- `package-lock.json`, `pnpm-lock.yaml`: accept target, then re-install
+- `package-lock.json`: accept target, then re-install
 - All other files: prefer the PR branch changes (the feature)
 
 ### 5. Force push the rebased branch

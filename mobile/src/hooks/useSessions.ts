@@ -15,6 +15,7 @@ import {
   InfiniteData,
 } from '@tanstack/react-query';
 import { get, post, del, ApiClientError } from '../lib/api';
+import { trackInvitationAccepted, trackInvitationDeclined } from '../services/analytics';
 import {
   SessionSummaryDTO,
   SessionDetailDTO,
@@ -28,11 +29,7 @@ import {
   InvitationDTO,
   Stage,
   SessionStateResponse,
-  TimelineResponse,
   GetMessagesResponse,
-  ChatItemType,
-  IndicatorType,
-  IndicatorItem,
 } from '@meet-without-fear/shared';
 
 // Import query keys from centralized file to avoid circular dependencies
@@ -40,7 +37,6 @@ import {
   sessionKeys,
   stageKeys,
   messageKeys,
-  timelineKeys,
   notificationKeys,
 } from './queryKeys';
 
@@ -288,6 +284,7 @@ export function useAcceptInvitation(
       return post<AcceptInvitationResponse>(`/invitations/${invitationId}/accept`);
     },
     onSuccess: (data) => {
+      trackInvitationAccepted(data.session.id);
       queryClient.invalidateQueries({ queryKey: sessionKeys.lists() });
       queryClient.invalidateQueries({ queryKey: sessionKeys.invitations() });
 
@@ -321,7 +318,8 @@ export function useDeclineInvitation(
         reason,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_, { invitationId }) => {
+      trackInvitationDeclined(invitationId);
       queryClient.invalidateQueries({ queryKey: sessionKeys.invitations() });
     },
     ...options,
@@ -470,7 +468,6 @@ export function useSessionInvitation(
 interface ConfirmInvitationContext {
   previousSessionState: SessionStateResponse | undefined;
   previousInvitation: { invitation?: InvitationDTO } | undefined;
-  previousTimeline: InfiniteData<TimelineResponse, string | undefined> | undefined;
   optimisticTimestamp: string;
 }
 
@@ -530,7 +527,6 @@ export function useConfirmInvitationMessage(
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: sessionKeys.state(sessionId) });
       await queryClient.cancelQueries({ queryKey: sessionKeys.sessionInvitation(sessionId) });
-      await queryClient.cancelQueries({ queryKey: timelineKeys.infinite(sessionId) });
 
       // Snapshot previous values for rollback
       const previousSessionState = queryClient.getQueryData<SessionStateResponse>(
@@ -538,9 +534,6 @@ export function useConfirmInvitationMessage(
       );
       const previousInvitation = queryClient.getQueryData<{ invitation?: InvitationDTO }>(
         sessionKeys.sessionInvitation(sessionId)
-      );
-      const previousTimeline = queryClient.getQueryData<InfiniteData<TimelineResponse, string | undefined>>(
-        timelineKeys.infinite(sessionId)
       );
 
       const optimisticTimestamp = new Date().toISOString();
@@ -577,47 +570,7 @@ export function useConfirmInvitationMessage(
         }
       );
 
-      // Optimistically add the "Invitation Sent" indicator to the timeline cache
-      // This ensures the indicator appears immediately and persists through cache updates
-      const indicatorItem: IndicatorItem = {
-        type: ChatItemType.INDICATOR,
-        id: 'invitation-sent',
-        timestamp: optimisticTimestamp,
-        indicatorType: IndicatorType.INVITATION_SENT,
-      };
-
-      queryClient.setQueryData<InfiniteData<TimelineResponse, string | undefined>>(
-        timelineKeys.infinite(sessionId),
-        (oldData): InfiniteData<TimelineResponse, string | undefined> => {
-          if (!oldData || oldData.pages.length === 0) {
-            return {
-              pages: [{ items: [indicatorItem], hasMore: false }],
-              pageParams: [undefined],
-            };
-          }
-
-          // Check if indicator already exists
-          const exists = oldData.pages.some(page =>
-            page.items.some(item => item.id === 'invitation-sent')
-          );
-          if (exists) return oldData;
-
-          // Add to first page
-          const newPages = oldData.pages.map((page, index) => {
-            if (index === 0) {
-              return {
-                ...page,
-                items: [indicatorItem, ...page.items],
-              };
-            }
-            return page;
-          });
-
-          return { ...oldData, pages: newPages };
-        }
-      );
-
-      return { previousSessionState, previousInvitation, previousTimeline, optimisticTimestamp };
+      return { previousSessionState, previousInvitation, optimisticTimestamp };
     },
 
     // =========================================================================
@@ -740,9 +693,6 @@ export function useConfirmInvitationMessage(
         }
         if (context.previousInvitation !== undefined) {
           queryClient.setQueryData(sessionKeys.sessionInvitation(sessionId), context.previousInvitation);
-        }
-        if (context.previousTimeline !== undefined) {
-          queryClient.setQueryData(timelineKeys.infinite(sessionId), context.previousTimeline);
         }
       }
     },

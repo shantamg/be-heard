@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Star,
   Volume2,
+  Bell,
   Sun,
   Moon,
   Monitor,
@@ -24,8 +25,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useClerk } from '@clerk/clerk-expo';
 
 import { useAuth } from '@/src/hooks/useAuth';
+import { post } from '@/src/lib/api';
+import { requestAndRegisterForPushNotifications } from '@/src/services/notifications';
 import { designFonts, useAppAppearance, type AppearancePreference } from '@/src/theme';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 /**
  * Settings screen
@@ -37,6 +40,8 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const { signOut: clerkSignOut } = useClerk();
+  const [isSchedulingTestPush, setIsSchedulingTestPush] = useState(false);
+  const canTestPushNotifications = user?.email?.toLowerCase() === 'jason@galuten.com';
 
   const handleSignOut = () => {
     const performSignOut = async () => {
@@ -74,6 +79,36 @@ export default function SettingsScreen() {
         },
       ]
     );
+  };
+
+  const handleTestPushNotification = async () => {
+    setIsSchedulingTestPush(true);
+    try {
+      const registered = await requestAndRegisterForPushNotifications();
+      if (!registered) {
+        Alert.alert('Notifications unavailable', 'Push notifications are not enabled on this device.');
+        return;
+      }
+
+      const result = await post<{ sent: boolean; delaySeconds: number; reason?: string }>(
+        '/auth/test-push-notification'
+      );
+
+      if (!result.sent) {
+        Alert.alert(
+          'Test send failed',
+          result.reason || 'Expo did not accept the push notification.'
+        );
+        return;
+      }
+
+      Alert.alert('Test sent', 'Expo accepted the push notification.');
+    } catch (error) {
+      console.error('Test push notification failed:', error);
+      Alert.alert('Test failed', 'Could not schedule the push notification test.');
+    } finally {
+      setIsSchedulingTestPush(false);
+    }
   };
 
   const mainMenuItems = [
@@ -241,6 +276,25 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {canTestPushNotifications && (
+          <View style={styles.menuSection}>
+            <TouchableOpacity
+              style={[styles.menuItem, styles.menuItemFirst, styles.menuItemLast]}
+              onPress={handleTestPushNotification}
+              disabled={isSchedulingTestPush}
+              accessibilityRole="button"
+              accessibilityLabel="Test push notification"
+            >
+              <View style={styles.menuItemLeft}>
+                <Bell color={palette.accent} size={22} />
+                <Text style={styles.menuItemLabel}>
+                  {isSchedulingTestPush ? 'Scheduling Test...' : 'Test Push Notification'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Sign out button */}
         <View style={styles.menuSection}>

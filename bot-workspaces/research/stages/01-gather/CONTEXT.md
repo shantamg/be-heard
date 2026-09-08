@@ -26,7 +26,7 @@ Search the repository for code relevant to the issue:
 - Use the docs routing table in `CLAUDE.md` to identify which docs to read first
 - Grep for relevant functions, types, routes, and components
 - Read key files to understand current architecture in the affected area
-- Check `packages/prisma/prisma/schema.prisma` if data model is involved
+- Check `backend/prisma/schema.prisma` if data model is involved
 - Look at recent commits in affected areas (`git log --oneline -20 -- <path>`)
 
 Output: list of relevant files, current architecture summary, existing patterns, and technical constraints.

@@ -38,6 +38,18 @@ export function trackInvitationSent(
   });
 }
 
+export function trackInvitationAccepted(sessionId: string): void {
+  track('Invitation Accepted', {
+    session_id: sessionId,
+  });
+}
+
+export function trackInvitationDeclined(invitationId: string): void {
+  track('Invitation Declined', {
+    invitation_id: invitationId,
+  });
+}
+
 export function trackCompactSigned(sessionId: string, isInviter: boolean): void {
   track('Compact Signed', {
     session_id: sessionId,
@@ -107,6 +119,16 @@ export function trackCommonGroundFound(
   track('Common Ground Found', {
     session_id: sessionId,
     overlapping_needs: overlappingNeeds,
+  });
+}
+
+export function trackEmpathyValidated(
+  sessionId: string,
+  accuracy: 'accurate' | 'partial' | 'inaccurate'
+): void {
+  track('Empathy Validated', {
+    session_id: sessionId,
+    accuracy,
   });
 }
 

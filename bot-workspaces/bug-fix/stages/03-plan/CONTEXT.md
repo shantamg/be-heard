@@ -56,7 +56,7 @@ Fix plan (passed to Stage 04):
 - **New files to create**: Test files, migration files
 - **Branch name**: Following the naming convention above
 - **Complexity**: Simple / moderate / complex
-- **Test strategy**: What to test, which test framework (vitest vs jest-expo)
+- **Test strategy**: What to test, which test framework (jest (backend) vs jest-expo (mobile))
 
 ## Exit Criteria
 

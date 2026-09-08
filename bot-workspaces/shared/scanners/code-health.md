@@ -16,13 +16,13 @@ Compare test file counts and recent test failures:
 ```bash
 # Count test files per package
 cd
-find apps/ packages/ -name "*.test.ts" -o -name "*.spec.ts" | wc -l
+find backend/ mobile/ shared/ website/ -name "*.test.ts" -o -name "*.spec.ts" | wc -l
 
 # Check for recently deleted test files
 git log --diff-filter=D --since="7 days ago" --name-only -- "*.test.ts" "*.spec.ts"
 
 # Check for recently added source files without corresponding tests
-git log --diff-filter=A --since="7 days ago" --name-only -- "apps/*/src/**/*.ts" \
+git log --diff-filter=A --since="7 days ago" --name-only -- "*/src/**/*.ts" \
   | grep -v ".test.ts" | grep -v ".spec.ts" | grep -v "index.ts" | grep -v ".d.ts"
 ```
 
@@ -45,7 +45,7 @@ Classify by age and severity:
 ### 3. Check for dependency vulnerabilities
 
 ```bash
-cd && pnpm audit --json 2>/dev/null | jq '.advisories | to_entries | .[] | {severity: .value.severity, title: .value.title, module: .value.module_name}'
+cd && npm audit --json 2>/dev/null | jq '.advisories | to_entries | .[] | {severity: .value.severity, title: .value.title, module: .value.module_name}'
 ```
 
 If health-check has already run recently, reference its findings instead of re-running.

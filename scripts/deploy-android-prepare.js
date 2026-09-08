@@ -18,6 +18,9 @@ try {
     stdio: 'inherit',
   });
 
+  // Refresh the stable website download URL after a successful APK build.
+  execSync('node scripts/publish-android-github-release.js', { stdio: 'inherit' });
+
   console.log('Android build prepared successfully!');
   console.log('Run "npm run deploy:android:release" to submit to Play Store');
 } catch (error) {

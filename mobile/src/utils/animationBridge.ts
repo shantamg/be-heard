@@ -5,23 +5,15 @@
  * skip typewriter animation in ChatInterface. This bridges the gap
  * when streaming placeholder IDs (e.g. "streaming-*") are replaced
  * with real server UUIDs before cache reconciliation.
+ *
+ * The implementation now lives with the rest of the renderer mechanics in
+ * `../lib/chat/render/animationIdentity`; this module stays as the import path
+ * the streaming layer already uses. There is exactly one registry instance.
  */
 
-const preRegisteredIds = new Set<string>();
-const animationIdentityById = new Map<string, string>();
-
-export function preRegisterAnimatedId(id: string): void {
-  preRegisteredIds.add(id);
-}
-
-export function isPreRegisteredAnimatedId(id: string): boolean {
-  return preRegisteredIds.has(id);
-}
-
-export function bridgeAnimatedId(oldId: string, newId: string): void {
-  animationIdentityById.set(newId, getAnimationIdentity(oldId));
-}
-
-export function getAnimationIdentity(id: string): string {
-  return animationIdentityById.get(id) || id;
-}
+export {
+  bridgeAnimatedId,
+  getAnimationIdentity,
+  isPreRegisteredAnimatedId,
+  preRegisterAnimatedId,
+} from '../lib/chat/render/animationIdentity';

@@ -11,10 +11,10 @@ Something is broken, producing errors, or behaving unexpectedly.
 **Signal words:** "broken", "error", "crash", "not working", "stuck", "freeze", "blank screen", "won't load", "disappeared", "wrong"
 
 **Examples:**
-- "The recording page just shows a blank screen after I hit record"
-- "I keep getting an error when I try to add a family member"
-- "The session timer shows 0:00 even though we recorded for 5 minutes"
-- "App crashed when I opened the health dashboard"
+- "The chat just spins forever after I send a message"
+- "I keep getting an error when I try to invite my co-parent"
+- "We both finished the stage but it never advanced"
+- "App crashed when I opened my session"
 - Screenshot showing an error message or broken UI
 
 ### FEATURE
@@ -24,10 +24,10 @@ A request for new functionality or enhancement to existing functionality.
 **Signal words:** "it would be nice", "can we add", "I wish", "what if", "could you make", "feature request", "would love to see"
 
 **Examples:**
-- "Can we add a way to export session notes as PDF?"
-- "It would be great if the timer had a pause button"
-- "I wish I could see my scores from last month side by side"
-- "What if we added push notifications for session reminders?"
+- "Can we add a way to export my session takeaways as PDF?"
+- "It would be great if I got a reminder to do my tending check-in"
+- "I wish I could see all my past inner-work entries side by side"
+- "What if we added push notifications when my partner responds?"
 
 ### QUESTION
 
@@ -36,10 +36,10 @@ Asking how something works, where to find something, or seeking clarification.
 **Signal words:** "how do I", "where is", "what does", "is there a way", "?", "wondering if", "does it"
 
 **Examples:**
-- "How do I invite another parent to our family circle?"
-- "Where can I see the breakdown of my DPICS scores?"
-- "What does 'Building Momentum' mean on the health page?"
-- "Is there a way to delete a recording?"
+- "How do I invite the other person to a session?"
+- "Where can I find my inner thoughts / knowledge base?"
+- "What does 'felt heard' mean in the empathy step?"
+- "Is there a way to archive or leave a session?"
 
 ### FEEDBACK
 
@@ -48,10 +48,10 @@ Sharing impressions, opinions, or suggestions about the experience without repor
 **Signal words:** "I like", "I don't like", "it feels", "the experience", "UX", "confusing", "love", "annoying"
 
 **Examples:**
-- "The new health dashboard feels really intuitive, love the colors!"
-- "The recording flow is a bit confusing -- I wasn't sure when to start talking"
+- "The new stage transitions feel really smooth, love it!"
+- "The empathy step was a bit confusing -- I wasn't sure what to write"
 - "The session summary is great but feels too long"
-- "I find myself checking the app every day now"
+- "I find myself checking in every day now"
 
 ### REQUEST
 
@@ -78,8 +78,8 @@ A request to flag an existing issue or PR as high-priority. The requester wants 
 
 **Examples:**
 - "Can you prioritize PR #123?"
-- "That issue about the health dashboard should be high priority"
-- "Please flag the recording bug as urgent"
+- "That issue about the session list should be high priority"
+- "Please flag the Stage 4 bug as urgent"
 - "Make the mobile redesign high-priority"
 - "Can you bump up the auth fix? It's blocking us"
 - ⚡ emoji reaction on a message mentioning an issue or PR
@@ -91,9 +91,9 @@ Personal reflection, status update, or conversational message with no action imp
 **Signal words:** "just tried", "interesting", "update:", status reports, thinking aloud
 
 **Examples:**
-- "Just finished our third session this week!"
-- "The kids really enjoyed the activity today"
-- "Interesting to see how the scores change over time"
+- "Just resolved our first conflict in the app!"
+- "The meditation really helped me settle before our session"
+- "Interesting to see how my needs shifted over time"
 - "Update: we've been using it daily for two weeks now"
 - "Happy Friday everyone!"
 
@@ -119,6 +119,6 @@ Messages with images often indicate:
 - **Screenshots of errors/broken UI** --> BUG
 - **Screenshots of desired behavior** --> FEATURE
 - **Screenshots showing confusing flow** --> FEEDBACK
-- **Photos of family using the product** --> OBSERVATION
+- **Screenshots of the app in everyday use** --> OBSERVATION
 
 Always download and view images before classifying if `has_images` is true.

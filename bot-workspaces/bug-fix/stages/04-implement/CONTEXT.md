@@ -20,13 +20,13 @@ Branch naming comes from Stage 03 plan. See `references/branch-naming.md`.
 Follow `CLAUDE.md` architecture principles. Key rules:
 - **Minimal, focused changes** -- fix the bug, nothing more
 - Keep functions small with clear separation of concerns
-- Use types from `packages/shared/` for type safety
+- Use types from `shared/` for type safety
 - No `StyleSheet.create` in mobile code (use NativeWind `className`)
 - No `db:push` -- always `prisma migrate dev` for schema changes
 
 ### 3. Write tests (TDD when possible)
 
-Write tests **covering the fix** -- not just that it works, but that the original bug is prevented. See `references/test-patterns.md` for vitest mock patterns (backend) and jest-expo patterns (mobile).
+Write tests **covering the fix** -- not just that it works, but that the original bug is prevented. See `references/test-patterns.md` for jest mock patterns (backend) and jest-expo patterns (mobile).
 
 ### 4. Commit changes
 

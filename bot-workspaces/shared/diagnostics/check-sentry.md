@@ -36,4 +36,4 @@ curl -s -H "Authorization: Bearer $SENTRY_AUTH_TOKEN" \
 - High event count in short time = active bug
 - First seen recently = possibly from latest deploy
 - High userCount = prioritize
-- Pipeline errors = broken recording flow
+- LLM / turn errors = stuck conversation (AI reply never written back)

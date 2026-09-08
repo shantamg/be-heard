@@ -1,8 +1,6 @@
 name: OTA Update — Mobile
 
-# Publishes an Expo OTA update to the `production` branch for iOS users.
-# Android doesn't have a store release, so OTA is iOS-only (matches
-# scripts/publish-ota.sh).
+# Publishes an Expo OTA update to the `production` branch for iOS and Android users.
 #
 # Verified on 2026-04-19: a CI-built bundle installed cleanly on iOS via
 # the in-app update modal — no crash, no rollback needed. Push trigger now
@@ -42,7 +40,7 @@ concurrency:
 
 jobs:
   publish:
-    name: Publish OTA (iOS)
+    name: Publish OTA (iOS + Android)
     runs-on: ubuntu-latest
 
     steps:
@@ -94,7 +92,7 @@ jobs:
           echo "Publishing to production branch with message: $MESSAGE"
           eas update \
             --branch production \
-            --platform ios \
+            --platform all \
             --message "$MESSAGE" \
             --clear-cache \
             --non-interactive
@@ -106,7 +104,7 @@ jobs:
             echo "### OTA update published"
             echo ""
             echo "- Branch: \`production\`"
-            echo "- Platform: iOS"
+            echo "- Platform: iOS + Android"
             echo "- Commit: \`${{ github.sha }}\`"
             echo ""
             echo "Users will pick up the update on next app launch. If the update misbehaves:"

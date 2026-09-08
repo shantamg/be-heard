@@ -36,7 +36,7 @@ Thanks for flagging this! [Brief acknowledgment of the problem]. Created a track
 
 Example:
 ```
-Thanks for flagging this! Looks like the health dashboard is showing stale data after new recordings. Created a tracking issue so the team can dig in:
+Thanks for flagging this! Looks like the session list is showing stale data after a new message. Created a tracking issue so the team can dig in:
 
 <https://github.com/shantamg/meet-without-fear/issues/87|Issue #87>
 ```
@@ -61,7 +61,7 @@ Great idea! Logged it for the team:
 
 Example:
 ```
-Great idea! A pause button for recordings would be really handy. Logged it for the team:
+Great idea! A reminder for tending check-ins would be really handy. Logged it for the team:
 
 <https://github.com/shantamg/meet-without-fear/issues/95|Issue #95>
 ```
@@ -115,9 +115,9 @@ Template:
 
 Example:
 ```
-You can invite another parent from the Team screen -- tap the "+" button in the top right and enter their email. They'll get an invite to join your family circle.
+You can invite the other person right from your session -- tap Share/Invite and send them the link. Once they open it, they'll be guided into the same session to join you.
 
-If they don't see the invite, have them check their spam folder!
+If they don't see it, double-check the link went through -- you can resend it from the same screen!
 ```
 
 ## QUESTION -- Don't know

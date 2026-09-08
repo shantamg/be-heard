@@ -32,12 +32,10 @@ import { TwoBrowserHarness } from '../helpers';
 import {
   signCompact,
   handleMoodCheck,
+  completeInviterInvitationFlow,
   sendAndWaitForPanel,
-  confirmInvitationTopicAndContinue,
   confirmFeelHeard,
   waitForReconcilerComplete,
-  navigateToShareFromSession,
-  navigateBackToChat,
 } from '../helpers/test-utils';
 
 // Use iPhone 12 viewport
@@ -90,15 +88,14 @@ test.describe('Reconciler: OFFER_SHARING + Refinement Path', () => {
     // STAGE 0 PREREQUISITE
     // ==========================================
 
-    // Set up User B after session is created
-    await harness.setupUserB(browser, request);
-    await harness.acceptInvitation();
-
-    // Both users navigate, sign compact, handle mood check
+    // The inviter must confirm the topic before the invitation is acceptable.
     await harness.navigateUserA();
     await signCompact(harness.userAPage);
     await handleMoodCheck(harness.userAPage);
+    await completeInviterInvitationFlow(harness.userAPage);
 
+    await harness.setupUserB(browser, request);
+    await harness.acceptInvitation();
     await harness.navigateUserB();
     await signCompact(harness.userBPage);
     await handleMoodCheck(harness.userBPage);
@@ -111,40 +108,18 @@ test.describe('Reconciler: OFFER_SHARING + Refinement Path', () => {
     // STAGE 1: USER A WITNESSING
     // ==========================================
 
-    // User A sends messages matching user-a-full-journey fixture
+    // The first two fixture turns were consumed while preparing the invitation.
     const userAStage1Messages = [
-      "Hi, I'm having a conflict with my partner", // Response 0
-      'We keep arguing about household chores', // Response 1: invitation panel
       'Thanks, I sent the invitation', // Response 2
-      'This has been building for months, and I feel worn down by it',
       "I feel like I do most of the work and they don't notice or appreciate it", // Response 3: FeelHeardCheck: Y
     ];
 
-    // Send first 2 messages to trigger invitation panel
-    for (let i = 0; i < 2; i++) {
-      const chatInput = harness.userAPage.getByTestId('chat-input');
-      const sendButton = harness.userAPage.getByTestId('send-button');
-      await chatInput.fill(userAStage1Messages[i]);
-      await sendButton.click();
-      await expect(harness.userAPage.getByTestId('typing-indicator')).not.toBeVisible({
-        timeout: 60000,
-      });
-      await harness.userAPage.waitForTimeout(500);
-    }
-
-    // Confirm the topic frame and invitation
-    await expect(harness.userAPage.getByTestId('typing-indicator')).not.toBeVisible({ timeout: 30000 });
-    await harness.userAPage.waitForTimeout(500);
-    await confirmInvitationTopicAndContinue(harness.userAPage);
-    await harness.userAPage.waitForTimeout(1000);
-
     // Send remaining messages until feel-heard panel
-    const remainingMessagesA = userAStage1Messages.slice(2);
     await sendAndWaitForPanel(
       harness.userAPage,
-      remainingMessagesA,
+      userAStage1Messages,
       'feel-heard-yes',
-      remainingMessagesA.length
+      userAStage1Messages.length
     );
 
     // User A confirms feel-heard
@@ -325,109 +300,61 @@ test.describe('Reconciler: OFFER_SHARING + Refinement Path', () => {
       maxDiffPixels: SCREENSHOT_MAX_DIFF_PIXELS,
     });
 
-    // ==========================================
-    // NAVIGATE TO SHARE TAB - Verify content persistence
-    // ==========================================
+    // User A receives the shared context in chat and revises the empathy draft.
+    await harness.userAPage.bringToFront();
+    await sendAndWaitForPanel(
+      harness.userAPage,
+      ['I can see now how exhausted and unappreciated they have been feeling at work'],
+      'empathy-review-button',
+      1
+    );
+    await harness.userAPage.getByTestId('empathy-review-button').click();
+    const resubmitResponsePromise = harness.userAPage.waitForResponse(
+      response => response.url().includes(`/sessions/${harness.sessionId}/empathy/resubmit`)
+        && response.request().method() === 'POST'
+    );
+    await harness.userAPage.getByTestId('share-empathy-button').click();
+    expect((await resubmitResponsePromise).ok()).toBe(true);
 
-    // Navigate User A to Share screen (User B may already be there)
-    await navigateToShareFromSession(harness.userAPage);
-    await navigateToShareFromSession(harness.userBPage);
-
-    // Screenshot Share screens
-    await expect(harness.userAPage).toHaveScreenshot('offer-sharing-04-guesser-share.png', {
-      maxDiffPixels: SCREENSHOT_MAX_DIFF_PIXELS,
+    // The symmetric B→A recommendation is still pending for User A as subject.
+    // Decline that second direction so the revised attempts can reveal together.
+    const userAShareTopicPanel = harness.userAPage.getByTestId('share-topic-panel');
+    await expect(userAShareTopicPanel).toBeVisible({ timeout: 30000 });
+    await userAShareTopicPanel.click();
+    await expect(harness.userAPage.getByTestId('share-topic-drawer')).toBeVisible();
+    harness.userAPage.once('dialog', async (dialog) => {
+      await dialog.accept();
     });
-    await expect(harness.userBPage).toHaveScreenshot('offer-sharing-04-subject-share.png', {
-      maxDiffPixels: SCREENSHOT_MAX_DIFF_PIXELS,
-    });
+    const declineResponsePromise = harness.userAPage.waitForResponse(
+      response => response.url().includes('/reconciler/share-offer/respond')
+        && response.request().method() === 'POST',
+      { timeout: 15000 }
+    );
+    await harness.userAPage.getByTestId('share-topic-decline').click();
+    expect((await declineResponsePromise).ok()).toBe(true);
 
-    // Navigate back to Chat
-    await navigateBackToChat(harness.userAPage);
-    await navigateBackToChat(harness.userBPage);
+    // Both revised empathy attempts are revealed inline for accuracy review.
+    await expect(harness.userAPage.getByTestId('partner-empathy-validation-panel'))
+      .toBeVisible({ timeout: 60000 });
+    await expect(harness.userBPage.getByTestId('partner-empathy-validation-panel'))
+      .toBeVisible({ timeout: 60000 });
 
-    await handleMoodCheck(harness.userAPage);
-    await handleMoodCheck(harness.userBPage);
+    const userBValidationResponsePromise = harness.userBPage.waitForResponse(
+      response => response.url().includes(`/sessions/${harness.sessionId}/empathy/validate`)
+        && response.request().method() === 'POST'
+    );
+    await harness.userBPage.getByTestId('partner-empathy-yes-button').click();
+    expect((await userBValidationResponsePromise).ok()).toBe(true);
 
-    // ==========================================
-    // WAIT FOR EMPATHY REVEAL
-    // ==========================================
-    // After sharing context + reconciler re-run with hasContextAlreadyBeenShared guard (PROCEED),
-    // both users should see empathy revealed
+    const userAValidationResponsePromise = harness.userAPage.waitForResponse(
+      response => response.url().includes(`/sessions/${harness.sessionId}/empathy/validate`)
+        && response.request().method() === 'POST'
+    );
+    await harness.userAPage.getByTestId('partner-empathy-yes-button').click();
+    expect((await userAValidationResponsePromise).ok()).toBe(true);
 
-    const userARevealed = await waitForReconcilerComplete(harness.userAPage, 60000);
-    const userBRevealed = await waitForReconcilerComplete(harness.userBPage, 60000);
-
-    if (!userARevealed || !userBRevealed) {
-      console.log('KNOWN ISSUE: Empathy reveal may depend on reconciler re-run completion');
-    }
-
-    // Screenshot after reveal
-    await expect(harness.userAPage).toHaveScreenshot('offer-sharing-05-guesser-revealed.png', {
-      maxDiffPixels: SCREENSHOT_MAX_DIFF_PIXELS,
-    });
-    await expect(harness.userBPage).toHaveScreenshot('offer-sharing-05-subject-revealed.png', {
-      maxDiffPixels: SCREENSHOT_MAX_DIFF_PIXELS,
-    });
-
-    // ==========================================
-    // ACCURACY FEEDBACK - Subject validates
-    // ==========================================
-
-    // Navigate to Share tab for validation
-    await navigateToShareFromSession(harness.userBPage);
-
-    // Look for accuracy feedback panel (partner-empathy-card with validate button)
-    const accuracyFeedbackPanel = harness.userBPage.getByTestId('partner-empathy-card-validate-accurate');
-
-    if (await accuracyFeedbackPanel.isVisible({ timeout: 10000 }).catch(() => false)) {
-      // Accuracy feedback is visible, screenshot the current state
-      await expect(harness.userBPage).toHaveScreenshot('offer-sharing-06-subject-feedback.png', {
-        maxDiffPixels: SCREENSHOT_MAX_DIFF_PIXELS,
-      });
-    } else {
-      // Known issue: Accuracy feedback may not appear due to Ably timing
-      console.log('KNOWN ISSUE: Accuracy feedback panel not visible (Ably event timing)');
-      await expect(harness.userBPage).toHaveScreenshot('offer-sharing-06-subject-no-feedback.png', {
-        maxDiffPixels: SCREENSHOT_MAX_DIFF_PIXELS,
-      });
-    }
-
-    // ==========================================
-    // FINAL STATE SCREENSHOTS
-    // ==========================================
-
-    // Navigate both to Share tab
-    await navigateToShareFromSession(harness.userAPage);
-    if (!(await harness.userBPage.getByTestId('activity-drawer').isVisible({ timeout: 1000 }).catch(() => false))) {
-      await navigateToShareFromSession(harness.userBPage);
-    }
-
-    // Final Share screenshots
-    await expect(harness.userAPage).toHaveScreenshot('offer-sharing-07-guesser-final-share.png', {
-      maxDiffPixels: SCREENSHOT_MAX_DIFF_PIXELS,
-    });
-    await expect(harness.userBPage).toHaveScreenshot('offer-sharing-07-subject-final-share.png', {
-      maxDiffPixels: SCREENSHOT_MAX_DIFF_PIXELS,
-    });
-
-    // Navigate to Chat
-    await navigateBackToChat(harness.userAPage);
-    await navigateBackToChat(harness.userBPage);
-
-    await handleMoodCheck(harness.userAPage);
-    await handleMoodCheck(harness.userBPage);
-
-    // Final Chat screenshots
-    await expect(harness.userAPage).toHaveScreenshot('offer-sharing-08-guesser-final-chat.png', {
-      maxDiffPixels: SCREENSHOT_MAX_DIFF_PIXELS,
-    });
-    await expect(harness.userBPage).toHaveScreenshot('offer-sharing-08-subject-final-chat.png', {
-      maxDiffPixels: SCREENSHOT_MAX_DIFF_PIXELS,
-    });
-
-    // Note: User A may still have a pending share suggestion (B→A direction) covering chat-input.
-    // The final screenshots above capture the actual state. Chat-input visibility is not asserted
-    // because the OFFER_SHARING suggestion card can legitimately overlay it.
+    await expect(harness.userAPage.getByTestId('chat-input')).toBeVisible({ timeout: 30000 });
+    await expect(harness.userBPage.getByTestId('chat-input')).toBeVisible({ timeout: 30000 });
 
     // ==========================================
     // SUCCESS

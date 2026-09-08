@@ -115,6 +115,7 @@ export type SessionEventType =
   | 'session.resumed'
   | 'session.resolved'
   | 'session.abandoned'
+  | 'session.topic_frame_updated' // Stage 0: AI proposed/revised a topic frame draft
   // Invitations
   | 'invitation.declined'
   | 'invitation.confirmed'
@@ -265,6 +266,8 @@ export interface MessageAIResponsePayload extends RealtimeEventBase {
   offerReadyToShare?: boolean;
   /** Stage 2: Proposed empathy statement */
   proposedEmpathyStatement?: string | null;
+  /** Whether the AI expects a follow-up turn (ships on the wire via the metadata spread) */
+  expectingMore?: boolean;
 }
 
 /**

@@ -15,7 +15,7 @@ Launch specialist agents in parallel batches:
 ### Batch 1
 
 1. **Service Architecture** — verify all Hono services follow thin-controller/service-layer pattern. Check for unauthorized new services, direct cross-service imports (should use events), and business logic in route handlers.
-2. **Shared Types & Interfaces** — verify frontend/backend type sharing via `packages/shared/`. Check for duplicated types, divergent interfaces, or types defined locally that belong in shared.
+2. **Shared Types & Interfaces** — verify frontend/backend type sharing via `shared/`. Check for duplicated types, divergent interfaces, or types defined locally that belong in shared.
 3. **Database & Schema** — verify Prisma schema conventions, migration hygiene (no `db:push` artifacts), and data model alignment with `data-model.md`.
 
 ### Batch 2

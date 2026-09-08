@@ -34,7 +34,7 @@ Use `github_state_*` helpers for all open issue/PR metadata lookups. Do NOT call
    - Errors during activity windows = user impact
    - Noisy logs: repetitive lines, debug-level in prod, excessive payloads
    - Silent failures: Mixpanel shows start but no completion
-   - Pipeline health: `recording.started` vs completed ratio
+   - Conversation health: sessions whose latest message is `role=USER` for >~3 min (AI reply stuck) — see `shared/diagnostics/check-pipeline-health.md`
    - Performance: slow responses, Bedrock throttling
 5. **Check if already tracked or fixed** — before creating any issue, check the state file first, then use search as needed:
    ```bash

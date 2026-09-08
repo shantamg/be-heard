@@ -130,6 +130,7 @@ import {
   trackShareTopicDeclined,
   trackShareTopicDismissed,
   trackShareDraftSent,
+  trackEmpathyValidated,
 } from '../services/analytics';
 import { shouldShowSessionEntryMoodCheck } from '../utils/sessionEntryMoodCheck';
 import { hasNewerDistinctEmpathyStatement, isSameEmpathyAttemptMessage } from '../utils/empathyMessageMatching';
@@ -2939,10 +2940,11 @@ export function UnifiedSessionScreen({
   }, [partnerEmpathyData?.attempt]);
 
   const handleValidationAccurate = useCallback(() => {
+    trackEmpathyValidated(sessionId, 'accurate');
     markLocalEmpathyValidation('accepted');
     setIsAwaitingEmpathyValidationFollowUp(true);
     handleValidatePartnerEmpathy(true);
-  }, [markLocalEmpathyValidation, handleValidatePartnerEmpathy]);
+  }, [sessionId, markLocalEmpathyValidation, handleValidatePartnerEmpathy]);
 
   const handleValidationNotQuite = useCallback(() => {
     setShowAccuracyFeedbackDrawer(true);
@@ -4284,10 +4286,11 @@ export function UnifiedSessionScreen({
           indicators={indicators}
           onSendMessage={sendMessageWithTracking}
           onInitialRenderReady={() => setHasCompletedInitialChatRender(true)}
-          failedMessage={failedMessageContent}
-          prefillText={stage4BrainstormPrefill}
-          onPrefillConsumed={() => setStage4BrainstormPrefill(null)}
-          keyboardVerticalOffset={0}
+          composer={{
+            failedMessage: failedMessageContent,
+            prefillText: stage4BrainstormPrefill,
+            onPrefillConsumed: () => setStage4BrainstormPrefill(null),
+          }}
           // Cache-First: Ghost dots are derived from last message role in ChatInterface
           // isSending is still needed for brief moment during API call before optimistic message appears
           // isFetchingInitialMessage shows dots while fetching first AI message
@@ -4306,22 +4309,27 @@ export function UnifiedSessionScreen({
           }
           // isInputDisabled prevents sending while API call is in progress
           isInputDisabled={isSending}
-          showEmotionSlider={
+          partnerName={partnerName}
+          emotionSlider={
             !isInOnboardingUnsigned &&
             waitingStatus !== 'stage4-selections-pending'
+              ? {
+                  value: barometerValue,
+                  onChange: handleBarometerChange,
+                  onHighEmotion: (value: number) => {
+                    if (value >= 9) {
+                      openOverlay('support-options');
+                    }
+                  },
+                  compact: true,
+                }
+              : undefined
           }
-          partnerName={partnerName}
-          emotionValue={barometerValue}
-          onEmotionChange={handleBarometerChange}
-          onHighEmotion={(value) => {
-            if (value >= 9) {
-              openOverlay('support-options');
-            }
+          pagination={{
+            onLoadMore: fetchMoreMessages,
+            hasMore: hasMoreMessages,
+            isLoadingMore: isFetchingMoreMessages,
           }}
-          compactEmotionSlider
-          onLoadMore={fetchMoreMessages}
-          hasMore={hasMoreMessages}
-          isLoadingMore={isFetchingMoreMessages}
           onTypewriterStateChange={setIsTypewriterAnimating}
           onTypewriterComplete={() => {
             // Reset justSignedCompact after first message animates
@@ -4335,8 +4343,10 @@ export function UnifiedSessionScreen({
           // ID of last seen chat item for "new messages" separator
           // Uses captured value from before session was marked viewed, so new messages
           // arriving while viewing don't trigger a separator
-          lastSeenChatItemId={lastSeenChatItemIdForSeparator}
-          lastViewedAt={lastViewedAtForAnimation}
+          readBoundary={{
+            lastSeenChatItemId: lastSeenChatItemIdForSeparator,
+            lastViewedAt: lastViewedAtForAnimation,
+          }}
           customCards={chatCustomCards}
           // Show compact as custom empty state during onboarding when not signed.
           customEmptyState={
@@ -4344,38 +4354,41 @@ export function UnifiedSessionScreen({
               ? compactEmptyStateElement
               : undefined
           }
-          renderAboveInput={
-            aboveInputPanel ||
-            (currentStage === Stage.NEED_MAPPING && activeNeeds.length > 0) ||
-            (hasRedesignedStage4 && !!stage4State) ||
-            (session?.status === SessionStatus.RESOLVED && viewingResolvedHistory)
-              ? renderAboveInput
-              : undefined
-          }
-          renderBelowInput={undefined}
-          renderBelowChat={(transcriptInlineCards.length > 0 || memorySuggestion) ? () => (
-            <>
-              {transcriptInlineCards.map((card) => renderInlineCard(card))}
-              {memorySuggestion && (
-                <MemorySuggestionCard
-                  suggestion={memorySuggestion}
-                  onDismiss={clearMemorySuggestion}
-                  onApproved={() => {
-                    // Optional: could show a toast here for feedback
-                  }}
-                  testID="memory-suggestion-card"
-                />
-              )}
-            </>
-          ) : undefined}
+          slots={{
+            aboveInput:
+              aboveInputPanel ||
+              (currentStage === Stage.NEED_MAPPING && activeNeeds.length > 0) ||
+              (hasRedesignedStage4 && !!stage4State) ||
+              (session?.status === SessionStatus.RESOLVED && viewingResolvedHistory)
+                ? renderAboveInput
+                : undefined,
+            belowInput: undefined,
+            belowChat: (transcriptInlineCards.length > 0 || memorySuggestion) ? () => (
+              <>
+                {transcriptInlineCards.map((card) => renderInlineCard(card))}
+                {memorySuggestion && (
+                  <MemorySuggestionCard
+                    suggestion={memorySuggestion}
+                    onDismiss={clearMemorySuggestion}
+                    onApproved={() => {
+                      // Optional: could show a toast here for feedback
+                    }}
+                    testID="memory-suggestion-card"
+                  />
+                )}
+              </>
+            ) : undefined,
+          }}
           hideInput={
             redesignedStage4AllowsInput
               ? false
               : redesignedStage4ShouldHideInput || derivedShouldHideInput
           }
-          validationCards={validationCards}
-          onValidateAccurate={handleValidationAccurate}
-          onValidateNotQuite={handleValidationNotQuite}
+          validation={{
+            cards: validationCards,
+            onValidateAccurate: handleValidationAccurate,
+            onValidateNotQuite: handleValidationNotQuite,
+          }}
           />
 
           {/* Waiting banner removed - now handled by the guided input panel renderer */}
@@ -4497,18 +4510,21 @@ export function UnifiedSessionScreen({
           partnerName={partnerName}
           initialStep="feedback"
           onAccurate={() => {
+            trackEmpathyValidated(sessionId, 'accurate');
             markLocalEmpathyValidation('accepted');
             setIsAwaitingEmpathyValidationFollowUp(true);
             handleValidatePartnerEmpathy(true);
             setShowAccuracyFeedbackDrawer(false);
           }}
           onPartiallyAccurate={() => {
+            trackEmpathyValidated(sessionId, 'partial');
             markLocalEmpathyValidation('accepted');
             setIsAwaitingEmpathyValidationFollowUp(true);
             handleValidatePartnerEmpathy(true, 'Some parts are accurate');
             setShowAccuracyFeedbackDrawer(false);
           }}
           onInaccurate={(roughFeedback) => {
+            trackEmpathyValidated(sessionId, 'inaccurate');
             setShowAccuracyFeedbackDrawer(false);
             openFeedbackCoachWithRoughFeedback(roughFeedback);
           }}

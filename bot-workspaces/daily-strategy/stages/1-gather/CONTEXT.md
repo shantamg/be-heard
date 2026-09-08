@@ -87,8 +87,8 @@ Returns structured findings with autonomy tier classification.
 
 ### Sub-agent 7: Mixpanel Friction Scanner
 Load `shared/scanners/mixpanel-friction.md` and execute. Detects:
-- Recording funnel drop-offs
-- Feature abandonment patterns
+- Session funnel drop-offs (Session Created → stages 0–4 → Session Resolved)
+- Feature abandonment patterns (inner-work and share flows)
 - Usage anomalies (significant drops from 7-day average)
 Returns structured findings with user impact ranking.
 

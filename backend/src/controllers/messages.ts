@@ -11,66 +11,43 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { logger } from '../lib/logger';
 import { prisma } from '../lib/prisma';
-import { getOrchestratedResponse, type FullAIContext } from '../services/ai';
-import { getModelCompletionWithTools, getSonnetResponse, getSonnetStreamingResponse, BrainActivityCallType, isMockLLMEnabled } from '../lib/bedrock';
-import { brainService } from '../services/brain-service';
-import { buildInitialMessagePrompt, buildStagePrompt, buildStagePromptString } from '../services/stage-prompts';
+import { getSonnetResponse, BrainActivityCallType } from '../lib/bedrock';
+import { buildInitialMessagePrompt, buildStagePromptString } from '../services/stage-prompts';
 import { parseMicroTagResponse } from '../utils/micro-tag-parser';
+import { type SessionStateToolInput } from '../services/stage-tools';
+import { applyStage3NeedActions, persistTurnState } from '../services/stream-turn-actions';
+import { admitStreamTurn } from '../services/stream-turn-admission';
+import { scheduleStreamTurnBackgroundJobs } from '../services/stream-turn-background';
 import {
-  getToolsForStage,
-  parseSessionStateToolInput,
-  SESSION_STATE_TOOL_NAME,
-  type SessionStateToolInput,
-} from '../services/stage-tools';
+  cleanupFailedStreamTurn,
+  isReadyForStage3RevealText,
+  resolveStage3GateTurn,
+  saveAiTurnMessage,
+} from '../services/stream-turn-persistence';
+import { assembleStreamTurnContext } from '../services/stream-turn-context';
+import { runStreamTurnModel } from '../services/stream-turn-model';
+import { resolveStreamTurn } from '../services/stream-turn-resolution';
 import {
-  sendMessageRequestSchema,
   feelHeardRequestSchema,
   getMessagesQuerySchema,
-  MessageRole,
-  DEFAULT_PRIVACY_PREFERENCES,
-  PrivacyPreferencesDTO,
+  type StreamEvent,
 } from '@meet-without-fear/shared';
-import { notifyPartner, publishSessionEvent, notifySessionMembers, publishMessageAIResponse, publishMessageError, publishTopicFrameUpdated } from '../services/realtime';
+import { notifyPartner, publishSessionEvent } from '../services/realtime';
 import { successResponse, errorResponse } from '../utils/response';
-import { getPartnerUserId, isSessionCreator, touchUserSessionActivity } from '../utils/session';
+import { getPartnerUserId, isSessionCreator } from '../utils/session';
 import { embedSessionContent } from '../services/embedding';
-import { updateSessionSummary, getSessionSummary } from '../services/conversation-summarizer';
-import { runReconcilerForDirection, getSharedContextForGuesser } from '../services/reconciler';
+import { runReconcilerForDirection } from '../services/reconciler';
 import { updateContext } from '../lib/request-context';
-import { runPartnerSessionClassifier, ensureFactIds, CategorizedFactWithId } from '../services/partner-session-classifier';
 import { consolidateGlobalFacts } from '../services/global-memory';
-import { assembleContextBundle, formatContextForPrompt } from '../services/context-assembler';
-import type { MemoryIntentResult } from '../services/memory-intent';
-import { handleDispatch, type DispatchContext } from '../services/dispatch-handler';
-import { getMilestoneContext, getSharedContentContext } from '../services/shared-context';
-import { CONTEXT_WINDOW, trimConversationHistory } from '../utils/token-budget';
-import { estimateContextSizes, finalizeTurnMetrics, recordContextSizes } from '../services/llm-telemetry';
-import { captureProposedNeedsForUser, captureSingleNeedForUser } from '../services/needs';
-import { applyNeedAction, applyNeedEdits } from '../services/needs-edit-applier.service';
-import { interpretNeedEditRequest } from '../services/needs-edit-interpreter.service';
-import { cleanVisibleAIText } from '../utils/visible-text';
-import { captureStage4Turn } from '../services/stage4-capture.service';
-import { applyStage4AutoClosureFromSignal } from '../services/stage4-auto-closure.service';
-import {
-  buildTendingConversationPrompt,
-  isExplicitAskForInput,
-  type TendingConversationPromptContext,
-} from '../services/stage4-prompts';
-import { getStage4State as buildStage4State, Stage4StateNotFoundError } from '../services/stage4-state';
-import type { ParsedStage4WalkthroughAction } from '../utils/micro-tag-parser';
+import { finalizeTurnMetrics } from '../services/llm-telemetry';
+import { scrubVisibleAIText } from '../utils/visible-text';
+
+// Re-exported for existing callers that import these from this controller.
+export { scrubVisibleAIText, isReadyForStage3RevealText };
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-async function getShowActivityStatus(userId: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { privacyPreferences: true } as any,
-  });
-  const preferences = ((user as { privacyPreferences?: unknown } | null)?.privacyPreferences as PrivacyPreferencesDTO | null) ?? DEFAULT_PRIVACY_PREFERENCES;
-  return preferences.showActivityStatus;
-}
 
 /**
  * Check if partner has completed stage 1 "feel heard"
@@ -97,377 +74,6 @@ async function hasPartnerCompletedStage1(
   const gates = partnerProgress.gatesSatisfied as Record<string, unknown> | null;
   return gates?.feelHeard === true || gates?.feelHeardConfirmed === true;
 }
-
-async function getStage4InventoryPromptContext(sessionId: string, currentUserId: string): Promise<string | null> {
-  const proposals = await prisma.strategyProposal.findMany({
-    where: { sessionId },
-    orderBy: { updatedAt: 'asc' },
-    take: 12,
-  });
-
-  const activeProposals = proposals.filter((proposal) => proposal.status !== 'REMOVED');
-  if (activeProposals.length === 0) return null;
-
-  return activeProposals
-    .map((proposal) => {
-      const owner = proposal.createdByUserId === currentUserId
-        ? 'current user'
-        : proposal.createdByUserId
-          ? 'partner'
-          : 'shared/no owner';
-      const details = [
-        `id=${proposal.id}`,
-        `kind=${proposal.kind}`,
-        `owner=${owner}`,
-        `description="${proposal.description}"`,
-      ];
-      if (proposal.duration) details.push(`duration="${proposal.duration}"`);
-      if (proposal.measureOfSuccess) details.push(`success="${proposal.measureOfSuccess}"`);
-      return `- ${details.join(' | ')}`;
-    })
-    .join('\n');
-}
-
-async function getStage4WalkthroughPromptContext(
-  sessionId: string,
-  currentUserId: string
-): Promise<string | null> {
-  try {
-    const state = await buildStage4State(sessionId, currentUserId);
-    const walkthrough = state.walkthrough;
-    const lines = [
-      `phase=${walkthrough.phase}`,
-      `currentIndex=${walkthrough.currentIndex + 1}`,
-      `totalInPhase=${walkthrough.totalInPhase}`,
-    ];
-
-    if (walkthrough.currentNeed) {
-      lines.push(
-        `currentNeedId=${walkthrough.currentNeed.id}`,
-        `currentNeedLabel="${walkthrough.currentNeed.label}"`,
-        `currentNeedSource=${walkthrough.currentNeed.source}`,
-        `currentNeedStatus=${walkthrough.currentNeed.status}`,
-      );
-    } else {
-      lines.push('currentNeedId=null');
-    }
-
-    const formatNeed = (need: typeof walkthrough.ownNeeds[number]) =>
-      `- id=${need.id} | status=${need.status} | label="${need.label}"`;
-    if (walkthrough.ownNeeds.length > 0) {
-      lines.push('ownNeeds:', ...walkthrough.ownNeeds.map(formatNeed));
-    }
-    if (walkthrough.partnerNeeds.length > 0) {
-      lines.push('partnerNeeds:', ...walkthrough.partnerNeeds.map(formatNeed));
-    }
-
-    const currentProposalLines = walkthrough.proposalGroups
-      .flatMap((group) =>
-        group.proposals.map((proposal) => {
-          const details = [
-            `- group=${group.key}`,
-            `id=${proposal.id}`,
-            `kind=${proposal.kind}`,
-            `description="${proposal.description}"`,
-          ];
-          if (proposal.duration) details.push(`duration="${proposal.duration}"`);
-          if (proposal.measureOfSuccess) details.push(`success="${proposal.measureOfSuccess}"`);
-          return details.join(' | ');
-        })
-      );
-    if (currentProposalLines.length > 0) {
-      lines.push('currentNeedProposals:', ...currentProposalLines);
-    }
-
-    return lines.join('\n');
-  } catch (error) {
-    if (error instanceof Stage4StateNotFoundError) return null;
-    logger.warn('[getStage4WalkthroughPromptContext] failed', { error });
-    return null;
-  }
-}
-
-async function applyStage4WalkthroughAction(
-  sessionId: string,
-  userId: string,
-  action: ParsedStage4WalkthroughAction
-): Promise<boolean> {
-  if (action.action === 'NONE') return false;
-
-  const before = await buildStage4State(sessionId, userId);
-  const currentNeed = before.walkthrough.currentNeed;
-  if (!currentNeed) return false;
-  if (before.walkthrough.phase !== 'MY_NEEDS' && before.walkthrough.phase !== 'PARTNER_NEEDS') {
-    return false;
-  }
-  if (currentNeed.status === 'covered' || currentNeed.status === 'skipped') return false;
-  if (action.needId && action.needId !== currentNeed.id) {
-    logger.warn('[applyStage4WalkthroughAction] Ignoring action for non-current need', {
-      sessionId,
-      userId,
-      actionNeedId: action.needId,
-      currentNeedId: currentNeed.id,
-    });
-    return false;
-  }
-
-  const progress = await prisma.stageProgress.findUnique({
-    where: { sessionId_userId_stage: { sessionId, userId, stage: 4 } },
-    select: { gatesSatisfied: true },
-  });
-  const gates = (progress?.gatesSatisfied as Record<string, unknown> | null) ?? {};
-  const existing =
-    gates.stage4Walkthrough &&
-    typeof gates.stage4Walkthrough === 'object' &&
-    !Array.isArray(gates.stage4Walkthrough)
-      ? (gates.stage4Walkthrough as Record<string, unknown>)
-      : {};
-  const covered = new Set(
-    Array.isArray(existing.coveredNeedIds)
-      ? existing.coveredNeedIds.filter((id): id is string => typeof id === 'string')
-      : []
-  );
-  const skipped = new Set(
-    Array.isArray(existing.skippedNeedIds)
-      ? existing.skippedNeedIds.filter((id): id is string => typeof id === 'string')
-      : []
-  );
-  if (action.action === 'COVERED') {
-    covered.add(currentNeed.id);
-    skipped.delete(currentNeed.id);
-  } else {
-    skipped.add(currentNeed.id);
-    covered.delete(currentNeed.id);
-  }
-
-  const remainingOwn = before.walkthrough.ownNeeds.find(
-    (need) => !covered.has(need.id) && !skipped.has(need.id)
-  );
-  const remainingPartner = before.walkthrough.partnerNeeds.find(
-    (need) => !covered.has(need.id) && !skipped.has(need.id)
-  );
-  const phase =
-    before.walkthrough.phase === 'MY_NEEDS' && remainingOwn
-      ? 'MY_NEEDS'
-      : before.walkthrough.phase === 'MY_NEEDS' && remainingPartner
-        ? 'PARTNER_NEEDS'
-        : before.walkthrough.phase === 'PARTNER_NEEDS' && remainingPartner
-          ? 'PARTNER_NEEDS'
-          : remainingOwn
-            ? 'MY_NEEDS'
-            : remainingPartner
-              ? 'PARTNER_NEEDS'
-              : 'QUALITY_REVIEW';
-  const currentNeedId =
-    phase === 'MY_NEEDS'
-      ? remainingOwn?.id ?? null
-      : phase === 'PARTNER_NEEDS'
-        ? remainingPartner?.id ?? null
-        : null;
-
-  await prisma.stageProgress.update({
-    where: { sessionId_userId_stage: { sessionId, userId, stage: 4 } },
-    data: {
-      gatesSatisfied: {
-        ...gates,
-        stage4Walkthrough: {
-          phase,
-          currentNeedId,
-          coveredNeedIds: [...covered],
-          skippedNeedIds: [...skipped],
-          updatedAt: new Date().toISOString(),
-          updatedFrom: 'ai_walkthrough_action',
-          lastAction: action.action,
-          lastReason: action.reason ?? null,
-        },
-      } satisfies Prisma.InputJsonValue,
-    },
-  });
-
-  logger.info('[applyStage4WalkthroughAction] Advanced Stage 4 walkthrough from model action', {
-    sessionId,
-    userId,
-    needId: currentNeed.id,
-    action: action.action,
-    nextPhase: phase,
-    nextNeedId: currentNeedId,
-  });
-  return true;
-}
-
-/**
- * Stage 4 Phase 6 — open needs (not declined, not yet willing-covered) with
- * their labels, so the AI can surface one at a time in main chat with the
- * user's own phrasing.
- */
-async function getStage4OpenNeedsForPrompt(
-  sessionId: string,
-  userId: string
-): Promise<Array<{ needLabel: string }> | null> {
-  try {
-    const [coverageRows, willingSelections, declinations] = await Promise.all([
-      prisma.stage4NeedCoverage.findMany({
-        where: { sessionId, coverageStatus: { in: ['OPEN', 'PARTIAL'] } },
-        select: { id: true, needId: true, needLabel: true, coveringProposalIds: true },
-      }),
-      prisma.stage4ProposalSelection.findMany({
-        where: { sessionId, userId, decision: 'WILLING' },
-        select: { proposalId: true },
-      }),
-      prisma.stage4NeedDeclination.findMany({
-        where: { sessionId, userId },
-        select: { needId: true },
-      }),
-    ]);
-    if (coverageRows.length === 0) return null;
-    const willingIds = new Set(willingSelections.map((s) => s.proposalId));
-    const declined = new Set(declinations.map((d) => d.needId));
-    const candidateRows = coverageRows.filter((row) => {
-      const needId = row.needId ?? row.id;
-      if (declined.has(needId)) return false;
-      const covered = row.coveringProposalIds.some((pid) => willingIds.has(pid));
-      return !covered;
-    });
-    if (candidateRows.length === 0) return null;
-    const needIds = candidateRows.map((r) => r.needId).filter((n): n is string => Boolean(n));
-    const needs = needIds.length > 0
-      ? await prisma.identifiedNeed.findMany({
-          where: { id: { in: needIds }, vessel: { userId } },
-          select: { id: true, need: true },
-        })
-      : [];
-    const byId = new Map(needs.map((n) => [n.id, n.need] as const));
-    const labels: Array<{ needLabel: string }> = [];
-    for (const row of candidateRows) {
-      // Prefer the user's exact phrasing from IdentifiedNeed; fall back to the
-      // coverage row's needLabel so coverage rows without an IdentifiedNeed
-      // link (or whose link belongs to the partner's vessel) still surface.
-      const label = (row.needId && byId.get(row.needId)) || row.needLabel;
-      if (label) labels.push({ needLabel: label });
-    }
-    return labels.length > 0 ? labels : null;
-  } catch (err) {
-    logger.warn('[getStage4OpenNeedsForPrompt] failed', { error: err });
-    return null;
-  }
-}
-
-/**
- * Stage 4 Phase 6 (Surface 6) — listen-first mode. Active when the session is
- * RESOLVED and the user hasn't yet explicitly asked the AI for input since
- * re-entry. Once any user message in history matches the explicit-ask regex,
- * advice mode persists for the rest of the conversation.
- */
-async function isStage4ListenFirstMode(
-  _sessionId: string,
-  _userId: string,
-  sessionStatus: string,
-  history: Array<{ role: string; content: string }>
-): Promise<boolean> {
-  if (sessionStatus !== 'RESOLVED') return false;
-  const askedForInput = history.some(
-    (m) => m.role === 'USER' && isExplicitAskForInput(m.content)
-  );
-  return !askedForInput;
-}
-
-async function getTendingConversationContextForPrompt(
-  sessionId: string,
-  userId: string
-): Promise<TendingConversationPromptContext | null> {
-  try {
-    const [entries, needs, selectedNotes, latestCheckins] = await Promise.all([
-      prisma.tendingEntry.findMany({
-        where: {
-          sessionId,
-          OR: [
-            { scope: 'SHARED' },
-            { scope: 'INDIVIDUAL', ownerUserId: userId },
-            { scope: 'INDIVIDUAL', optedInShared: true },
-          ],
-        },
-        orderBy: [{ scheduledFor: 'asc' }, { createdAt: 'asc' }],
-        take: 8,
-        select: {
-          id: true,
-          summary: true,
-          scope: true,
-          agreement: { select: { measureOfSuccess: true } },
-        },
-      }),
-      prisma.stage4NeedCoverage.findMany({
-        where: { sessionId, sourceUserId: userId },
-        orderBy: [{ updatedAt: 'desc' }],
-        take: 8,
-        select: { needId: true, needLabel: true },
-      }),
-      prisma.tendingBetweenPeriodNote.findMany({
-        where: {
-          sessionId,
-          userId,
-          carryForwardSelected: true,
-        },
-        orderBy: [{ createdAt: 'asc' }],
-        take: 8,
-        select: {
-          id: true,
-          content: true,
-          consentToShareWithPartner: true,
-        },
-      }),
-      prisma.tendingCheckin.findMany({
-        where: { sessionId, userId },
-        orderBy: [{ submittedAt: 'desc' }],
-        take: 3,
-        include: {
-          entryOutcomes: true,
-          needOutcomes: true,
-          adjustments: true,
-        },
-      }),
-    ]);
-
-    if (entries.length === 0 && selectedNotes.length === 0 && latestCheckins.length === 0) {
-      return null;
-    }
-
-    const latestStructuredOutcomes = latestCheckins.flatMap((checkin) => [
-      `Check-in ${checkin.id}: continueChoice=${checkin.continueChoice ?? 'none'} nextAction=${checkin.nextAction ?? 'none'}`,
-      ...checkin.entryOutcomes.map((outcome) =>
-        `Entry ${outcome.tendingEntryId}: followThrough=${outcome.followThroughStatus}; helpfulness=${outcome.helpfulnessStatus ?? 'none'}; blockers=${outcome.blockerCategories.join(', ') || 'none'}; stillWorthTrying=${outcome.stillWorthTrying ?? 'unknown'}`
-      ),
-      ...checkin.needOutcomes.map((outcome) =>
-        `Need ${outcome.needLabel}: ${outcome.resolutionStatus}${outcome.nextAction ? `; nextAction=${outcome.nextAction}` : ''}`
-      ),
-      ...checkin.adjustments.map((adjustment) =>
-        `Adjustment ${adjustment.tendingEntryId}: ${adjustment.revisedCommitmentText ?? 'no text'}${adjustment.revisedCadence ? `; cadence=${adjustment.revisedCadence}` : ''}${adjustment.revisedSuccessCriteria ? `; success=${adjustment.revisedSuccessCriteria}` : ''}`
-      ),
-    ]).join('\n');
-
-    return {
-      entries: entries.map((entry) => ({
-        id: entry.id,
-        summary: entry.summary,
-        scope: entry.scope,
-        successCriteria: entry.agreement?.measureOfSuccess ?? null,
-      })),
-      needs: needs.map((need) => ({
-        id: need.needId,
-        label: need.needLabel,
-      })),
-      selectedBetweenPeriodNotes: selectedNotes.map((note) => ({
-        id: note.id,
-        content: note.content,
-        consentToShareWithPartner: note.consentToShareWithPartner,
-      })),
-      latestStructuredOutcomes: latestStructuredOutcomes || null,
-    };
-  } catch (err) {
-    logger.warn('[getTendingConversationContextForPrompt] failed', { sessionId, userId, error: err });
-    return null;
-  }
-}
-
 /**
  * Get a fallback initial message when AI is unavailable
  */
@@ -527,124 +133,6 @@ function scrubStage2RepairFraming(content: string): string {
     .replace(moveForwardTogetherRegex,
       "If something feels off, you can say what is missing before the process continues."
     );
-}
-
-const PLANNER_LINE_PREFIXES = [
-  'i should',
-  'so both lists should',
-  '— so both lists should',
-  "here's my plan",
-  'the prompt says',
-  'i need to follow',
-  'i need to present',
-  'i need to check the prompt',
-  'i need to use the prompt',
-  'i need to make sure both lists',
-];
-
-function stripUntaggedReasoningPreamble(text: string): string {
-  const marker = text.match(/\bFor\s+stage4_(?:walkthrough|proposals)\s*:/i);
-  if (!marker || marker.index === undefined) return text;
-
-  const afterMarker = text.slice(marker.index);
-  const nextParagraph = afterMarker.match(/\n\s*\n+/);
-  if (!nextParagraph || nextParagraph.index === undefined) return text;
-
-  const visibleStart = marker.index + nextParagraph.index + nextParagraph[0].length;
-  return text.slice(visibleStart);
-}
-
-export function scrubVisibleAIText(
-  text: string,
-  options: { preserveBoundaryWhitespace?: boolean } = {}
-): { text: string; scrubbed: boolean } {
-  const before = text;
-  const preambleScrubbed = stripUntaggedReasoningPreamble(text);
-  const plannerScrubbed = preambleScrubbed
-    .split(/\r?\n/)
-    .filter((line) => {
-      const trimmed = line.trim().toLowerCase();
-      return !PLANNER_LINE_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
-    })
-    .join('\n')
-    .replace(/\bI should\b/gi, '')
-    .replace(/\bso both lists should be available\b/gi, '');
-  const cleaned = cleanVisibleAIText(plannerScrubbed, {
-    preserveBoundaryWhitespace: options.preserveBoundaryWhitespace,
-  });
-
-  return { text: cleaned, scrubbed: cleaned !== before };
-}
-
-export function isReadyForStage3RevealText(content: string): boolean {
-  const normalized = content.trim().toLowerCase();
-  if (/\bnot\s+ready\b/.test(normalized) || /\b(?:don'?t|do not)\s+(?:want|feel ready)\b/.test(normalized)) {
-    return false;
-  }
-  return /\b(i'?m|i am|we are)?\s*ready\b/.test(normalized) &&
-    /(list|lists|needs|side by side|reveal|see them|see it|show)/.test(normalized);
-}
-
-function isClarifyingStage4Response(content: string): boolean {
-  const trimmed = content.trim();
-  if (!trimmed.endsWith('?')) return false;
-
-  return /\b(?:do you mean|what do you mean|which|or something else|clarify|more specific|can you say more|are you saying)\b/i.test(trimmed);
-}
-
-async function getStage3GateResponse(sessionId: string, userId: string): Promise<string | null> {
-  const partnerId = await getPartnerUserId(sessionId, userId);
-  const progress = await prisma.stageProgress.findUnique({
-    where: {
-      sessionId_userId_stage: {
-        sessionId,
-        userId,
-        stage: 3,
-      },
-    },
-  });
-  if (!progress) return null;
-
-  const vessel = await prisma.userVessel.findUnique({
-    where: { userId_sessionId: { userId, sessionId } },
-    include: { identifiedNeeds: { orderBy: { createdAt: 'asc' } } },
-  });
-  const needs = vessel?.identifiedNeeds ?? [];
-  const gates = progress.gatesSatisfied as Record<string, unknown> | null;
-  const ownShared = gates?.needsShared === true;
-  const ownConfirmed = gates?.needsConfirmed === true || (needs.length > 0 && needs.every((need) => need.confirmed));
-
-  if (needs.length === 0) {
-    return "Let's first put words to what matters most for you here. What do you need in order to feel clear, grounded, or able to move forward from this?";
-  }
-
-  if (!ownConfirmed) {
-    return "I've captured a draft of what matters to you. Please review and confirm your needs before we move any further.";
-  }
-
-  if (!ownShared) {
-    return "Your needs are ready for your review. If they still feel right, you can choose to share them for the side-by-side step.";
-  }
-
-  if (!partnerId) {
-    return "Your needs are shared. We'll wait until your partner has shared theirs before showing anything side by side.";
-  }
-
-  const partnerProgress = await prisma.stageProgress.findUnique({
-    where: {
-      sessionId_userId_stage: {
-        sessionId,
-        userId: partnerId,
-        stage: 3,
-      },
-    },
-  });
-  const partnerGates = partnerProgress?.gatesSatisfied as Record<string, unknown> | null;
-  if (partnerGates?.needsShared !== true) {
-    return "Your needs are shared. We'll wait until your partner has shared theirs before showing anything side by side.";
-  }
-
-  return "Both needs lists are ready to review side by side. Take a look at them and notice what stands out before deciding whether they feel accurate.";
 }
 
 // ============================================================================
@@ -1533,20 +1021,13 @@ export async function getInitialMessage(
 // ============================================================================
 
 /**
- * SSE event type definitions
+ * Send SSE event to client.
+ *
+ * The event vocabulary and payload shapes are defined once in
+ * `shared/src/contracts/stream.ts` (`StreamEvent`); both this emitter and the
+ * mobile consumer compile against that contract.
  */
-type SSEEvent =
-  | { event: 'user_message'; data: { id: string; content: string; timestamp: string; refiningNeedId?: string | null } }
-  | { event: 'chunk'; data: { text: string } }
-  | { event: 'metadata'; data: { metadata: SessionStateToolInput } }
-  | { event: 'text_complete'; data: { metadata: SessionStateToolInput } }
-  | { event: 'complete'; data: { messageId: string; metadata: SessionStateToolInput } }
-  | { event: 'error'; data: { message: string; retryable: boolean } };
-
-/**
- * Send SSE event to client
- */
-function sendSSE(res: Response, event: SSEEvent): void {
+function sendSSE(res: Response, event: StreamEvent): void {
   res.write(`event: ${event.event}\n`);
   res.write(`data: ${JSON.stringify(event.data)}\n\n`);
 }
@@ -1576,122 +1057,25 @@ export async function sendMessageStream(req: Request, res: Response): Promise<vo
   try {
     logger.info(`[sendMessageStream:${requestId}] ========== SSE STREAM REQUEST START ==========`);
 
-    const user = req.user;
-    if (!user) {
-      res.status(401).json({ error: 'Authentication required' });
+    // Rejections here are plain JSON — no SSE header has been flushed yet.
+    const admission = await admitStreamTurn({ requestId, req });
+    if (!admission.admitted) {
+      res.status(admission.status).json(admission.body);
       return;
     }
 
-    const { id: sessionId } = req.params;
+    const {
+      user,
+      sessionId,
+      content,
+      session,
+      progress,
+      currentStage,
+      refiningNeedContext,
+      userMessage,
+    } = admission;
 
-    // Validate request body
-    const parseResult = sendMessageRequestSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      res.status(400).json({ error: 'Invalid request body', details: parseResult.error.issues });
-      return;
-    }
-
-    const { content, refiningNeedId } = parseResult.data;
-
-    // Check session exists and user has access
-    const session = await prisma.session.findFirst({
-      where: {
-        id: sessionId,
-        relationship: {
-          members: {
-            some: { userId: user.id },
-          },
-        },
-      },
-    });
-
-    if (!session) {
-      res.status(404).json({ error: 'Session not found' });
-      return;
-    }
-
-    // Check session allows messaging. RESOLVED remains open for private
-    // Tending/listen-first conversation after Stage 4 closes.
-    if (session.status !== 'ACTIVE') {
-      if (session.status === 'CREATED') {
-        const isCreator = await isSessionCreator(sessionId, user.id);
-        if (!isCreator) {
-          res.status(400).json({ error: 'Session is not active' });
-          return;
-        }
-      } else if (session.status !== 'INVITED' && session.status !== 'RESOLVED') {
-        res.status(400).json({ error: 'Session is not active' });
-        return;
-      }
-    }
-
-    // Get user's current stage progress
-    let progress = await prisma.stageProgress.findFirst({
-      where: {
-        sessionId,
-        userId: user.id,
-        status: { in: ['IN_PROGRESS', 'GATE_PENDING'] },
-      },
-      orderBy: { stage: 'desc' },
-    });
-
-    const currentStage = progress?.stage ?? 0;
-
-    let refiningNeedContext: { id: string; need: string; category?: string } | null = null;
-    if (currentStage === 3 && refiningNeedId) {
-      const vessel = await prisma.userVessel.findUnique({
-        where: { userId_sessionId: { userId: user.id, sessionId } },
-        select: { id: true },
-      });
-      const refiningNeed = vessel
-        ? await prisma.identifiedNeed.findFirst({
-            where: { id: refiningNeedId, vesselId: vessel.id },
-            select: { id: true, need: true, category: true },
-          })
-        : null;
-      if (!refiningNeed) {
-        res.status(400).json({ error: 'Invalid refiningNeedId' });
-        return;
-      }
-      refiningNeedContext = {
-        id: refiningNeed.id,
-        need: refiningNeed.need,
-        category: refiningNeed.category,
-      };
-    }
-
-    // =========================================================================
-    // Save user message
-    // =========================================================================
-    const userMessage = await prisma.message.create({
-      data: {
-        sessionId,
-        senderId: user.id,
-        role: 'USER',
-        content,
-        stage: currentStage,
-        refiningNeedId: refiningNeedContext?.id ?? null,
-      },
-    });
-    await touchUserSessionActivity(sessionId, user.id, userMessage.timestamp);
-    getShowActivityStatus(user.id)
-      .then((showActivityStatus) => {
-        if (!showActivityStatus) return;
-        return publishSessionEvent(sessionId, 'partner.activity', {
-          activeAt: userMessage.timestamp.toISOString(),
-        }, user.id);
-      })
-      .catch((err) =>
-        logger.warn(`[sendMessageStream:${requestId}] Failed to publish partner activity:`, err)
-      );
-    logger.info(`[sendMessageStream:${requestId}] User message created: ${userMessage.id}`);
-
-    // Broadcast to Status Site
-    brainService.broadcastMessage(userMessage);
-
-    // =========================================================================
     // Set up SSE headers
-    // =========================================================================
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -1709,915 +1093,77 @@ export async function sendMessageStream(req: Request, res: Response): Promise<vo
       },
     });
 
-    if (currentStage === 3 && isReadyForStage3RevealText(content)) {
-      const gateResponse = await getStage3GateResponse(sessionId, user.id);
-      if (gateResponse) {
-        const aiMessage = await prisma.message.create({
-          data: {
-            sessionId,
-            senderId: null,
-            forUserId: user.id,
-            role: 'AI',
-            content: gateResponse,
-            stage: 3,
-          },
-        });
-
-        if (!clientDisconnected) {
-          sendSSE(res, { event: 'chunk', data: { text: gateResponse } });
-          sendSSE(res, { event: 'metadata', data: { metadata: {} } });
-          sendSSE(res, { event: 'text_complete', data: { metadata: {} } });
-          sendSSE(res, { event: 'complete', data: { messageId: aiMessage.id, metadata: {} } });
-        }
-        res.end();
-        logger.info(`[sendMessageStream:${requestId}] Stage 3 ready text handled via gate response`);
-        return;
+    const stage3Gate = await resolveStage3GateTurn({ sessionId, userId: user.id, currentStage, content });
+    if (stage3Gate) {
+      if (!clientDisconnected) {
+        sendSSE(res, { event: 'chunk', data: { text: stage3Gate.text } });
+        sendSSE(res, { event: 'metadata', data: { metadata: {} } });
+        sendSSE(res, { event: 'text_complete', data: { metadata: {} } });
+        sendSSE(res, { event: 'complete', data: { messageId: stage3Gate.aiMessage.id, metadata: {} } });
       }
+      res.end();
+      logger.info(`[sendMessageStream:${requestId}] Stage 3 ready text handled via gate response`);
+      return;
     }
 
-    // =========================================================================
-    // Get conversation history for context (summary-aware)
-    // =========================================================================
-    const existingSummary = await getSessionSummary(sessionId, user.id);
-    const summaryBoundary = existingSummary?.summary.newestMessageAt;
-    const historyLimit = summaryBoundary ? 30 : 20;
-
-    const historyDesc = await prisma.message.findMany({
-      where: {
-        sessionId,
-        OR: [
-          { senderId: user.id, forUserId: null },
-          { forUserId: user.id },
-        ],
-        ...(summaryBoundary ? { timestamp: { gt: summaryBoundary } } : {}),
-      },
-      orderBy: { timestamp: 'desc' },
-      take: historyLimit,
-    });
-    const history = historyDesc.slice().reverse();
-
-    // Count ALL user messages for this session (not just from the limited history window)
-    // This prevents turn IDs from getting stuck when conversation exceeds 20 messages
-    // Also count user messages in the CURRENT stage only — stage-specific guards
-    // (e.g., feel-heard check, early-stage guidance) need stage-scoped counts so they
-    // don't fire prematurely due to accumulated turns from earlier stages.
-    const [userTurnCount, stageTurnCount] = await Promise.all([
-      prisma.message.count({
-        where: {
-          sessionId,
-          role: 'USER',
-          senderId: user.id,
-          forUserId: null,
-        },
-      }),
-      prisma.message.count({
-        where: {
-          sessionId,
-          role: 'USER',
-          senderId: user.id,
-          forUserId: null,
-          stage: currentStage,
-        },
-      }),
-    ]);
-    const turnId = `${sessionId}-${user.id}-${userTurnCount}`;
-    updateContext({ turnId, sessionId, userId: user.id });
-
-    // Get partner name for context
-    const partnerId = await getPartnerUserId(sessionId, user.id);
-    let partnerName: string | undefined;
-    if (partnerId) {
-      const partner = await prisma.user.findUnique({
-        where: { id: partnerId },
-        select: { name: true },
-      });
-      partnerName = partner?.name || undefined;
-    } else if (session.status === 'CREATED' || session.status === 'INVITED') {
-      // Partner hasn't joined yet - get name from invitation
-      const invitation = await prisma.invitation.findFirst({
-        where: { sessionId, invitedById: user.id },
-        select: { name: true },
-      });
-      partnerName = invitation?.name || undefined;
-    }
-
-    // Build stage prompt with full context assembly (includes notable facts)
-    const userName = user.name || 'there';
-    const isInvitationPhase = session.status === 'CREATED';
-
-    // Create intent for context assembly - use 'light' depth to load notable facts
-    const streamingIntent: MemoryIntentResult = {
-      intent: 'stage_enforcement',
-      depth: 'light', // Changed from 'minimal' to ensure notable facts are included
-      reason: 'Streaming response',
-      threshold: 0.60,
-      maxCrossSession: 0,
-      allowCrossSession: false,
-      surfaceStyle: 'silent',
-    };
-
-    // Assemble full context including notable facts from UserVessel
-    // Also fetch latest emotional reading for intensity-dependent prompt behavior
-    const [contextBundle, sharedContentHistory, milestoneContext, emotionalIntensity, capturedNeeds] = await Promise.all([
-      assembleContextBundle(
-        sessionId,
-        user.id,
-        currentStage,
-        streamingIntent
-      ),
-      // Stage gate: no shared content should exist for Stages 0-1 (witnessing).
-      // Defense-in-depth: even if the query has user isolation, skip entirely for early stages.
-      currentStage >= 2
-        ? getSharedContentContext(sessionId, user.id).catch((err: Error) => {
-            logger.warn(`[sendMessageStream:${requestId}] Shared content context fetch failed:`, err);
-            return null;
-          })
-        : Promise.resolve(null),
-      getMilestoneContext(sessionId, user.id).catch((err: Error) => {
-        logger.warn(`[sendMessageStream:${requestId}] Milestone context fetch failed:`, err);
-        return null;
-      }),
-      (async () => {
-        const vessel = await prisma.userVessel.findUnique({
-          where: { userId_sessionId: { userId: user.id, sessionId } },
-          select: { id: true },
-        });
-        if (vessel) {
-          const latestReading = await prisma.emotionalReading.findFirst({
-            where: { vesselId: vessel.id },
-            orderBy: { timestamp: 'desc' },
-            select: { intensity: true },
-          });
-          if (latestReading) return latestReading.intensity;
-        }
-        return 5; // Default if no reading
-      })(),
-      // Stage 3: fetch already-captured needs so the AI avoids duplicates
-      currentStage === 3
-        ? (async () => {
-            const vessel = await prisma.userVessel.findUnique({
-              where: { userId_sessionId: { userId: user.id, sessionId } },
-              select: { id: true },
-            });
-            if (!vessel) return null;
-            const needs = await prisma.identifiedNeed.findMany({
-              where: { vesselId: vessel.id },
-              orderBy: { createdAt: 'asc' },
-              select: { id: true, need: true, confirmed: true },
-            });
-            return needs.length > 0 ? needs : null;
-          })()
-        : Promise.resolve(null),
-    ]);
-
-    logger.info(`[sendMessageStream:${requestId}] Context assembled: notableFacts=${contextBundle.notableFacts?.length ?? 0}, emotionalIntensity=${emotionalIntensity}`);
-
-    // =========================================================================
-    // Stage 2B routing: Check if user is in REFINING empathy status
-    // If so, route to Stage 21 (Informed Empathy) prompt instead of Stage 2
-    // =========================================================================
-    let effectiveStage = currentStage;
-    let reconcilerGapContext: {
-      areaHint: string | null;
-      guidanceType: string | null;
-      promptSeed: string | null;
-      iteration: number;
-    } | undefined;
-    let previousEmpathyContent: string | null = null;
-    let stage2BSharedContext: string | null = null;
-    let isRefiningEmpathy = false;
-    let empathyDraftContent: string | null = null;
-
-    if (currentStage === 2) {
-      const refiningAttempt = await prisma.empathyAttempt.findFirst({
-        where: {
-          sessionId,
-          sourceUserId: user.id,
-          status: 'REFINING',
-        },
-        orderBy: { sharedAt: 'desc' },
-      });
-
-      if (refiningAttempt) {
-        effectiveStage = 21; // Stage 2B: Informed Empathy
-        previousEmpathyContent = refiningAttempt.content;
-        isRefiningEmpathy = true;
-        logger.info(`[sendMessageStream:${requestId}] Stage 2B routing: user has REFINING empathy, using stage 21`);
-
-        // Fetch current empathy draft (may have been saved from a previous turn in this conversation)
-        const currentEmpathyDraft = await prisma.empathyDraft.findUnique({
-          where: { sessionId_userId: { sessionId, userId: user.id } },
-          select: { content: true },
-        });
-        if (currentEmpathyDraft) {
-          empathyDraftContent = currentEmpathyDraft.content;
-          logger.info(`[sendMessageStream:${requestId}] Stage 2B: found existing empathy draft (${empathyDraftContent.length} chars)`);
-        } else {
-          // Use the previous empathy attempt content as starting draft
-          empathyDraftContent = refiningAttempt.content;
-          logger.info(`[sendMessageStream:${requestId}] Stage 2B: using previous empathy attempt as draft`);
-        }
-
-        // Fetch reconciler result for gap context
-        const reconcilerResult = await prisma.reconcilerResult.findFirst({
-          where: {
-            sessionId,
-            guesserId: user.id,
-            supersededAt: null,
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-
-        if (reconcilerResult) {
-          // Use abstract guidance fields only — never inject raw partner content
-          // (missedFeelings, gapSummary, mostImportantGap) into the guesser's prompt
-          reconcilerGapContext = {
-            areaHint: reconcilerResult.areaHint,
-            guidanceType: reconcilerResult.guidanceType,
-            promptSeed: reconcilerResult.promptSeed,
-            iteration: reconcilerResult.iteration,
-          };
-        }
-
-        // Fetch shared context from partner
-        const sharedContextResult = await getSharedContextForGuesser(sessionId, user.id);
-        stage2BSharedContext = sharedContextResult.content;
-      } else {
-        // Regular Stage 2 — load empathy draft so AI can see/edit the current draft
-        const currentEmpathyDraft = await prisma.empathyDraft.findUnique({
-          where: { sessionId_userId: { sessionId, userId: user.id } },
-          select: { content: true },
-        });
-        if (currentEmpathyDraft) {
-          empathyDraftContent = currentEmpathyDraft.content;
-          logger.info(`[sendMessageStream:${requestId}] Stage 2: found existing empathy draft (${empathyDraftContent.length} chars)`);
-        }
-      }
-    }
-    const stage4InventoryContext = currentStage === 4
-      ? await getStage4InventoryPromptContext(sessionId, user.id)
-      : null;
-
-    const stage4WalkthroughContext = currentStage === 4
-      ? await getStage4WalkthroughPromptContext(sessionId, user.id)
-      : null;
-
-    const stage4OpenNeeds = currentStage === 4
-      ? await getStage4OpenNeedsForPrompt(sessionId, user.id)
-      : null;
-
-    const stage4ListenFirstMode = await isStage4ListenFirstMode(
-      sessionId,
-      user.id,
-      session.status,
-      history
-    );
-    const tendingConversationContext = session.status === 'RESOLVED'
-      ? await getTendingConversationContextForPrompt(sessionId, user.id)
-      : null;
-    const tendingConversationPrompt = tendingConversationContext
-      ? buildTendingConversationPrompt('whatHappened', {
-          ...tendingConversationContext,
-          userName,
-          partnerName,
-        })
-      : null;
-
-    const prompt = buildStagePrompt(effectiveStage, {
-      userName,
-      currentUserId: user.id,
-      partnerUserId: partnerId,
+    const {
+      history,
+      userTurnCount,
+      turnId,
       partnerName,
-      turnCount: stageTurnCount,
-      emotionalIntensity,
-      contextBundle,
-      sharedContentHistory,
-      milestoneContext,
-      reconcilerGapContext,
-      previousEmpathyContent,
-      sharedContextFromPartner: stage2BSharedContext || undefined,
-      empathyDraft: empathyDraftContent || undefined,
-      isRefiningEmpathy: isRefiningEmpathy || undefined,
-      refiningNeed: refiningNeedContext,
-      capturedNeeds,
-      stage4InventoryContext,
-      stage4WalkthroughContext,
-      stage4OpenNeeds,
-      stage4ListenFirstMode,
-      tendingConversationContext,
-      tendingConversationPrompt,
-      topicFrame: session.topicFrameConfirmedAt ? session.topicFrame : undefined,
-    }, { isInvitationPhase });
-
-    // Tool calls are the primary structured-state channel. Legacy semantic tags
-    // are still parsed below as a compatibility fallback and scrubbed defensively.
-
-    // Format context bundle and inject into last user message (includes notable facts)
-    const formattedContext = formatContextForPrompt(contextBundle, {
-      sharedContentHistory,
-      milestoneContext,
-    });
-    logger.info(`[sendMessageStream:${requestId}] Formatted context: ${formattedContext.length} chars`);
-
-    // Filter out empty messages to prevent Bedrock ValidationException
-    const validHistory = history.filter((m) => m.content && m.content.trim().length > 0);
-    if (validHistory.length !== history.length) {
-      logger.warn(`[sendMessageStream:${requestId}] Filtered out ${history.length - validHistory.length} empty message(s) from history`);
-    }
-
-    const summaryExists = Boolean(summaryBoundary);
-    const { trimmed: trimmedHistory, truncated } = trimConversationHistory(
-      validHistory.map((m) => ({
-        role: m.role === 'USER' ? 'user' as const : 'assistant' as const,
-        content: m.content,
-      })),
-      summaryExists ? CONTEXT_WINDOW.recentTurnsWithSummary : CONTEXT_WINDOW.recentTurnsWithoutSummary
-    );
-
-    if (truncated > 0) {
-      logger.info(`[sendMessageStream:${requestId}] Trimmed ${truncated} old messages (summaryExists=${summaryExists})`);
-    }
-
-    // Build messages with context injected into the last user message
-    const messagesWithContext = trimmedHistory.map((m, i) => {
-      const isLastUserMessage = i === trimmedHistory.length - 1 && m.role === 'user';
-      const content = isLastUserMessage && formattedContext.trim()
-        ? `Context:\n${formattedContext}\n\nUser message: ${m.content}`
-        : m.content;
-      return {
-        role: m.role,
-        content,
-      };
+      userName,
+      isInvitationPhase,
+      effectiveStage,
+      prompt,
+      messagesWithContext,
+    } = await assembleStreamTurnContext({
+      requestId,
+      sessionId,
+      user,
+      session,
+      currentStage,
+      refiningNeedContext,
     });
 
-    recordContextSizes(turnId, estimateContextSizes({
-      pinned: `${prompt.staticBlock}\n\n${prompt.dynamicBlock}`,
-      summary: formattedContext,
-      recentMessages: trimmedHistory,
-      rag: '',
-    }));
-
-    // =========================================================================
-    // Stream AI response (with analysis block trap)
-    // =========================================================================
     let accumulatedText = '';
     let metadata: SessionStateToolInput = {};
     let streamError: Error | null = null;
-
-    // Tag trap state - Claude USUALLY outputs <thinking>...</thinking> first, which we hide.
-    // After thinking, there may be <draft>, <dispatch>, or <needs> tags that we also hide.
-    // The model occasionally skips the leading <thinking> and goes straight to visible prose
-    // (more often on deep, long-context turns). We start in the thinking trap optimistically,
-    // but the first chunk decides: if the output does not actually begin with <thinking>, we
-    // bail out of the trap immediately so the reply is not swallowed and hidden.
-    let isInsideThinking = true;
-    let sawThinkingOpener = false; // Becomes true only once we confirm a real <thinking> opener
-    let isTrappingTags = false; // After thinking, buffer to check for hidden semantic tags
-    let thinkingBuffer = '';
-    let tagTrapBuffer = ''; // Buffer for checking semantic tags after thinking
-    let thinkingContent = ''; // Store hidden thinking for logging
-    let draftContent = ''; // Store draft content for metadata
-    let needTagContent = ''; // Store structured single Stage 3 need metadata
-    let needActionTagContent = ''; // Store structured Stage 3 need action metadata
-    let needsTagContent = ''; // Store structured Stage 3 needs metadata
-    let stage4ProposalsTagContent = ''; // Store structured Stage 4 proposal metadata
-    let stage4WalkthroughTagContent = ''; // Store structured Stage 4 walkthrough metadata
-    let dispatchTagContent = ''; // Store dispatch tag content for handling
     let isDispatchMessage = false; // Track if this is a dispatch response (skip processing)
 
     try {
-      const stateCapturePrompt = {
-        staticBlock: prompt.staticBlock,
-        dynamicBlock: `${prompt.dynamicBlock}
-
-STATE CAPTURE PASS:
-Call update_session_state with any persisted state required by the latest user turn. Do not write conversational prose in this pass.`,
-      };
-      const stateCapture = await getModelCompletionWithTools('sonnet', {
-        systemPrompt: stateCapturePrompt,
-        messages: messagesWithContext,
-        tools: getToolsForStage(currentStage),
-        maxTokens: 1024,
+      const modelResult = await runStreamTurnModel({
+        requestId,
         sessionId,
         turnId,
-        operation: 'structured-state-capture',
-        callType: BrainActivityCallType.ORCHESTRATED_RESPONSE,
+        currentStage,
+        isInvitationPhase,
+        userTurnCount,
+        prompt,
+        messagesWithContext,
+        emitVisibleChunk: (text) => sendSSE(res, { event: 'chunk', data: { text } }),
+        isClientDisconnected: () => clientDisconnected,
       });
-      const sessionStateTool = stateCapture?.toolInvocations.find((tool) => tool.name === SESSION_STATE_TOOL_NAME);
-      if (sessionStateTool) {
-        metadata = { ...metadata, ...parseSessionStateToolInput(sessionStateTool.input) };
-        logger.info(`[sendMessageStream:${requestId}] [PRESTREAM TOOL ${sessionStateTool.name}]:`, {
-          topicFrame: Boolean(metadata.topicFrame),
-          proposedNeed: Boolean(metadata.proposedNeed),
-          needAction: metadata.needAction?.type ?? null,
-          stage4ProposalCount: metadata.stage4Proposals?.length ?? 0,
-          stage4WalkthroughAction: metadata.stage4WalkthroughAction?.action ?? null,
-          offerFeelHeardCheck: metadata.offerFeelHeardCheck,
-          offerReadyToShare: metadata.offerReadyToShare,
-        });
-      } else if (stateCapture?.text) {
-        const parsedStateFallback = parseMicroTagResponse(stateCapture.text);
-        metadata.offerFeelHeardCheck = parsedStateFallback.offerFeelHeardCheck;
-        metadata.offerReadyToShare = parsedStateFallback.offerReadyToShare;
-        if (currentStage === 3 && parsedStateFallback.proposedNeed) metadata.proposedNeed = parsedStateFallback.proposedNeed;
-        if (currentStage === 3 && parsedStateFallback.needAction) metadata.needAction = parsedStateFallback.needAction;
-        if (currentStage === 3 && parsedStateFallback.proposedNeeds.length > 0) metadata.proposedNeeds = parsedStateFallback.proposedNeeds;
-        if (currentStage === 4 && parsedStateFallback.stage4ProposalBlockPresent) metadata.stage4Proposals = parsedStateFallback.stage4Proposals;
-        if (currentStage === 4 && parsedStateFallback.stage4WalkthroughAction) metadata.stage4WalkthroughAction = parsedStateFallback.stage4WalkthroughAction;
-        if ((currentStage === 0 || isInvitationPhase) && parsedStateFallback.topicFrame) metadata.topicFrame = parsedStateFallback.topicFrame;
-        if (currentStage === 2 && parsedStateFallback.draft) metadata.proposedEmpathyStatement = parsedStateFallback.draft;
-        logger.warn(`[sendMessageStream:${requestId}] Structured state capture returned text without tool; parsed legacy fallback.`);
-      }
 
-      const visiblePrompt = {
-        staticBlock: prompt.staticBlock,
-        dynamicBlock: `${prompt.dynamicBlock}
-
-VISIBLE RESPONSE PASS:
-Persisted state has already been captured for this turn. The update_session_state tool is intentionally unavailable now. Ignore any instruction to call it in this pass.
-Captured state summary for your private context: ${JSON.stringify({
-  topicFrame: metadata.topicFrame,
-  offerFeelHeardCheck: metadata.offerFeelHeardCheck,
-  offerReadyToShare: metadata.offerReadyToShare,
-  proposedEmpathyStatement: metadata.proposedEmpathyStatement ? '[captured]' : undefined,
-  proposedNeed: metadata.proposedNeed,
-  needAction: metadata.needAction,
-  stage4ProposalCount: metadata.stage4Proposals?.length,
-  stage4WalkthroughAction: metadata.stage4WalkthroughAction,
-})}
-Write only the user-facing conversational response. Do not include tool JSON, XML tags beyond the normal hidden <thinking> protocol, or state summaries.`,
-      };
-      const streamGenerator = getSonnetStreamingResponse({
-        systemPrompt: visiblePrompt,
-        messages: messagesWithContext,
-        maxTokens: 1536,
+      // The empty-response guard inside throws into the stream error path below.
+      const resolution = await resolveStreamTurn({
+        requestId,
         sessionId,
         turnId,
-        operation: 'streaming-response',
-        callType: BrainActivityCallType.ORCHESTRATED_RESPONSE,
-        // For E2E mock mode: response index is 0-based (userTurnCount is 1-based after save)
-        mockResponseIndex: Math.max(0, userTurnCount - 1),
+        currentStage,
+        isInvitationPhase,
+        content,
+        history,
+        userName,
+        partnerName,
+        session,
+        accumulatedText: modelResult.accumulatedText,
+        metadata: modelResult.metadata,
+        captured: modelResult.captured,
+        emitVisibleChunk: (text) => sendSSE(res, { event: 'chunk', data: { text } }),
       });
-
-      const streamStartTime = Date.now();
-      let firstChunkTime: number | null = null;
-      let lastChunkTime: number | null = null;
-      let thinkingEndTime: number | null = null;
-
-      /**
-       * Helper to strip tags and send clean text to client
-       * NOTE: Do NOT use .trim() on every chunk - it removes spaces between words when streaming
-       * BUT we DO trimStart() on the FIRST chunk to remove leading newlines after </thinking>
-       */
-      const sendCleanText = (text: string) => {
-        if (!text || clientDisconnected) return;
-
-        // Strip ALL semantic tags as defense-in-depth (thinking trap should catch these,
-        // but this prevents leaks if the trap fails due to stream errors or chunk splitting)
-        let cleanText = text
-          .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')  // Complete thinking blocks
-          .replace(/<thinking>[\s\S]*/gi, '')                // Unclosed thinking (strip to end)
-          .replace(/<\/thinking>/gi, '')                     // Orphaned closing tag
-          .replace(/<draft>[\s\S]*?<\/draft>/gi, '')
-          .replace(/<need>[\s\S]*?<\/need>/gi, '')
-          .replace(/<need-action\b[^>]*>[\s\S]*?<\/need-action>/gi, '')
-          .replace(/<need-action\b[^>]*\/>/gi, '')
-          .replace(/<needs>[\s\S]*?<\/needs>/gi, '')
-          .replace(/<stage4_proposals>[\s\S]*?<\/stage4_proposals>/gi, '')
-          .replace(/<stage4_proposals>[\s\S]*/gi, '')
-          .replace(/<\/stage4_proposals>/gi, '')
-          .replace(/<stage4_walkthrough>[\s\S]*?<\/stage4_walkthrough>/gi, '')
-          .replace(/<stage4_walkthrough>[\s\S]*/gi, '')
-          .replace(/<\/stage4_walkthrough>/gi, '')
-          .replace(/<dispatch>[\s\S]*?<\/dispatch>/gi, '');
-
-        // Trim LEADING whitespace only on the FIRST chunk (after </thinking> tag removal)
-        // This removes newlines at the start without breaking word spacing in subsequent chunks
-        if (!firstChunkTime && cleanText.length > 0) {
-          cleanText = cleanText.trimStart();
-        }
-
-        const scrubbed = scrubVisibleAIText(cleanText, { preserveBoundaryWhitespace: true });
-        cleanText = scrubbed.text;
-
-        if (cleanText.length > 0) {
-          if (!firstChunkTime) firstChunkTime = Date.now();
-          accumulatedText += cleanText;
-          sendSSE(res, { event: 'chunk', data: { text: cleanText } });
-        }
-      };
-
-      /**
-       * Process the tag trap buffer - extract draft/dispatch and return clean response text
-       */
-      const processTagTrapBuffer = (buffer: string): string => {
-        // Extract draft content if present
-        const draftMatch = buffer.match(/<draft>([\s\S]*?)<\/draft>/i);
-        if (draftMatch) {
-          draftContent = draftMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN DRAFT]: {length: ${draftContent.length}}`);
-        }
-
-        // Extract structured Stage 3 needs if present.
-        const needMatch = buffer.match(/<need>([\s\S]*?)<\/need>/i);
-        if (needMatch) {
-          needTagContent = needMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN NEED]:`, needTagContent.substring(0, 160) + (needTagContent.length > 160 ? '...' : ''));
-        }
-
-        const needActionMatch = buffer.match(/<need-action\b[^>]*>[\s\S]*?<\/need-action>|<need-action\b[^>]*\/>/i);
-        if (needActionMatch) {
-          needActionTagContent = needActionMatch[0].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN NEED ACTION]:`, needActionTagContent.substring(0, 160) + (needActionTagContent.length > 160 ? '...' : ''));
-        }
-
-        const needsMatch = buffer.match(/<needs>([\s\S]*?)<\/needs>/i);
-        if (needsMatch) {
-          needsTagContent = needsMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN NEEDS]: {length: ${needsTagContent.length}}`);
-        }
-
-        const stage4ProposalsMatch = buffer.match(/<stage4_proposals>([\s\S]*?)<\/stage4_proposals>/i);
-        if (stage4ProposalsMatch) {
-          stage4ProposalsTagContent = stage4ProposalsMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN STAGE 4 PROPOSALS]: {length: ${stage4ProposalsTagContent.length}}`);
-        }
-
-        const stage4WalkthroughMatch = buffer.match(/<stage4_walkthrough>([\s\S]*?)<\/stage4_walkthrough>/i);
-        if (stage4WalkthroughMatch) {
-          stage4WalkthroughTagContent = stage4WalkthroughMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [HIDDEN STAGE 4 WALKTHROUGH]:`, stage4WalkthroughTagContent.substring(0, 160) + (stage4WalkthroughTagContent.length > 160 ? '...' : ''));
-        }
-
-        // Extract dispatch tag if present - store for handling after streaming
-        const dispatchMatch = buffer.match(/<dispatch>([\s\S]*?)<\/dispatch>/i);
-        if (dispatchMatch) {
-          dispatchTagContent = dispatchMatch[1].trim();
-          logger.info(`[sendMessageStream:${requestId}] [DISPATCH TAG]: {length: ${dispatchTagContent.length}}`);
-        }
-
-        // Return text with all tags stripped
-        // Do NOT use .trim() - it breaks word spacing between chunks
-        return buffer
-          .replace(/<draft>[\s\S]*?<\/draft>/gi, '')
-          .replace(/<need>[\s\S]*?<\/need>/gi, '')
-          .replace(/<need-action\b[^>]*>[\s\S]*?<\/need-action>/gi, '')
-          .replace(/<need-action\b[^>]*\/>/gi, '')
-          .replace(/<needs>[\s\S]*?<\/needs>/gi, '')
-          .replace(/<stage4_proposals>[\s\S]*?<\/stage4_proposals>/gi, '')
-          .replace(/<stage4_walkthrough>[\s\S]*?<\/stage4_walkthrough>/gi, '')
-          .replace(/<dispatch>[\s\S]*?<\/dispatch>/gi, '');
-      };
-
-      for await (const event of streamGenerator) {
-        if (event.type === 'text') {
-          lastChunkTime = Date.now();
-
-          // PHASE 1: THINKING TRAP - Buffer until </thinking> is found
-          if (isInsideThinking) {
-            thinkingBuffer += event.text;
-
-            // The model is supposed to open with <thinking>, but it sometimes skips
-            // straight to the visible reply (more often on deep, long-context turns).
-            // Decide as soon as we have a non-whitespace prefix: if it cannot become a
-            // "<thinking>" opener, bail out of the trap so the reply is streamed instead
-            // of being swallowed and hidden (which would surface as an empty-response error).
-            if (!sawThinkingOpener) {
-              const trimmedStart = thinkingBuffer.replace(/^\s+/, '');
-              const opener = '<thinking';
-              if (trimmedStart.length > 0) {
-                if (trimmedStart.startsWith(opener)) {
-                  sawThinkingOpener = true;
-                } else if (!opener.startsWith(trimmedStart.slice(0, opener.length))) {
-                  // Definitely not a <thinking> opener — treat everything as visible output.
-                  logger.warn(`[sendMessageStream:${requestId}] Response did not open with <thinking>; routing ${thinkingBuffer.length} buffered chars as visible response.`);
-                  isInsideThinking = false;
-                  isTrappingTags = true; // Run it through the tag trap so any hidden tags are still caught
-                  tagTrapBuffer = thinkingBuffer;
-                  thinkingBuffer = '';
-                  continue;
-                }
-                // else: still ambiguous (e.g. "<th") — keep buffering.
-              }
-            }
-
-            // Check for closing tag
-            const closingTagIndex = thinkingBuffer.indexOf('</thinking>');
-            if (closingTagIndex !== -1) {
-              // Thinking phase complete
-              isInsideThinking = false;
-              isTrappingTags = true; // Start tag trap phase
-              thinkingEndTime = Date.now();
-
-              // Extract and log the hidden thinking
-              thinkingContent = thinkingBuffer.substring(0, closingTagIndex);
-              logger.info(`[sendMessageStream:${requestId}] [TIMING] Thinking phase complete at ${thinkingEndTime - streamStartTime}ms`);
-              logger.info(`[sendMessageStream:${requestId}] [HIDDEN THINKING]: {length: ${thinkingContent.length}}`);
-
-              // Put remaining text into tag trap buffer
-              tagTrapBuffer = thinkingBuffer.substring(closingTagIndex + 11); // 11 = '</thinking>'.length
-              thinkingBuffer = '';
-            }
-            // Safety: if the hidden preamble is long, keep waiting for the
-            // closing tag. Flushing here can expose chain-of-thought or tool
-            // planning to the user and persist it as a real AI message.
-            else if (thinkingBuffer.length > 2000) {
-              logger.warn(`[sendMessageStream:${requestId}] Thinking buffer exceeded 2000 chars without closing tag; continuing to trap hidden text`);
-            }
-          }
-          // PHASE 2: TAG TRAP - Buffer to catch hidden semantic tags before streaming
-          // The draft tag typically comes right after </thinking>, before response text
-          else if (isTrappingTags) {
-            tagTrapBuffer += event.text;
-
-            // Check for complete tags
-            const hasDraftStart = tagTrapBuffer.includes('<draft>');
-            const hasDraftEnd = tagTrapBuffer.includes('</draft>');
-            const hasNeedStart = tagTrapBuffer.includes('<need>');
-            const hasNeedEnd = tagTrapBuffer.includes('</need>');
-            const hasNeedActionStart = /<need-action\b/i.test(tagTrapBuffer);
-            const hasNeedActionEnd = /<\/need-action>|<need-action\b[^>]*\/>/i.test(tagTrapBuffer);
-            const hasNeedsStart = tagTrapBuffer.includes('<needs>');
-            const hasNeedsEnd = tagTrapBuffer.includes('</needs>');
-            const hasStage4ProposalsStart = tagTrapBuffer.includes('<stage4_proposals>');
-            const hasStage4ProposalsEnd = tagTrapBuffer.includes('</stage4_proposals>');
-            const hasStage4WalkthroughStart = tagTrapBuffer.includes('<stage4_walkthrough>');
-            const hasStage4WalkthroughEnd = tagTrapBuffer.includes('</stage4_walkthrough>');
-            const hasDispatchStart = tagTrapBuffer.includes('<dispatch>');
-            const hasDispatchEnd = tagTrapBuffer.includes('</dispatch>');
-
-            // Check for partial tag starts at the end of buffer
-            // Matches: <d..., <n..., </d..., </n..., etc. - anything that could become
-            // <draft>, </draft>, <dispatch>, </dispatch>, <need>, <need-action>, <needs>, </needs>,
-            // <stage4_proposals>, or </stage4_proposals>.
-            const hasPotentialTagStart = /<\/?(d|n|s)[a-z0-9_-]*$/i.test(tagTrapBuffer);
-
-            // If we see opening tags, wait for closing tags
-            const waitingForDraft = hasDraftStart && !hasDraftEnd;
-            const waitingForNeed = hasNeedStart && !hasNeedEnd;
-            const waitingForNeedAction = hasNeedActionStart && !hasNeedActionEnd;
-            const waitingForNeeds = hasNeedsStart && !hasNeedsEnd;
-            const waitingForStage4Proposals = hasStage4ProposalsStart && !hasStage4ProposalsEnd;
-            const waitingForStage4Walkthrough = hasStage4WalkthroughStart && !hasStage4WalkthroughEnd;
-            const waitingForDispatch = hasDispatchStart && !hasDispatchEnd;
-
-            // Process buffer and check if we can exit:
-            // 1. Strip any complete tags from buffer
-            // 2. Check if remaining content looks like response text (not starting with <)
-            const strippedBuffer = tagTrapBuffer
-              .replace(/<draft>[\s\S]*?<\/draft>/gi, '')
-              .replace(/<need>[\s\S]*?<\/need>/gi, '')
-              .replace(/<need-action\b[^>]*>[\s\S]*?<\/need-action>/gi, '')
-              .replace(/<need-action\b[^>]*\/>/gi, '')
-              .replace(/<needs>[\s\S]*?<\/needs>/gi, '')
-              .replace(/<stage4_proposals>[\s\S]*?<\/stage4_proposals>/gi, '')
-              .replace(/<stage4_walkthrough>[\s\S]*?<\/stage4_walkthrough>/gi, '')
-              .replace(/<dispatch>[\s\S]*?<\/dispatch>/gi, '');
-            const trimmedStripped = strippedBuffer.trim();
-
-            // Exit conditions:
-            // - Not waiting for any tags to complete
-            // - Have substantial response content (>50 chars that doesn't start with <)
-            // - No partial tag at the end that might become a hidden semantic tag
-            // OR buffer is too big (safety limit)
-            const hasResponseContent = trimmedStripped.length > 50 && !trimmedStripped.startsWith('<');
-            const safeToExit = !waitingForDraft && !waitingForNeed && !waitingForNeedAction && !waitingForNeeds && !waitingForStage4Proposals && !waitingForStage4Walkthrough && !waitingForDispatch && hasResponseContent && !hasPotentialTagStart;
-
-            if (safeToExit || tagTrapBuffer.length > 2000) {
-              isTrappingTags = false;
-              const cleanText = processTagTrapBuffer(tagTrapBuffer);
-              sendCleanText(cleanText);
-              tagTrapBuffer = '';
-            }
-          }
-          // PHASE 3: NORMAL STREAMING - Stream with safety buffer for late tags
-          else {
-            const combined = tagTrapBuffer + event.text;
-
-            // Check if we have unclosed tags that need buffering
-            const hasUnclosedDispatch = combined.includes('<dispatch>') && !combined.includes('</dispatch>');
-            const hasUnclosedDraft = combined.includes('<draft>') && !combined.includes('</draft>');
-            const hasUnclosedNeed = combined.includes('<need>') && !combined.includes('</need>');
-            const hasUnclosedNeedAction = /<need-action\b/i.test(combined) && !(/<\/need-action>|<need-action\b[^>]*\/>/i.test(combined));
-            const hasUnclosedNeeds = combined.includes('<needs>') && !combined.includes('</needs>');
-            const hasUnclosedStage4Proposals = combined.includes('<stage4_proposals>') && !combined.includes('</stage4_proposals>');
-            const hasUnclosedStage4Walkthrough = combined.includes('<stage4_walkthrough>') && !combined.includes('</stage4_walkthrough>');
-            const hasPotentialTagStart = /<\/?(d|n|s)[a-z0-9_-]*$/i.test(combined);
-
-            if (hasUnclosedDispatch || hasUnclosedDraft || hasUnclosedNeed || hasUnclosedNeedAction || hasUnclosedNeeds || hasUnclosedStage4Proposals || hasUnclosedStage4Walkthrough || hasPotentialTagStart) {
-              // Buffer and wait for closing tag
-              tagTrapBuffer = combined;
-            } else {
-              // Process any buffered content + new text (extract draft/dispatch before stripping)
-              const toProcess = combined;
-              tagTrapBuffer = '';
-
-              const cleanText = processTagTrapBuffer(toProcess);
-              sendCleanText(cleanText);
-            }
-          }
-        }
-        if (event.type === 'tool_use') {
-          if (event.name === SESSION_STATE_TOOL_NAME) {
-            const toolMetadata = parseSessionStateToolInput(event.input);
-            metadata = { ...metadata, ...toolMetadata };
-            logger.info(`[sendMessageStream:${requestId}] [TOOL ${event.name}]:`, {
-              topicFrame: Boolean(toolMetadata.topicFrame),
-              stage4ProposalCount: toolMetadata.stage4Proposals?.length ?? 0,
-              stage4WalkthroughAction: toolMetadata.stage4WalkthroughAction?.action ?? null,
-              proposedNeed: Boolean(toolMetadata.proposedNeed),
-              needAction: toolMetadata.needAction?.type ?? null,
-              offerFeelHeardCheck: toolMetadata.offerFeelHeardCheck,
-              offerReadyToShare: toolMetadata.offerReadyToShare,
-            });
-          } else {
-            logger.warn(`[sendMessageStream:${requestId}] Ignoring unknown tool call: ${event.name}`);
-          }
-          continue;
-        }
-
-        // Check for done event with error flag (generator catches errors internally
-        // and yields a done event with an error string instead of throwing)
-        if (event.type === 'done' && event.error) {
-          throw new Error(event.error);
-        }
-      }
-
-      // =========================================================================
-      // SAFETY FLUSH: If the stream ends while still waiting for </thinking>,
-      // keep that content hidden. It is more important to avoid leaking
-      // internal reasoning/tool planning than to salvage malformed output.
-      // =========================================================================
-      if (isInsideThinking && thinkingBuffer.length > 0) {
-        if (sawThinkingOpener) {
-          // A genuine <thinking> block was opened but never closed. Keep it hidden:
-          // avoiding leaked chain-of-thought matters more than salvaging malformed output.
-          logger.warn(`[sendMessageStream:${requestId}] Stream ended while still in thinking trap. Buffer has ${thinkingBuffer.length} chars. Keeping it hidden.`);
-          processTagTrapBuffer(thinkingBuffer);
-          thinkingContent = thinkingBuffer;
-        } else {
-          // We never confirmed a <thinking> opener, so the buffered text is the visible
-          // reply — flush it rather than throwing an empty-response error. (Belt-and-suspenders:
-          // PHASE 1 normally bails out of the trap before we reach here.)
-          logger.warn(`[sendMessageStream:${requestId}] Stream ended with no <thinking> opener; flushing ${thinkingBuffer.length} buffered chars as visible response.`);
-          const cleanText = processTagTrapBuffer(thinkingBuffer);
-          sendCleanText(cleanText);
-        }
-        thinkingBuffer = '';
-        isInsideThinking = false;
-      }
-
-      // Flush any remaining buffer (safety for tags split across final chunks)
-      if (tagTrapBuffer.length > 0) {
-        const cleanText = processTagTrapBuffer(tagTrapBuffer);
-        sendCleanText(cleanText);
-      }
-
-      const streamEndTime = Date.now();
-      logger.info(`[sendMessageStream:${requestId}] [TIMING] Stream complete:`,
-        `total=${streamEndTime - streamStartTime}ms`,
-        `thinkingEnd=${thinkingEndTime ? thinkingEndTime - streamStartTime : 'none'}ms`,
-        `firstVisibleChunk=${firstChunkTime ? firstChunkTime - streamStartTime : 'none'}ms`,
-        `lastChunk=${lastChunkTime ? lastChunkTime - streamStartTime : 'none'}ms`);
-
-      // =========================================================================
-      // Parse accumulated response for metadata (semantic router format)
-      // The thinking content has flags like FeelHeardCheck:Y, ReadyShare:Y
-      // The accumulated text may contain <draft>...</draft> that needs stripping
-      // =========================================================================
-      const needsBlock = needsTagContent ? `<needs>${needsTagContent}</needs>\n` : '';
-      const needBlock = needTagContent ? `<need>${needTagContent}</need>\n` : '';
-      const needActionBlock = needActionTagContent ? `${needActionTagContent}\n` : '';
-      const stage4ProposalsBlock = stage4ProposalsTagContent ? `<stage4_proposals>${stage4ProposalsTagContent}</stage4_proposals>\n` : '';
-      const stage4WalkthroughBlock = stage4WalkthroughTagContent ? `<stage4_walkthrough>${stage4WalkthroughTagContent}</stage4_walkthrough>\n` : '';
-      const fullResponse = `<thinking>${thinkingContent}</thinking>\n${needBlock}${needActionBlock}${needsBlock}${stage4ProposalsBlock}${stage4WalkthroughBlock}${accumulatedText}`;
-      const parsed = parseMicroTagResponse(fullResponse);
-
-      // Extract metadata from parsed response
-      if (metadata.offerFeelHeardCheck === undefined) {
-        metadata.offerFeelHeardCheck = parsed.offerFeelHeardCheck;
-      }
-      if (metadata.offerReadyToShare === undefined) {
-        metadata.offerReadyToShare = parsed.offerReadyToShare;
-      }
-      if (parsed.proposedStrategies.length > 0) {
-        metadata.proposedStrategies = parsed.proposedStrategies;
-      }
-      if (currentStage === 4 && parsed.stage4ProposalBlockPresent && !metadata.stage4Proposals) {
-        metadata.stage4Proposals = parsed.stage4Proposals;
-      }
-      if (currentStage === 4 && parsed.stage4WalkthroughAction && !metadata.stage4WalkthroughAction) {
-        metadata.stage4WalkthroughAction = parsed.stage4WalkthroughAction;
-      }
-      if (currentStage === 3 && parsed.proposedNeeds.length > 0 && !metadata.proposedNeeds) {
-        metadata.proposedNeeds = parsed.proposedNeeds;
-      }
-      if (currentStage === 3 && parsed.proposedNeed && !metadata.proposedNeed) {
-        metadata.proposedNeed = parsed.proposedNeed;
-      }
-      if (currentStage === 3 && parsed.needAction && !metadata.needAction) {
-        metadata.needAction = parsed.needAction;
-      }
-      if (currentStage === 3 && parsed.needParseError) {
-        metadata.needParseError = parsed.needParseError;
-      }
-
-      // Use draftContent captured during streaming (more reliable than re-parsing)
-      const draft = draftContent || parsed.draft;
-      if (draft && currentStage === 2 && !metadata.proposedEmpathyStatement) {
-        // Draft is used for empathy statement (stage 2).
-        metadata.proposedEmpathyStatement = draft;
-      } else if (draft && (currentStage === 0 || isInvitationPhase) && !metadata.topicFrame) {
-        // Stage 0: <draft> contains the proposed topic frame.
-        metadata.topicFrame = draft.trim();
-      }
-
-      logger.info(`[sendMessageStream:${requestId}] Parsed metadata:`, {
-        offerFeelHeardCheck: metadata.offerFeelHeardCheck,
-        offerReadyToShare: metadata.offerReadyToShare,
-        hasDraft: !!parsed.draft,
-        proposedNeedsCount: metadata.proposedNeeds?.length ?? 0,
-        proposedNeed: !!metadata.proposedNeed,
-        needAction: metadata.needAction?.type ?? null,
-        needParseError: metadata.needParseError ?? null,
-        stage4ProposalCount: metadata.stage4Proposals?.length ?? 0,
-        dispatchTag: dispatchTagContent || parsed.dispatchTag,
-      });
-
-      // Clean accumulated text (strip <draft> and <dispatch> tags if they leaked through)
-      const scrubbedResponse = scrubVisibleAIText(parsed.response);
-      accumulatedText = scrubbedResponse.text;
-      if (
-        currentStage === 4 &&
-        metadata.stage4WalkthroughAction &&
-        metadata.stage4WalkthroughAction.action !== 'NONE' &&
-        isClarifyingStage4Response(accumulatedText)
-      ) {
-        logger.warn(`[sendMessageStream:${requestId}] Ignoring Stage 4 state capture because visible response asks for clarification`, {
-          action: metadata.stage4WalkthroughAction.action,
-          needId: metadata.stage4WalkthroughAction.needId ?? null,
-          stage4ProposalCount: metadata.stage4Proposals?.length ?? 0,
-        });
-        metadata.stage4WalkthroughAction = {
-          ...metadata.stage4WalkthroughAction,
-          action: 'NONE',
-          reason: 'visible_response_requested_clarification',
-        };
-        metadata.stage4Proposals = undefined;
-      }
-
-      // =========================================================================
-      // DISPATCH HANDLING: If dispatch tag detected, get and stream dispatched response
-      // Dispatch messages are system responses - skip classifier/embeddings
-      // Use dispatchTagContent captured during streaming (more reliable than re-parsing)
-      // =========================================================================
-      const dispatchTag = dispatchTagContent || parsed.dispatchTag;
-      if (dispatchTag) {
-        logger.info(`[sendMessageStream:${requestId}] Dispatch detected: ${dispatchTag}`);
-        isDispatchMessage = true;
-
-        // Build dispatch context with conversation history and session state
-        const dispatchContext: DispatchContext = {
-          userMessage: content,
-          conversationHistory: history.map((m) => ({
-            role: m.role === 'USER' ? 'user' as const : 'assistant' as const,
-            content: m.content,
-          })),
-          userName,
-          partnerName,
-          sessionId,
-          turnId,
-          currentStage,
-          invitationSent: session.status !== 'CREATED', // INVITED or ACTIVE means sent
-          partnerJoined: session.status === 'ACTIVE',
-        };
-
-        const dispatchedResponse = await handleDispatch(dispatchTag, dispatchContext);
-
-        if (dispatchedResponse !== null) {
-          // Use ONLY the dispatch response - ignore any acknowledgment text the AI may have sent
-          // (The prompt instructs AI to not send visible text, but in case it does, we ignore it)
-          logger.info(`[sendMessageStream:${requestId}] Dispatch response only (ignoring any streamed acknowledgment)`);
-          sendSSE(res, { event: 'chunk', data: { text: dispatchedResponse } });
-          accumulatedText = dispatchedResponse;
-        } else {
-          // Unknown dispatch tag — fall through and use the AI's original streamed response
-          logger.info(`[sendMessageStream:${requestId}] Unknown dispatch tag "${dispatchTag}" — using original AI response`);
-          isDispatchMessage = false;
-        }
-      }
-
-      // Guard: empty AI response after parsing + dispatch means the model emitted
-      // no usable user-facing text, or the upstream stream failed without
-      // producing text. Treat this as a failed turn so the frontend can show its
-      // retry/error state instead of saving a misleading canned response.
-      if (!accumulatedText.trim()) {
-        logger.error(`[sendMessageStream:${requestId}] Empty AI response after tag stripping`, {
-          dispatchTag: dispatchTag ?? null,
-          scrubbedPlannerText: scrubbedResponse.scrubbed,
-        });
-        throw new Error('AI response was empty after tag stripping');
-      }
+      accumulatedText = resolution.accumulatedText;
+      metadata = resolution.metadata;
+      isDispatchMessage = resolution.isDispatchMessage;
 
       finalizeTurnMetrics(turnId);
 
@@ -2626,27 +1172,14 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
       streamError = error instanceof Error ? error : new Error(String(error));
     }
 
-    // =========================================================================
-    // Handle stream error: Delete user message, send Ably error, no DB save
-    // User can retry fresh (avoids duplicate messages on retry)
-    // =========================================================================
+    // On stream failure the user message is removed so a retry starts fresh,
+    // and no AI message is saved.
     if (streamError) {
-      logger.error(`[sendMessageStream:${requestId}] Stream failed, cleaning up user message`);
-
-      // Delete user message so retry creates fresh conversation turn
-      await prisma.message.delete({ where: { id: userMessage.id } }).catch((deleteErr) => {
-        logger.warn(`[sendMessageStream:${requestId}] Failed to delete user message on error:`, deleteErr);
-      });
-
-      // Publish error via Ably so frontend can update UI (mark message as failed)
-      await publishMessageError(
+      await cleanupFailedStreamTurn({
+        requestId,
         sessionId,
-        user.id,
-        userMessage.id, // ID for frontend to identify which optimistic message failed
-        'Sorry, I had trouble generating a response. Please try again.',
-        true // canRetry
-      ).catch((ablyErr) => {
-        logger.warn(`[sendMessageStream:${requestId}] Failed to publish error via Ably:`, ablyErr);
+        userId: user.id,
+        userMessageId: userMessage.id,
       });
 
       // Send SSE error event if client still connected
@@ -2666,337 +1199,62 @@ Write only the user-facing conversational response. Do not include tool JSON, XM
       return;
     }
 
-    if (currentStage === 3 && metadata.needParseError) {
-      logger.warn(`[sendMessageStream:${requestId}] Ignoring invalid Stage 3 need tag: ${metadata.needParseError}`);
-    }
+    await applyStage3NeedActions({
+      requestId,
+      sessionId,
+      userId: user.id,
+      currentStage,
+      refiningNeedContext,
+      userContent: content,
+      aiResponseText: accumulatedText,
+      metadata,
+    });
 
-    if (
-      currentStage === 3 &&
-      refiningNeedContext &&
-      !metadata.proposedNeed &&
-      !metadata.needAction &&
-      (!metadata.proposedNeeds || metadata.proposedNeeds.length === 0)
-    ) {
-      try {
-        const interpretedEdit = await interpretNeedEditRequest(sessionId, user.id, {
-          targetNeedId: refiningNeedContext.id,
-          request: [
-            `The user is refining this need: "${refiningNeedContext.need}".`,
-            `Their message was: "${content}".`,
-            `The assistant response was: "${accumulatedText.trim()}".`,
-            'If the assistant response contains a clearer wording for this same need, return an updateNeedText operation for the target need. If it does not contain a clear revision, ask for clarification.',
-          ].join('\n'),
-        });
-
-        if (interpretedEdit.plan?.operations?.length) {
-          const applied = await applyNeedEdits(sessionId, user.id, interpretedEdit.plan.operations);
-          metadata.needsCaptured = true;
-          logger.info(`[sendMessageStream:${requestId}] Applied ${applied.applied.length} fallback need refinement operation(s) for ${refiningNeedContext.id}`);
-
-          for (const affected of applied.applied) {
-            const updatedNeed = affected.needId
-              ? applied.needs.find((need) => need.id === affected.needId)
-              : undefined;
-            const eventType = affected.operation === 'remove'
-              ? 'need.deleted'
-              : affected.operation === 'add'
-                ? 'need.captured'
-                : 'need.refined';
-            await publishSessionEvent(sessionId, eventType, {
-              forUserId: user.id,
-              userId: user.id,
-              need: updatedNeed,
-              affectedNeed: affected,
-            }).catch((err) =>
-              logger.warn(`[sendMessageStream:${requestId}] Failed to publish ${eventType}:`, err)
-            );
-          }
-        }
-      } catch (error) {
-        logger.warn(`[sendMessageStream:${requestId}] Fallback need refinement did not apply`, error);
-      }
-    }
-
-    if (currentStage === 3 && metadata.proposedNeed) {
-      const captured = await captureSingleNeedForUser(sessionId, user.id, metadata.proposedNeed);
-      metadata.needsCaptured = true;
-      logger.info(`[sendMessageStream:${requestId}] Captured single need ${captured.need.id} for user ${user.id}`);
-
-      await publishSessionEvent(sessionId, 'need.captured', {
-        forUserId: user.id,
-        userId: user.id,
-        need: captured.need,
-        capturedAt: captured.capturedAt.toISOString(),
-      }).catch((err) =>
-        logger.warn(`[sendMessageStream:${requestId}] Failed to publish need.captured:`, err)
-      );
-    } else if (currentStage === 3 && metadata.needAction) {
-      const applied = await applyNeedAction(sessionId, user.id, metadata.needAction);
-      metadata.needsCaptured = applied.action === 'refine';
-      const eventType = applied.action === 'refine'
-        ? 'need.refined'
-        : applied.action === 'delete'
-          ? 'need.deleted'
-          : 'need.locked';
-      await publishSessionEvent(sessionId, eventType, {
-        forUserId: user.id,
-        userId: user.id,
-        oldId: applied.oldNeed?.id,
-        oldNeed: applied.oldNeed,
-        newId: applied.action === 'refine' ? applied.need?.id : undefined,
-        need: applied.need,
-      }).catch((err) =>
-        logger.warn(`[sendMessageStream:${requestId}] Failed to publish ${eventType}:`, err)
-      );
-    } else if (currentStage === 3 && metadata.proposedNeeds && metadata.proposedNeeds.length > 0) {
-      const captured = await captureProposedNeedsForUser(sessionId, user.id, metadata.proposedNeeds);
-      metadata.needsCaptured = captured.needs.length > 0;
-      logger.info(`[sendMessageStream:${requestId}] Captured ${captured.needs.length} proposed needs for user ${user.id}`);
-
-      await publishSessionEvent(sessionId, 'session.needs_extracted', {
-        forUserId: user.id,
-        userId: user.id,
-        needsCount: captured.needs.length,
-        capturedAt: captured.capturedAt.toISOString(),
-      }).catch((err) =>
-        logger.warn(`[sendMessageStream:${requestId}] Failed to publish needs_extracted:`, err)
-      );
-    }
-
-    // =========================================================================
     // Signal that text streaming is complete (before DB saves for faster UX)
-    // =========================================================================
     if (!clientDisconnected) {
       sendSSE(res, { event: 'metadata', data: { metadata } });
       sendSSE(res, { event: 'text_complete', data: { metadata } });
     }
 
-    // =========================================================================
-    // Save AI message (only if streaming succeeded)
-    // Trim whitespace that Claude sometimes adds
-    // =========================================================================
-    const aiMessage = await prisma.message.create({
-      data: {
-        sessionId,
-        senderId: null,
-        forUserId: user.id,
-        role: 'AI',
-        content: accumulatedText.trim(),
-        stage: effectiveStage, // Use effective stage (21 for Stage 2B) for analytics
-        refiningNeedId: refiningNeedContext?.id ?? null,
-      },
+    const aiMessage = await saveAiTurnMessage({
+      requestId,
+      sessionId,
+      userId: user.id,
+      accumulatedText,
+      effectiveStage,
+      refiningNeedContext,
     });
-    logger.info(`[sendMessageStream:${requestId}] AI message created: ${aiMessage.id}`);
 
-    // Broadcast to Status Site
-    brainService.broadcastMessage(aiMessage);
+    await persistTurnState({
+      requestId,
+      sessionId,
+      userId: user.id,
+      currentStage,
+      effectiveStage,
+      isInvitationPhase,
+      session,
+      progress,
+      userMessageId: userMessage.id,
+      userContent: content,
+      aiMessageContent: aiMessage.content,
+      metadata,
+    });
 
-    // =========================================================================
-    // Process metadata (persist to database)
-    // =========================================================================
-    if (currentStage === 1 && progress?.id && metadata.offerFeelHeardCheck) {
-      const currentGates = (progress.gatesSatisfied as Record<string, unknown>) ?? {};
-      await prisma.stageProgress.update({
-        where: { id: progress.id },
-        data: {
-          gatesSatisfied: {
-            ...currentGates,
-            feelHeardCheckOffered: true,
-          },
-        },
-      });
-    }
-
-    // Save topic frame (Stage 0 / invitation phase) - only if not already confirmed
-    if ((currentStage === 0 || isInvitationPhase) && metadata.topicFrame) {
-      try {
-        const newTopicFrame = metadata.topicFrame.trim();
-        if (newTopicFrame && !session.topicFrameConfirmedAt && newTopicFrame !== session.topicFrame) {
-          await prisma.session.update({
-            where: { id: sessionId },
-            data: { topicFrame: newTopicFrame },
-          });
-          logger.info(`[sendMessageStream:${requestId}] Stage 0: Persisted topic frame "${newTopicFrame}"`);
-          publishTopicFrameUpdated(sessionId, newTopicFrame, false).catch((err) =>
-            logger.warn(`[sendMessageStream:${requestId}] Failed to publish topic_frame_updated:`, err)
-          );
-        }
-      } catch (err) {
-        logger.error(`[sendMessageStream:${requestId}] Failed to persist topic frame:`, err);
-      }
-    }
-
-    // Save empathy draft (Stage 2 or Stage 2B)
-    if ((effectiveStage === 2 || effectiveStage === 21) && metadata.offerReadyToShare && metadata.proposedEmpathyStatement) {
-      await prisma.empathyDraft.upsert({
-        where: {
-          sessionId_userId: { sessionId, userId: user.id },
-        },
-        create: {
-          sessionId,
-          userId: user.id,
-          content: metadata.proposedEmpathyStatement,
-          readyToShare: false,
-          version: 1,
-        },
-        update: {
-          content: metadata.proposedEmpathyStatement,
-          version: { increment: 1 },
-        },
-      });
-    }
-
-    // Stage 4 structured capture. ProposedStrategy micro-tags remain only as a
-    // compatibility fallback feeding the same capture/apply path.
-    if (currentStage === 4) {
-      const captureResult = await captureStage4Turn({
-        sessionId,
-        userId: user.id,
-        messageId: userMessage.id,
-        userMessage: content,
-        aiResponse: aiMessage.content,
-        structuredProposals: metadata.stage4Proposals,
-        compatibilityProposedStrategies: metadata.proposedStrategies,
-        topicFrame: session.topicFrame || undefined,
-      });
-      const stage4CaptureMetadata: NonNullable<SessionStateToolInput['stage4Capture']> = {
-        appliedOperationCount: captureResult.appliedOperationCount,
-        skippedOperationCount: captureResult.skippedOperationCount,
-        selectionCaptured: Boolean(captureResult.selection),
-        closureSignalCaptured: Boolean(captureResult.closureSignal?.readyToClose),
-        confidence: captureResult.confidence,
-      };
-      metadata.stage4Capture = stage4CaptureMetadata;
-
-      if (captureResult.appliedOperationCount > 0 || captureResult.selection) {
-        logger.info(`[sendMessageStream:${requestId}] Stage 4 capture applied`, {
-          appliedOperationCount: captureResult.appliedOperationCount,
-          skippedOperationCount: captureResult.skippedOperationCount,
-          selectionCaptured: Boolean(captureResult.selection),
-        });
-
-        await publishSessionEvent(sessionId, 'session.strategies_updated', {
-          stage: 4,
-          updatedBy: user.id,
-          appliedOperationCount: captureResult.appliedOperationCount,
-          skippedOperationCount: captureResult.skippedOperationCount,
-          selectionCaptured: Boolean(captureResult.selection),
-        });
-      }
-
-      if (metadata.stage4WalkthroughAction) {
-        const advanced = await applyStage4WalkthroughAction(
-          sessionId,
-          user.id,
-          metadata.stage4WalkthroughAction
-        );
-        if (advanced) {
-          await publishSessionEvent(sessionId, 'session.strategies_updated', {
-            stage: 4,
-            updatedBy: user.id,
-            walkthroughUpdated: true,
-            action: metadata.stage4WalkthroughAction.action,
-            needId: metadata.stage4WalkthroughAction.needId ?? null,
-          });
-        }
-      }
-
-      const autoClosure = await applyStage4AutoClosureFromSignal({
-        sessionId,
-        userId: user.id,
-        signal: captureResult.closureSignal,
-      });
-      if (autoClosure.closed) {
-        stage4CaptureMetadata.autoClosed = true;
-        logger.info(`[sendMessageStream:${requestId}] Stage 4 closed from conversation signal`, {
-          reason: autoClosure.reason,
-        });
-      }
-    }
-
-    // =========================================================================
     // Send complete event (streamError case is handled above with early return)
-    // =========================================================================
     if (!clientDisconnected) {
-      sendSSE(res, {
-        event: 'complete',
-        data: {
-          messageId: aiMessage.id,
-          metadata,
-        },
-      });
+      sendSSE(res, { event: 'complete', data: { messageId: aiMessage.id, metadata } });
     }
 
-    // =========================================================================
-    // Background tasks (non-blocking)
-    // Skip for dispatch messages - they're system responses, not user conversation
-    // =========================================================================
-    if (isDispatchMessage) {
-      logger.info(`[sendMessageStream:${requestId}] Skipping background tasks for dispatch message`);
-    } else if (isMockLLMEnabled()) {
-      logger.info(`[sendMessageStream:${requestId}] Skipping background tasks in mock LLM mode`);
-    } else {
-      // Summarize and embed session content for cross-session retrieval
-      // Per fact-ledger architecture, we embed at session level after summary updates
-      updateSessionSummary(sessionId, user.id, turnId)
-        .then(() => embedSessionContent(sessionId, user.id, turnId))
-        .catch((err: unknown) =>
-          logger.warn(`[sendMessageStream:${requestId}] Failed to update summary/embedding:`, err)
-        );
-
-      // Run partner session classifier (fire-and-forget)
-      // This extracts notable facts and detects memory intents
-      logger.info(`[sendMessageStream:${requestId}] 🚀 Triggering background classification...`);
-      (async () => {
-        try {
-          // Fetch existing facts for the classifier
-          const userVessel = await prisma.userVessel.findUnique({
-            where: { userId_sessionId: { userId: user.id, sessionId } },
-            select: { notableFacts: true },
-          });
-          // Extract existing facts with IDs for diff-based updates
-          // Legacy facts (without IDs) get UUIDs assigned via ensureFactIds
-          const existingFactsWithIds: CategorizedFactWithId[] = (() => {
-            if (!userVessel?.notableFacts) return [];
-            const facts = userVessel.notableFacts as unknown;
-            if (Array.isArray(facts)) {
-              // Check if it's CategorizedFact[] or CategorizedFactWithId[] format
-              if (facts.length > 0 && typeof facts[0] === 'object' && 'fact' in facts[0]) {
-                // New format with category/fact (may or may not have IDs)
-                return ensureFactIds(facts as CategorizedFactWithId[]);
-              }
-              // Old format: string[] - convert to CategorizedFactWithId
-              return ensureFactIds(
-                facts
-                  .filter((f): f is string => typeof f === 'string')
-                  .map((f) => ({ category: 'Unknown', fact: f }))
-              );
-            }
-            return [];
-          })();
-
-          const result = await runPartnerSessionClassifier({
-            userMessage: content,
-            conversationHistory: history.slice(-5).map((m) => ({
-              role: m.role === 'USER' ? 'user' as const : 'assistant' as const,
-              content: m.content,
-            })),
-            sessionId,
-            userId: user.id,
-            turnId,
-            partnerName,
-            existingFactsWithIds,
-          });
-
-          logger.info(`[sendMessageStream:${requestId}] ✅ Classification finished:`, {
-            factsCount: result?.notableFacts?.length ?? 0,
-            topicContext: result?.topicContext?.substring(0, 50),
-          });
-        } catch (err) {
-          logger.error(`[sendMessageStream:${requestId}] ❌ Classification failed:`, err);
-        }
-      })();
-    }
+    scheduleStreamTurnBackgroundJobs({
+      requestId,
+      sessionId,
+      userId: user.id,
+      turnId,
+      isDispatchMessage,
+      content,
+      history,
+      partnerName,
+    });
 
     // End response
     res.end();
