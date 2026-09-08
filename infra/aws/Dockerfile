@@ -16,9 +16,9 @@ FROM ${NODE_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/backend/dist ./backend/dist
-COPY --from=build --chown=node:node /app/backend/prisma ./backend/prisma
-COPY --from=build --chown=node:node /app/backend/package.json ./backend/package.json
+# npm can nest conflicting workspace dependency versions under backend/node_modules.
+COPY --from=build --chown=node:node /app/backend ./backend
+COPY --from=build --chown=node:node /app/shared ./shared
 COPY --from=build --chown=node:node /app/infra/aws/healthcheck.cjs ./infra/aws/healthcheck.cjs
 USER node
 WORKDIR /app/backend

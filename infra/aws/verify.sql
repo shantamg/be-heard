@@ -6,4 +6,4 @@ SELECT format('SELECT %L AS table_name, count(*) AS rows FROM %I.%I;', tablename
 SELECT format('ALTER TABLE %s VALIDATE CONSTRAINT %I;', conrelid::regclass, conname) FROM pg_constraint WHERE contype = 'f' \gexec
 SELECT count(*) AS unvalidated_foreign_keys FROM pg_constraint WHERE contype = 'f' AND NOT convalidated;
 SELECT id, "createdAt" FROM "User" ORDER BY id LIMIT 1;
-SELECT id, "sessionId", "createdAt" FROM "Message" ORDER BY id LIMIT 1;
+SELECT id, "sessionId" FROM "Message" ORDER BY id LIMIT 1;

@@ -15,6 +15,8 @@ else
 fi
 (cd "$(dirname "$archive")" && sha256sum -c SHA256SUMS)
 compose exec -T db pg_restore --list < "$archive" >/dev/null
+# Check prerequisite roles before any destructive database operation.
+[ "$(printf "SELECT count(*) FROM pg_roles WHERE rolname IN ('mwf_app','slam_bot_readonly');\n" | compose exec -T db psql -X -U postgres -d postgres -At)" = 2 ] || { echo 'Initialize required database roles first' >&2; exit 1; }
 start=$(date +%s)
 printf 'DROP DATABASE IF EXISTS "%s" WITH (FORCE);\nCREATE DATABASE "%s" OWNER mwf_app;\n' "$target" "$target" | dbsql postgres
 printf 'CREATE EXTENSION IF NOT EXISTS vector;\n' | dbsql "$target"

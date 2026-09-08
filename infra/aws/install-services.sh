@@ -2,6 +2,8 @@
 set -euo pipefail
 [ "$(id -u)" -eq 0 ]
 chmod 700 /opt/mwf/*.sh
+# The postgres container runs its initialization as an unprivileged UID.
+chmod 755 /opt/mwf/init-db.sh
 cat > /etc/systemd/system/mwf-backup.service <<'UNIT'
 [Unit]
 Description=Meet Without Fear verified S3 database backup
