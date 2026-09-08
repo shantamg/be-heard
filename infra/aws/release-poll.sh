@@ -34,6 +34,8 @@ mkdir "$work/runtime"
 expected='Caddyfile compose.yaml common.sh init-db.sh backup.sh restore.sh verify.sql fingerprint.sql deploy.sh release-poll.sh install-services.sh ops-health.sh'
 for file in $expected; do
   tar -xOf "$work/runtime.tar.gz" "$file" > "$work/runtime/$file"
+done
+for file in $expected; do
   install -m 700 "$work/runtime/$file" "/opt/mwf/$file.next"
   mv "/opt/mwf/$file.next" "/opt/mwf/$file"
 done

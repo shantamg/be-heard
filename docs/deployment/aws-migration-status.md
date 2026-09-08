@@ -1,6 +1,6 @@
 # AWS migration status — 2026-09-07
 
-Status: **Final database copy deployed; awaiting the user’s DNS change.**
+Status: **AWS is serving the normal HTTPS hostname; native-device acceptance and protected main merge are pending.**
 
 ## Resources
 
@@ -37,9 +37,9 @@ Status: **Final database copy deployed; awaiting the user’s DNS change.**
 
 ## Remaining acceptance
 
-1. User replaces Namecheap `api` CNAME with A `54.189.24.241`; check no conflicting AAAA.
-2. Verify authoritative DNS, valid HTTPS, normal web/mobile client behavior and post-cutover persistence.
-3. Finish switching main deployment and verify the final clean Terraform plan.
+1. User saved Namecheap A `54.189.24.241`; authoritative DNS, Cloudflare and Google DNS agree. No conflicting AAAA. HTTPS certificate is valid (Let’s Encrypt, expires 2026-12-06).
+2. Normal-hostname authenticated API/AI/SSE/Ably tests passed, and both user and AI messages remained visible in the web client after reload. The native-device check is awaiting the user.
+3. Finish protected main merge (PR #698) and verify its deployment. The final Terraform drift check remains clean.
 4. Delete only Render `srv-d58bj73uibrs73akacd0` and `dpg-d58660shg0os73bkkpmg-a` after acceptance; remove the obsolete hook. Record retirement here.
 
 No email or push-notification test was sent to another recipient.
