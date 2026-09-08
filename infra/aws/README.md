@@ -21,6 +21,8 @@ AWS_PROFILE=jason terraform plan
 
 The generated `backend.tf`, `backend.hcl`, state, plans, tfvars, credentials and dumps are ignored. Never commit them. Protect initial local state with `umask 077`. The provider lockfile is committed. Instance, static IP and buckets have `prevent_destroy`: replacing the server requires an intentional edit and a verified restore plan. Terraform does not back up the database volume.
 
+Lightsail prepends a `/bin/sh` wrapper to user data; Terraform explicitly invokes Bash. Bootstrap changes are applied manually on existing hosts (`ignore_changes = [user_data]`) and must not trigger database-destroying instance replacement.
+
 `bootstrap.sh` installs Docker, AWS CLI, unattended security updates, bounded logs and 2 GB swap. Automatic reboots are disabled. Copy this directory's runtime files into root-owned `/opt/mwf` (exclude `.local`, Terraform state/config and `.terraform`). Create root-only `/etc/mwf` files:
 
 - `application.env`: exact production integration settings; `DATABASE_URL` uses non-superuser `mwf_app` at `db:5432/mwf`, with `connection_limit=12`. Preserve encryption keys and production Bedrock settings. No local development settings.
@@ -34,9 +36,9 @@ Create IAM access keys outside Terraform, stream them securely into these files,
 
 ## Deploy
 
-GitHub `AWS Deploy` preserves the backend/shared/lockfile change policy and also watches `infra/aws`. Set repository variables `AWS_DEPLOY_ROLE_ARN` and `AWS_BACKUP_BUCKET`. OIDC trust is limited to the repository and allowed refs. No persistent AWS or administrator SSH key goes into GitHub. During migration `AWS_INITIAL_RELEASE` pins builds to the actual Render commit; remove it when accepting ongoing main deployments. Remove migration-branch triggers and OIDC trust after cutover.
+GitHub `AWS Deploy` preserves the backend/shared/lockfile change policy and also watches `infra/aws`. Set repository variables `AWS_DEPLOY_ROLE_ARN` and `AWS_BACKUP_BUCKET`. OIDC trust is limited to the repository and allowed refs. No persistent AWS or administrator SSH key goes into GitHub. `AWS_INITIAL_RELEASE` was used during migration to pin builds to the actual Render commit. Normal deployment omits that variable and builds the selected main commit. OIDC trust and automatic triggers are limited to main.
 
-CI builds linux/amd64 on its runner, uploads a uniquely named compressed image and checksum, then publishes the desired manifest. A root systemd timer on the host retrieves it through narrowly scoped read credentials, validates its checksum and image name, backs up, stops API writes, runs Prisma migrations, starts the image, verifies HTTP **and database readiness**, and reports success to S3. CI fails if the host reports failure or times out. A failed release is not retried endlessly; publish a new release ID to retry after repair. `/etc/mwf/deploy-paused` pauses application of releases.
+CI builds linux/amd64 on its runner, runs a dependency/startup smoke check, uploads a uniquely named compressed image and a checksum-verified runtime bundle, then publishes the desired manifest. Runtime scripts and proxy/Compose configuration are installed atomically from a fixed file list; database credentials and pinned DB image settings remain operator-controlled. A root systemd timer on the host retrieves it through narrowly scoped read credentials, validates its checksum and image name, backs up, stops API writes, runs Prisma migrations, starts the image, verifies HTTP **and database readiness**, and reports success to S3. CI fails if the host reports failure or times out. A failed release is not retried endlessly; publish a new release ID to retry after repair. `/etc/mwf/deploy-paused` pauses application of releases.
 
 The first release uses the live Render source plus one explicit build-time adapter in `prepare-source.py`: `TRUST_PROXY` is honored by Express, set to the fixed Caddy address only. Both the source SHA and infrastructure SHA are recorded in the image labels and manifest. Future releases use the same adapter until this setting moves into the app source.
 
@@ -52,7 +54,7 @@ Only ports 80/443 are public; SSH is restricted to operator CIDRs. PostgreSQL an
 ssh -i /path/to/operator-key -L 15432:127.0.0.1:5432 -L 18080:127.0.0.1:8080 ubuntu@STATIC_IP
 ```
 
-The bot uses `slam_bot_readonly` over its own restricted SSH tunnel. Dashboard users connect through the existing API hostname. Update the operator CIDR with Terraform when the operator IP changes.
+The bot uses `slam_bot_readonly` over its own restricted SSH tunnel (`bot-db-tunnel.service`). The server account `mwf-tunnel` has no shell and can forward only to loopback port 5432. Recreate the account, authorized key and SSH Match configuration from the protected configuration backup on recovery. Dashboard users connect through the existing API hostname. Update the operator CIDR with Terraform when the operator IP changes.
 
 ## Back up and restore
 
@@ -85,7 +87,7 @@ For full server loss: provision a replacement (deliberately address `prevent_des
 
 ## Rollback and updates
 
-`/var/lib/mwf/previous-image` records the old app image. Before reusing it, check schema compatibility. Failed migrations/readiness leave the deployment failed; do not blindly restore an older database or automatically down-migrate. An app rollback does not undo schema changes. Before AWS receives writes, Render can be resumed with its original DNS record. After AWS receives writes, freeze writes and move the latest data back before routing to Render, or repair AWS in place.
+`/var/lib/mwf/previous-image` records the old app image. Before reusing it, check schema compatibility. Failed migrations/readiness leave the deployment failed; do not blindly restore an older database or automatically down-migrate. An app rollback does not undo schema changes. Before AWS receives writes, Render can be resumed with its original DNS record. First reset its frozen role setting using an operator connection: `SET default_transaction_read_only=off; ALTER ROLE be_heard_db_user RESET default_transaction_read_only;`. After AWS receives writes, freeze writes and move the latest data back before routing to Render, or repair AWS in place.
 
 Pin and review image upgrades, back up first, rehearse restore, and schedule major PostgreSQL upgrades/reboots deliberately. Database and certificate volumes have stable names and are never removed by deployment. Never use `docker compose down -v`. Reboot verification must show healthy containers, unchanged data and active timers. Keep disk space under review; release artifacts expire after 30 days in S3, and current/previous images must remain available locally.
 

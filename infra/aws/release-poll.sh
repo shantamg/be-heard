@@ -26,5 +26,18 @@ aws s3 cp "s3://$BACKUP_BUCKET/$key" "$work/image.tar.gz" --only-show-errors
 printf '%s  %s\n' "$checksum" "$work/image.tar.gz" | sha256sum -c -
 gzip -dc "$work/image.tar.gz" | docker load
 docker image inspect "$image" >/dev/null
+runtime_checksum=$(jq -er '.runtimeSha256 | select(test("^[a-f0-9]{64}$"))' "$work/manifest.json")
+aws s3 cp "s3://$BACKUP_BUCKET/releases/artifacts/$id/runtime.tar.gz" "$work/runtime.tar.gz" --only-show-errors
+printf '%s  %s\n' "$runtime_checksum" "$work/runtime.tar.gz" | sha256sum -c -
+mkdir "$work/runtime"
+# Only the fixed, reviewed runtime file set can be installed; no archive paths escape it.
+expected='Caddyfile compose.yaml common.sh init-db.sh backup.sh restore.sh verify.sql fingerprint.sql deploy.sh release-poll.sh install-services.sh ops-health.sh'
+for file in $expected; do
+  tar -xOf "$work/runtime.tar.gz" "$file" > "$work/runtime/$file"
+  install -m 700 "$work/runtime/$file" "/opt/mwf/$file.next"
+  mv "/opt/mwf/$file.next" "/opt/mwf/$file"
+done
+chmod 755 /opt/mwf/init-db.sh
+/opt/mwf/install-services.sh
 /opt/mwf/deploy.sh "$image" "$work/manifest.json"
 report healthy
