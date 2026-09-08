@@ -34,7 +34,9 @@ services:
       E2E_AUTH_BYPASS: 'false'
       MOCK_LLM: 'false'
       NODE_OPTIONS: --max-old-space-size=640
-    networks: [edge, database]
+    networks:
+      edge: {ipv4_address: 172.29.0.3}
+      database: {}
     mem_limit: 850m
     init: true
     stop_grace_period: 20s
